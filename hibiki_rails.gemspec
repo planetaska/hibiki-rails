@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
     worker thread), and let effects push re-rendered partials to the page
     through Turbo Streams.
   DESC
-  spec.homepage = "https://github.com/planetaska/hibiki"
+  spec.homepage = "https://github.com/planetaska/hibiki-rails"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.4"
 
@@ -28,8 +28,8 @@ Gem::Specification.new do |spec|
                    "config/importmap.rb", "README.md"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "actioncable", ">= 8.0"
+  spec.add_dependency "actioncable", ">= 7.1"
   spec.add_dependency "hibiki", "~> 0.1"
-  spec.add_dependency "railties", ">= 8.0"
+  spec.add_dependency "railties", ">= 7.1"
   spec.add_dependency "turbo-rails", ">= 2.0"
 end

@@ -1,0 +1,17 @@
+# frozen_string_literal: true
+
+# CI-matrix Gemfile: oldest supported Rails (see .github/workflows/ci.yml).
+source "https://rubygems.org"
+
+gemspec path: ".."
+
+gem "actioncable", "~> 7.1.0"
+gem "railties", "~> 7.1.0"
+
+group :development do
+  gem "rake", "~> 13.0"
+  gem "rspec", "~> 3.0"
+  # rspec-rails 8 requires Rails >= 7.2; the 7.x series covers 7.1.
+  gem "rspec-rails", "~> 7.0"
+  gem "rubocop", "~> 1.21"
+end

@@ -13,8 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/planetaska/hibiki.git",
-    "directory": "hibiki_rails"
+    "url": "git+https://github.com/planetaska/hibiki-rails.git"
   },
   "license": "MIT",
   "peerDependencies": {

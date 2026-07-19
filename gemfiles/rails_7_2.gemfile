@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
+# CI-matrix Gemfile: Rails 7.2 (see .github/workflows/ci.yml).
 source "https://rubygems.org"
 
-gemspec
+gemspec path: ".."
 
-# The core gem
-gem "hibiki"
+gem "actioncable", "~> 7.2.0"
+gem "railties", "~> 7.2.0"
 
 group :development do
   gem "rake", "~> 13.0"

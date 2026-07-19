@@ -15,7 +15,9 @@ require "turbo-rails"
 
 class DummyApp < Rails::Application
   config.root = File.expand_path("dummy_root", __dir__)
-  config.load_defaults 8.0
+  # Track the bundled Rails so the CI matrix (gemfiles/) exercises each
+  # version's own defaults.
+  config.load_defaults Rails::VERSION::STRING.to_f
   config.eager_load = false
   config.logger = ActiveSupport::Logger.new(IO::NULL)
   config.secret_key_base = "hibiki-rails-dummy"

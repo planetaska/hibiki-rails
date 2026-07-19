@@ -1,1 +1,7 @@
+*.gem
+/.bundle/
+/coverage/
+/internal-docs/
+/tmp/
+/gemfiles/*.lock
 node_modules/
