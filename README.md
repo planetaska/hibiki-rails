@@ -123,6 +123,10 @@ package](https://www.npmjs.com/package/hibiki-rails) is the same module the
 engine vendors, and pulls in `@rails/actioncable`; release in lockstep with
 the gem.)
 
+| `hibiki_rails` gem | `hibiki-rails` npm | notes |
+| ------------------ | ------------------ | ----- |
+| 0.1.0              | 0.1.0              | initial release |
+
 The client is one generic Stimulus controller that drives any *island*: a
 DOM subtree bound to one channel subscription. Islands are stamped with
 the opt-in `Hibiki::Rails::Helpers` — include it where you want the bare
