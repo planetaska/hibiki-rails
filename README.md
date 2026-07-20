@@ -195,6 +195,14 @@ whenever a signal the block reads changes. The name joins the two halves
 and must be page-unique. In Phlex components, stamp the placeholder
 yourself with the id: `span(id: reactive_id(:remaining)) { "0" }`.
 
+This is transport- and shape-agnostic: `transmit_value` always uses the
+channel's own `transmit`, which every `ChannelController` swaps in by id
+— so it works the same whether the page runs the generic controller (the
+todos example above) or a `ChannelController` subclass, and it composes
+with a page whose other fragments ride Turbo broadcasts (the parent
+repo's spike counter proves exactly that — `#count` over broadcast, a
+`doubled` value over transmit, on one channel).
+
 Cost and caveats: this is cheap — it rides the island's existing
 subscription and controller (no new Stimulus instance, no new channel),
 adding just one server-side effect and a tiny payload per value. Values
