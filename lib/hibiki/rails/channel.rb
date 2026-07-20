@@ -92,6 +92,20 @@ module Hibiki
         raise NotImplementedError, "#{self.class} must implement #build_graph"
       end
 
+      # The channel half of a single reactive value (see Helpers#reactive for
+      # the placeholder half): wraps the block in an effect that transmits
+      # `<span id="hibiki-value-NAME">VALUE</span>` — the packaged client
+      # already swaps any transmitted fragment by id, so no island or JS
+      # changes are involved. Call from #build_graph; the block tracks
+      # whatever signals it reads (state, derived, or an expression over
+      # several). Values are text, always escaped. Returns the effect, owned
+      # by the graph root like any other.
+      def transmit_value(name, tag_name: :span, &compute)
+        Hibiki::Effect.new do
+          transmit({ html: Helpers.value_tag(name, compute.call, tag_name:) })
+        end
+      end
+
       # Per-page-load graph identity, supplied by the page's subscription
       # (each tab is its own graph). Override to derive identity elsewhere.
       def cid = params[:cid]

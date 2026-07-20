@@ -149,6 +149,9 @@ never includes it for you:
   `:change`, `:submit`) as a channel action, with `with:` as its payload.
   A changed control also sends `{ name => value }`; a submitted form sends
   its FormData and is reset after performing.
+- `reactive(name, placeholder)` / `reactive_id(name)` — placeholder for a
+  single reactive value, paired with the channel's `transmit_value` (see
+  "Reactive values" below).
 
 Transport is the channel's own subscription in both directions: render
 effects call `transmit({ html: })` and the client swaps each fragment in
@@ -167,6 +170,37 @@ always land: no Turbo stream, no connected-wait, and the server-rendered
 initial HTML is only a paint-avoidance placeholder. One rule carries over
 from any replace-fragment design: never transmit a fragment containing
 the input the user is currently typing in.
+
+### Reactive values
+
+When all you want on the wire is one derived (or state) value — not a
+whole partial or component — skip the fragment class entirely. The view
+paints a named placeholder, and the channel keeps it fresh:
+
+```erb
+<p>remaining: <%= reactive :remaining, 0 %></p>
+```
+
+```ruby
+def build_graph
+  @list = TodoList.new
+  transmit_value(:remaining) { @list.remaining }
+end
+```
+
+`reactive(name, placeholder = "", tag_name: :span)` emits
+`<span id="hibiki-value-remaining">0</span>`; `transmit_value` wraps the
+block in an effect that transmits the same element with the fresh value
+whenever a signal the block reads changes. The name joins the two halves
+and must be page-unique. In Phlex components, stamp the placeholder
+yourself with the id: `span(id: reactive_id(:remaining)) { "0" }`.
+
+Cost and caveats: this is cheap — it rides the island's existing
+subscription and controller (no new Stimulus instance, no new channel),
+adding just one server-side effect and a tiny payload per value. Values
+are text, always HTML-escaped — for markup, use a fragment. And when
+several values always change together, one partial/component fragment
+beats N spans.
 
 The `data-hibiki-*` attributes the helpers emit are a private contract
 with the vendored JS — they version together; don't hand-write them in
