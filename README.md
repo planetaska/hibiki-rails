@@ -100,9 +100,27 @@ bin/rails g hibiki:rails:phlex NAME
 Generates:
 
 1. One minimal channel in `/app/channels`
-2. One minimal Phlex Component set (two files) in `/app/commponents/[NAME]`
+2. One minimal Phlex component set (two files) in `/app/commponents/[NAME]`
 
+Phlex component example:
 
+```ruby
+class Components::Counter < Phlex::HTML
+  state :count, 0
+  derived(:doubled) { count * 2 }
+
+  def view_template
+    div(id: "counter") do
+      p { "count: #{count} · doubled: #{doubled}" }
+      button(**on(:increment)) { "+1" }
+    end
+  end
+
+  def increment
+    self.count += 1
+  end
+end
+```
 
 ### Rendering generated reactive partial
 
@@ -115,7 +133,7 @@ The `stimulus` shape works with zero wiring; `island` and `phlex` need the one-t
 When all you want on the wire is one derived (or state) value — not a whole partial or component — you can skip the fragment class entirely. The view paints named placeholders, and the channel keeps them fresh:
 
 ```erb
-<!-- Display a single reactive value in the view -->
+<!-- Display a single reactive value in the view anywhere -->
 <h1>todos (<%= reactive :remaining, 0 %> left)</h1>
 ...
 <!-- Even across multiple places -->
@@ -123,7 +141,7 @@ When all you want on the wire is one derived (or state) value — not a whole pa
 ```
 
 ```ruby
-# All with a single transmit_value line in HibikiChannel
+# By adding a single transmit_value line in the channel
 def build_graph
   @list = TodoList.new
   transmit_value(:remaining) { @list.remaining }
