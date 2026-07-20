@@ -8,7 +8,7 @@ class <%= class_name %>Channel < ApplicationCable::Channel
   include Hibiki::Rails::Channel
 
   def build_graph
-    @component = <%= class_name %>.new
+    @component = Components::<%= class_name %>.new
 
     # First run is the dependency-collecting initial render.
     Hibiki::Phlex.render_effect(@component) { |html| transmit({ html: }) }

@@ -5,7 +5,7 @@
 # read as ordinary method calls (no .value anywhere), Rerenderable lets
 # the channel's render effect re-render this same instance, and Helpers
 # stamps the client's wire protocol.
-class <%= class_name %> < Phlex::HTML
+class Components::<%= class_name %> < Phlex::HTML
   include Hibiki::Reactive
   include Hibiki::Phlex::Rerenderable
   include Hibiki::Rails::Helpers

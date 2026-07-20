@@ -49,7 +49,7 @@ module Hibiki
 
             Render it from any page:
 
-              <%= render #{class_name}Island.new %>
+              <%= render Components::#{class_name}Island.new %>
 
           MSG
           register_hint

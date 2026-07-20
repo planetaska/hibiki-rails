@@ -3,15 +3,15 @@
 # The island wrapper: one channel subscription per render, identified by
 # a per-page-load cid. Render from any page:
 #
-#   <%%= render <%= class_name %>Island.new %>
-class <%= class_name %>Island < Phlex::HTML
+#   <%%= render Components::<%= class_name %>Island.new %>
+class Components::<%= class_name %>Island < Phlex::HTML
   include Hibiki::Rails::Helpers
 
   def view_template
     div(**hibiki_island(<%= class_name %>Channel, cid: SecureRandom.uuid)) do
       # A throwaway instance as a paint-avoidance placeholder; the
       # channel's long-lived instance takes over from its first transmit.
-      render <%= class_name %>.new
+      render Components::<%= class_name %>.new
     end
   end
 end

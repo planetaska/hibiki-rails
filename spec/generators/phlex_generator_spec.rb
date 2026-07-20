@@ -23,7 +23,7 @@ RSpec.describe Hibiki::Rails::Generators::PhlexGenerator do
       .and include("Hibiki::Phlex.render_effect(@component) { |html| transmit({ html: }) }")
 
     component = generated("app/components/gadget.rb")
-    expect(component).to include("class Gadget < Phlex::HTML")
+    expect(component).to include("class Components::Gadget < Phlex::HTML")
       .and include("include Hibiki::Reactive")
       .and include("include Hibiki::Phlex::Rerenderable")
       .and include("include Hibiki::Rails::Helpers")
@@ -31,8 +31,12 @@ RSpec.describe Hibiki::Rails::Generators::PhlexGenerator do
       .and include("on(:increment)")
 
     expect(generated("app/components/gadget_island.rb"))
-      .to include("class GadgetIsland < Phlex::HTML")
+      .to include("class Components::GadgetIsland < Phlex::HTML")
+      .and include("render Components::Gadget.new")
       .and include("hibiki_island(GadgetChannel, cid: SecureRandom.uuid)")
+
+    expect(generated("app/channels/gadget_channel.rb"))
+      .to include("@component = Components::Gadget.new")
   end
 
   # hibiki_phlex is deliberately not in this gem's bundle (the phlex glue
@@ -64,7 +68,7 @@ RSpec.describe Hibiki::Rails::Generators::PhlexGenerator do
     run_generator(described_class, ["admin/gadget"], destination: @destination)
 
     expect(generated("app/components/admin/gadget.rb"))
-      .to include("class Admin::Gadget < Phlex::HTML")
+      .to include("class Components::Admin::Gadget < Phlex::HTML")
       .and include('div(id: "admin_gadget")')
     expect_valid_generated_sources(@destination)
   end

@@ -1,23 +1,143 @@
 # hibiki_rails
 
 Rails glue for [hibiki](https://github.com/planetaska/hibiki):
-connection-scoped signal graphs over ActionCable, pushing re-rendered HTML
-to the page — either through Turbo Streams, or over the channel's own
-subscription to the gem's packaged client (see "The packaged client").
+connection-scoped signal graphs over ActionCable, pushing re-rendered HTML to the page — either through Turbo Streams, or over the channel's own subscription to the gem's packaged client (see "The packaged client").
 
 ```
 cable action arrives → mutate signals → effects render partials →
 Turbo Streams broadcast → Turbo morphs the DOM
 ```
 
-A graph lives per cable connection (in practice: per browser tab), built
-when the channel subscribes and disposed when it unsubscribes. Effects
-subscribe to whatever signals they read; when an action writes a signal,
-exactly the affected effects re-render and broadcast.
+A graph lives per cable connection (in practice: per browser tab), built when the channel subscribes and disposed when it unsubscribes. Effects subscribe to whatever signals they read; when an action writes a signal, exactly the affected effects re-render and broadcast.
 
-Incubating inside the hibiki repo while the core gem is pre-release; will
-be extracted to its own repository once hibiki 0.1.0 ships and this API
-stabilizes. Rails >= 8.0 (what's tested), Ruby >= 3.4.
+Supports Rails >= 7.1, Ruby >= 3.4.
+
+## Installation
+
+Step 1 - Install the gem (`hibiki_rails` depends on the core `hibiki` gem)
+
+```ruby
+# Gemfile
+gem "hibiki"
+gem "hibiki_rails"
+```
+
+Or `gem install hibiki hibiki_rails`.
+
+Step 2 - Run the install generator
+
+```sh
+bin/rails g hibiki:rails:install
+```
+
+The install script will detect if your app is using importmap:
+
+- For importmap apps, the installtion is full-auto, and you don't have to do anything else.
+- For apps with JS bundlers (esbuild, bun, etc), you will need to install the companion JS file which is packaged as npm package, and you can install it by running **one of the following**:
+  - `npm/yarn install hibiki-rails`
+  - `bun add hibiki-rails`
+  - or any equivalent for your setup
+
+## Generators
+
+`hibiki_rails` comes battery included. Each supported shape has a generator that scaffolds it as a *working* mini-example — one state, one derived, one action, one effect. Run a generator, render the output from any page, click `+1`, watch it live-update. They are meant to be reshaped in place.
+
+### Stimulus shape generator
+
+```sh
+bin/rails g hibiki:rails:stimulus NAME [VIEW_PATH]
+```
+Generates:
+
+1. One minimal channel in /app/channels
+2. One minimal Stimulus ChannelController in /app/javascript/controllers
+3. One minimal view partial set (two files) in /app/views/[VIEW_PATH]
+
+Partial example:
+
+```erb
+<% cid = local_assigns.fetch(:cid) { SecureRandom.uuid } %>
+<div data-controller="counter" data-counter-cid-value="<%= cid %>">
+  <%= turbo_stream_from "counter", cid %>
+
+  <%= render "counter/counter_display", count: 0, doubled: 0 %>
+
+  <p><button data-action="counter#increment">+1</button></p>
+</div>
+```
+
+### Island shape generator
+
+```sh
+bin/rails g hibiki:rails:island NAME [VIEW_PATH]
+```
+
+Generates:
+
+1. One minimal channel in /app/channels
+2. One minimal view partial set (two files) in /app/views/[VIEW_PATH]
+
+Partial example:
+
+```erb
+<% cid = local_assigns.fetch(:cid) { SecureRandom.uuid } %>
+<%= tag.div(**hibiki_island(CounterChannel, cid:)) do %>
+  <%= turbo_stream_from "counter", cid %>
+
+  <%= render "counter/counter_display", count: 0, doubled: 0 %>
+
+  <p><%= tag.button("+1", **on(:increment)) %></p>
+<% end %>
+```
+
+### Phlex shape generator
+
+```sh
+# requires hibiki_phlex gem
+bin/rails g hibiki:rails:phlex NAME
+```
+
+Generates:
+
+1. One minimal channel in `/app/channels`
+2. One minimal Phlex Component set (two files) in `/app/commponents/[NAME]`
+
+
+
+### Rendering generated reactive partial
+
+`VIEW_PATH` is the views directory under `app/views` (defaults to `NAME`); the emitted partial is self-contained, so simply rendering the partial `<%= render "counter/counter" %>` — or `<%= render Components::CounterIsland.new %>` for the Phlex shape — is the only line a page needs.
+
+The `stimulus` shape works with zero wiring; `island` and `phlex` need the one-time `hibiki:rails:install` (they print a hint when it's missing). Namespaced names work (`admin/counter` pins `static channel` where the Stimulus identifier can't infer it). In apps without an importmap (jsbundling/vite), where `controllers/index.js` has no eager loader, the `stimulus` generator also appends the controller's import/register pair to it — and even survives `stimulus:manifest:update`.
+
+## Reactive values
+
+When all you want on the wire is one derived (or state) value — not a whole partial or component — you can skip the fragment class entirely. The view paints named placeholders, and the channel keeps them fresh:
+
+```erb
+<!-- Display a single reactive value in the view -->
+<h1>todos (<%= reactive :remaining, 0 %> left)</h1>
+...
+<!-- Even across multiple places -->
+<p>remaining: <%= reactive :remaining, 0 %></p>
+```
+
+```ruby
+# All with a single transmit_value line in HibikiChannel
+def build_graph
+  @list = TodoList.new
+  transmit_value(:remaining) { @list.remaining }
+end
+```
+
+`reactive(name, placeholder = "", tag_name: :span)` emits `<span data-hibiki-value="remaining">0</span>`; `transmit_value` wraps the block in an effect that transmits the fresh value whenever a signal the block reads changes, and the client writes it into **every** placeholder carrying that name — like styling by class name, one value may appear any number of times, anywhere on the page (including outside the island, e.g. a header badge). The name joins the two halves and must be page-unique across channels. Each placeholder keeps its own tag, classes, and attributes across updates (only its text changes), so different sites can style the same value differently. In Phlex components, stamp the placeholder yourself by splatting the attributes: `span(**reactive_attrs(:remaining)) { "0" }`.
+
+This is transport- and shape-agnostic: `transmit_value` always uses the channel's own `transmit`, which every `ChannelController` handles — so it works the same whether the page runs the generic controller (the todos example above) or a `ChannelController` subclass, and it composes with a page whose other fragments ride Turbo broadcasts (the core
+repo's spike counter proves exactly that — `#count` over broadcast, a `doubled` value over transmit, on one channel). A subclass that overrides `received` should call `super` (or handle the `value` message itself) to keep reactive values live.
+
+Cost and caveats: this is cheap — it rides the island's existing subscription and controller (no new Stimulus instance, no new channel), adding just one server-side effect and a tiny payload per value. Values are text, never markup — the client assigns `textContent`, so nothing is interpreted as HTML; for markup, use a fragment. And when several values always change together, one partial/component fragment beats N spans.
+
+The `data-hibiki-*` attributes the helpers emit are a private contract with the vendored JS — they version together; don't hand-write them in app code. The protocol itself is Stimulus-free (Stimulus only hosts the controller lifecycle), so a hand-rolled client can drive the same attributes: `toy-phlex/` in the core [hibiki](https://github.com/planetaska/hibiki) repo does it in ~40 lines. The helper interface's shape is inspired by [phlex-reactive](https://phlex-reactive.zoolutions.llc)'s `on(...)` actions.
 
 ## Usage
 
@@ -49,8 +169,7 @@ class CounterChannel < ApplicationCable::Channel
 end
 ```
 
-The page supplies a per-page-load graph id (`cid`) and listens on the
-matching stream:
+The page supplies a per-page-load graph id (`cid`) and listens on the matching stream:
 
 ```erb
 <div data-controller="counter" data-counter-cid-value="<%= @cid %>">
@@ -60,9 +179,7 @@ matching stream:
 </div>
 ```
 
-with `@cid = SecureRandom.uuid` in the controller action. The channel
-broadcasts to `[channel_name, cid]` — override `stream_name` (and/or
-`cid`) to derive identity differently.
+with `@cid = SecureRandom.uuid` in the controller action. The channel broadcasts to `[channel_name, cid]` — override `stream_name` (and/or `cid`) to derive identity differently.
 
 ## What the concern does
 
@@ -171,95 +288,7 @@ initial HTML is only a paint-avoidance placeholder. One rule carries over
 from any replace-fragment design: never transmit a fragment containing
 the input the user is currently typing in.
 
-### Reactive values
 
-When all you want on the wire is one derived (or state) value — not a
-whole partial or component — skip the fragment class entirely. The view
-paints named placeholders, and the channel keeps them fresh:
-
-```erb
-<h1>todos (<%= reactive :remaining, 0 %> left)</h1>
-...
-<p>remaining: <%= reactive :remaining, 0 %></p>
-```
-
-```ruby
-def build_graph
-  @list = TodoList.new
-  transmit_value(:remaining) { @list.remaining }
-end
-```
-
-`reactive(name, placeholder = "", tag_name: :span)` emits
-`<span data-hibiki-value="remaining">0</span>`; `transmit_value` wraps
-the block in an effect that transmits the fresh value whenever a signal
-the block reads changes, and the client writes it into **every**
-placeholder carrying that name — like styling by class name, one value
-may appear any number of times, anywhere on the page (including outside
-the island, e.g. a header badge). The name joins the two halves and must
-be page-unique across channels. Each placeholder keeps its own tag,
-classes, and attributes across updates (only its text changes), so
-different sites can style the same value differently. In Phlex
-components, stamp the placeholder yourself by splatting the attributes:
-`span(**reactive_attrs(:remaining)) { "0" }`.
-
-This is transport- and shape-agnostic: `transmit_value` always uses the
-channel's own `transmit`, which every `ChannelController` handles — so
-it works the same whether the page runs the generic controller (the
-todos example above) or a `ChannelController` subclass, and it composes
-with a page whose other fragments ride Turbo broadcasts (the parent
-repo's spike counter proves exactly that — `#count` over broadcast, a
-`doubled` value over transmit, on one channel). A subclass that
-overrides `received` should call `super` (or handle the `value` message
-itself) to keep reactive values live.
-
-Cost and caveats: this is cheap — it rides the island's existing
-subscription and controller (no new Stimulus instance, no new channel),
-adding just one server-side effect and a tiny payload per value. Values
-are text, never markup — the client assigns `textContent`, so nothing is
-interpreted as HTML; for markup, use a fragment. And when several values
-always change together, one partial/component fragment beats N spans.
-
-The `data-hibiki-*` attributes the helpers emit are a private contract
-with the vendored JS — they version together; don't hand-write them in
-app code. The protocol itself is Stimulus-free (Stimulus only hosts the
-controller lifecycle), so a hand-rolled client can drive the same
-attributes: `toy-phlex/` in the parent repo does it in ~40 lines. The
-helper interface's shape is inspired by
-[phlex-reactive](https://phlex-reactive.zoolutions.llc)'s `on(...)`
-actions.
-
-## Generators
-
-Each supported shape has a generator that scaffolds it as a *working*
-mini-example — one state, one derived, one action, one effect; run it,
-render the output from any page, click `+1`, watch it live-update — meant
-to be reshaped in place, not filled in from scratch:
-
-```sh
-bin/rails g hibiki:rails:install                  # one-time wiring: register line,
-                                                  # Helpers include, ApplicationCable
-                                                  # boilerplate + actioncable pin
-                                                  # (idempotent)
-bin/rails g hibiki:rails:stimulus NAME [VIEW_PATH]  # channel + ChannelController
-                                                    # subclass + view partial
-bin/rails g hibiki:rails:island NAME [VIEW_PATH]    # channel + helpers-stamped view
-                                                    # partial, no per-component JS
-bin/rails g hibiki:rails:phlex NAME                 # channel + Phlex component +
-                                                    # island wrapper (needs hibiki_phlex)
-```
-
-`VIEW_PATH` is the views directory under `app/views` (defaults to `NAME`);
-the emitted partial is self-contained (`cid` defaults to a per-render
-uuid), so `<%= render "counter/counter" %>` — or `<%= render
-CounterIsland.new %>` for the Phlex shape — is the only line a page needs.
-The `stimulus` shape works with zero wiring; `island` and `phlex` need the
-one-time `hibiki:rails:install` (they print a hint when it's missing).
-Namespaced names work (`admin/counter` pins `static channel` where the
-Stimulus identifier can't infer it). In apps without an importmap
-(jsbundling/vite), where `controllers/index.js` has no eager loader, the
-`stimulus` generator also appends the controller's import/register pair
-to it — the same lines `stimulus:manifest:update` would emit.
 
 ## The initial-state pattern (Turbo transport)
 
@@ -305,4 +334,5 @@ bundle exec rake   # specs + rubocop (same as CI)
 ```
 
 The spec suite boots a minimal inline Rails app (`spec/support/dummy_app.rb`);
-the live end-to-end proof app is `spike/` in the parent repo.
+the live end-to-end proof app is `spike/` in the core
+[hibiki](https://github.com/planetaska/hibiki) repo.
