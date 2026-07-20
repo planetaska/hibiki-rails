@@ -94,15 +94,17 @@ module Hibiki
 
       # The channel half of a single reactive value (see Helpers#reactive for
       # the placeholder half): wraps the block in an effect that transmits
-      # `<span id="hibiki-value-NAME">VALUE</span>` — the packaged client
-      # already swaps any transmitted fragment by id, so no island or JS
-      # changes are involved. Call from #build_graph; the block tracks
-      # whatever signals it reads (state, derived, or an expression over
-      # several). Values are text, always escaped. Returns the effect, owned
-      # by the graph root like any other.
-      def transmit_value(name, tag_name: :span, &compute)
+      # `{ value: { name:, text: } }` — the packaged client writes the text
+      # into every `[data-hibiki-value=NAME]` placeholder on the page (part
+      # of the data-hibiki wire contract, versioned with the client). Call
+      # from #build_graph; the block tracks whatever signals it reads (state,
+      # derived, or an expression over several). Values are text, never
+      # markup: the client assigns textContent, so nothing is interpreted as
+      # HTML. Returns the effect, owned by the graph root like any other.
+      def transmit_value(name, &compute)
+        name = Helpers.value_name(name)
         Hibiki::Effect.new do
-          transmit({ html: Helpers.value_tag(name, compute.call, tag_name:) })
+          transmit({ value: { name:, text: compute.call.to_s } })
         end
       end
 

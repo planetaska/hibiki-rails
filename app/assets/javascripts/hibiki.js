@@ -26,7 +26,9 @@
 //
 // Both shapes speak both transports. Transmit: the server's render
 // effects `transmit({ html: })` fragments that are swapped in by their
-// root DOM id; `received` is registered at subscribe time — before the
+// root DOM id, and `transmit_value` messages that update every
+// data-hibiki-value placeholder; `received` is registered at subscribe
+// time — before the
 // server runs build_graph — so the effects' first transmits always land
 // (the server-rendered initial HTML is only a paint-avoidance
 // placeholder). Turbo broadcasts: when the controller's element contains
@@ -44,6 +46,8 @@
 //                 data-hibiki-cid-value="<per-page-load id>"
 //   controls      data-hibiki-on="<event>-><action>"   e.g. "click->increment"
 //                 data-hibiki-with='{"index":3}'       optional JSON payload
+//   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
+//                 the server's transmit_value message updates every match
 //
 // Register the generic controller under the identifier "hibiki" (the
 // helpers hardcode it):
@@ -94,10 +98,26 @@ export class ChannelController extends Controller {
     this.subscription.perform(action, payload)
   }
 
-  // Server → DOM (transmit transport): swap each transmitted fragment in
-  // by its root id. Broadcast-transport channels never transmit, and a
-  // non-html transmit is not ours to interpret. Subclasses may override.
-  received({ html }) {
+  // Server → DOM (transmit transport). Two message shapes:
+  //
+  // { value: { name, text } } — a reactive value (transmit_value): write
+  // the text into every [data-hibiki-value=name] placeholder, document-
+  // wide (a value may render outside its island; names are page-unique).
+  // textContent assignment keeps values text-only and preserves each
+  // site's own tag/classes, so per-placeholder styling survives updates.
+  //
+  // { html } — a fragment: swap it in by its root id.
+  //
+  // Anything else is not ours to interpret. Subclasses may override, but
+  // should call super (or handle `value`) to keep reactive values live.
+  received({ html, value }) {
+    if (value) {
+      const selector = `[data-hibiki-value="${CSS.escape(value.name)}"]`
+      for (const site of document.querySelectorAll(selector)) {
+        site.textContent = value.text
+      }
+      return
+    }
     if (!html) return
     const template = document.createElement("template")
     template.innerHTML = html

@@ -3,7 +3,7 @@
 require "rails_helper"
 
 # The channel under test for Channel#transmit_value — the transmit-transport
-# half of a single reactive value (Helpers#reactive paints the placeholder).
+# half of a single reactive value (Helpers#reactive paints the placeholders).
 class ValueTestChannel < ActionCable::Channel::Base
   include Hibiki::Rails::Channel
 
@@ -13,7 +13,7 @@ class ValueTestChannel < ActionCable::Channel::Base
     @label = Hibiki::State.new("plain")
 
     transmit_value(:doubled) { @doubled.value }
-    transmit_value(:label, tag_name: :strong) { @label.value }
+    transmit_value(:label) { @label.value }
   end
 
   def increment = @count.value += 1
@@ -34,51 +34,56 @@ RSpec.describe ValueTestChannel, type: :channel do
     raise "graph actor did not drain within 2s" unless barrier.pop(timeout: 2)
   end
 
-  def html_transmissions = transmissions.map { it["html"] }
+  def value_transmissions = transmissions.map { it["value"] }
 
   before do
     subscribe(cid: "c1")
     drain
   end
 
-  it "transmits each value's initial fragment during build_graph" do
-    expect(html_transmissions).to contain_exactly(
-      '<span id="hibiki-value-doubled">0</span>',
-      '<strong id="hibiki-value-label">plain</strong>'
+  it "transmits each value's initial message during build_graph" do
+    expect(value_transmissions).to contain_exactly(
+      { "name" => "doubled", "text" => "0" },
+      { "name" => "label", "text" => "plain" }
     )
   end
 
-  it "matches the id the view-side placeholder paints (round trip)" do
+  it "matches the name the view-side placeholder stamps (round trip)" do
     view = Class.new { include Hibiki::Rails::Helpers }.new
-    placeholder_id = view.reactive(:doubled, 0)[/id="([^"]+)"/, 1]
-    expect(html_transmissions.first).to include(%(id="#{placeholder_id}"))
+    placeholder_name = view.reactive(:doubled, 0)[/data-hibiki-value="([^"]+)"/, 1]
+    expect(value_transmissions.first["name"]).to eq(placeholder_name)
   end
 
-  it "re-transmits only the affected value's fragment on a tracked write" do
+  it "re-transmits only the affected value's message on a tracked write" do
     perform :increment
     drain
-    expect(html_transmissions.count - 2).to eq(1)
-    expect(html_transmissions.last).to eq('<span id="hibiki-value-doubled">2</span>')
+    expect(value_transmissions.count - 2).to eq(1)
+    expect(value_transmissions.last).to eq({ "name" => "doubled", "text" => "2" })
   end
 
   it "does not transmit when a write leaves the value ==-equal" do
     perform :rewrite_equal
     drain
-    expect(html_transmissions.count).to eq(2)
+    expect(value_transmissions.count).to eq(2)
   end
 
   it "coalesces a burst of writes into one transmission" do
     perform :burst
     drain
-    expect(html_transmissions.count - 2).to eq(1)
-    expect(html_transmissions.last).to eq('<span id="hibiki-value-doubled">20</span>')
+    expect(value_transmissions.count - 2).to eq(1)
+    expect(value_transmissions.last).to eq({ "name" => "doubled", "text" => "20" })
   end
 
-  it "escapes the value — text, not markup" do
+  it "transmits the value verbatim as text — the client assigns textContent" do
     perform :inject
     drain
-    expect(html_transmissions.last).to eq(
-      '<strong id="hibiki-value-label">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</strong>'
+    expect(value_transmissions.last).to eq(
+      { "name" => "label", "text" => %(<script>alert("x")</script>) }
     )
+  end
+
+  it "rejects an unsafe value name before creating the effect" do
+    expect { subscription.send(:transmit_value, "bad name") { 0 } }
+      .to raise_error(ArgumentError, /name/)
   end
 end

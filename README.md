@@ -149,8 +149,8 @@ never includes it for you:
   `:change`, `:submit`) as a channel action, with `with:` as its payload.
   A changed control also sends `{ name => value }`; a submitted form sends
   its FormData and is reset after performing.
-- `reactive(name, placeholder)` / `reactive_id(name)` — placeholder for a
-  single reactive value, paired with the channel's `transmit_value` (see
+- `reactive(name, placeholder)` / `reactive_attrs(name)` — placeholder for
+  a single reactive value, paired with the channel's `transmit_value` (see
   "Reactive values" below).
 
 Transport is the channel's own subscription in both directions: render
@@ -175,9 +175,11 @@ the input the user is currently typing in.
 
 When all you want on the wire is one derived (or state) value — not a
 whole partial or component — skip the fragment class entirely. The view
-paints a named placeholder, and the channel keeps it fresh:
+paints named placeholders, and the channel keeps them fresh:
 
 ```erb
+<h1>todos (<%= reactive :remaining, 0 %> left)</h1>
+...
 <p>remaining: <%= reactive :remaining, 0 %></p>
 ```
 
@@ -189,26 +191,34 @@ end
 ```
 
 `reactive(name, placeholder = "", tag_name: :span)` emits
-`<span id="hibiki-value-remaining">0</span>`; `transmit_value` wraps the
-block in an effect that transmits the same element with the fresh value
-whenever a signal the block reads changes. The name joins the two halves
-and must be page-unique. In Phlex components, stamp the placeholder
-yourself with the id: `span(id: reactive_id(:remaining)) { "0" }`.
+`<span data-hibiki-value="remaining">0</span>`; `transmit_value` wraps
+the block in an effect that transmits the fresh value whenever a signal
+the block reads changes, and the client writes it into **every**
+placeholder carrying that name — like styling by class name, one value
+may appear any number of times, anywhere on the page (including outside
+the island, e.g. a header badge). The name joins the two halves and must
+be page-unique across channels. Each placeholder keeps its own tag,
+classes, and attributes across updates (only its text changes), so
+different sites can style the same value differently. In Phlex
+components, stamp the placeholder yourself by splatting the attributes:
+`span(**reactive_attrs(:remaining)) { "0" }`.
 
 This is transport- and shape-agnostic: `transmit_value` always uses the
-channel's own `transmit`, which every `ChannelController` swaps in by id
-— so it works the same whether the page runs the generic controller (the
+channel's own `transmit`, which every `ChannelController` handles — so
+it works the same whether the page runs the generic controller (the
 todos example above) or a `ChannelController` subclass, and it composes
 with a page whose other fragments ride Turbo broadcasts (the parent
 repo's spike counter proves exactly that — `#count` over broadcast, a
-`doubled` value over transmit, on one channel).
+`doubled` value over transmit, on one channel). A subclass that
+overrides `received` should call `super` (or handle the `value` message
+itself) to keep reactive values live.
 
 Cost and caveats: this is cheap — it rides the island's existing
 subscription and controller (no new Stimulus instance, no new channel),
 adding just one server-side effect and a tiny payload per value. Values
-are text, always HTML-escaped — for markup, use a fragment. And when
-several values always change together, one partial/component fragment
-beats N spans.
+are text, never markup — the client assigns `textContent`, so nothing is
+interpreted as HTML; for markup, use a fragment. And when several values
+always change together, one partial/component fragment beats N spans.
 
 The `data-hibiki-*` attributes the helpers emit are a private contract
 with the vendored JS — they version together; don't hand-write them in

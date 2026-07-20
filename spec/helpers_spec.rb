@@ -46,26 +46,26 @@ RSpec.describe Hibiki::Rails::Helpers do
   end
 
   describe "#reactive" do
-    it "paints a span placeholder carrying the value id" do
+    it "paints a span placeholder carrying the value name" do
       expect(view.reactive(:doubled, 0))
-        .to eq('<span id="hibiki-value-doubled">0</span>')
+        .to eq('<span data-hibiki-value="doubled">0</span>')
     end
 
     it "defaults to an empty placeholder" do
-      expect(view.reactive(:doubled)).to eq('<span id="hibiki-value-doubled"></span>')
+      expect(view.reactive(:doubled)).to eq('<span data-hibiki-value="doubled"></span>')
     end
 
     it "escapes the placeholder — values are text, not markup" do
       expect(view.reactive(:msg, "<b>hi</b>"))
-        .to eq('<span id="hibiki-value-msg">&lt;b&gt;hi&lt;/b&gt;</span>')
+        .to eq('<span data-hibiki-value="msg">&lt;b&gt;hi&lt;/b&gt;</span>')
     end
 
     it "accepts an alternate tag name" do
       expect(view.reactive(:step, 1, tag_name: :strong))
-        .to eq('<strong id="hibiki-value-step">1</strong>')
+        .to eq('<strong data-hibiki-value="step">1</strong>')
     end
 
-    it "rejects a name that is not id-safe" do
+    it "rejects a name outside the allowlist" do
       expect { view.reactive("bad name") }.to raise_error(ArgumentError, /name/)
     end
 
@@ -75,9 +75,14 @@ RSpec.describe Hibiki::Rails::Helpers do
     end
   end
 
-  describe "#reactive_id" do
-    it "exposes the value id scheme for hand-stamped placeholders (Phlex)" do
-      expect(view.reactive_id(:doubled)).to eq("hibiki-value-doubled")
+  describe "#reactive_attrs" do
+    it "exposes the placeholder attributes for hand-stamped sites (Phlex)" do
+      expect(view.reactive_attrs(:doubled))
+        .to eq({ data: { hibiki_value: "doubled" } })
+    end
+
+    it "rejects a name outside the allowlist" do
+      expect { view.reactive_attrs("bad name") }.to raise_error(ArgumentError, /name/)
     end
   end
 end
