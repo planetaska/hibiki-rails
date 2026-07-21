@@ -1,7 +1,7 @@
 # hibiki_rails
 
 Rails glue for [hibiki](https://github.com/planetaska/hibiki):
-connection-scoped signal graphs over ActionCable, pushing re-rendered HTML to the page — either through Turbo Streams, or over the channel's own subscription to the gem's packaged client (see "The packaged client").
+connection-scoped signal graphs over ActionCable, pushing re-rendered HTML to the page — either through Turbo Streams, or over the channel's own subscription to the gem's packaged client (see [The JS client](https://planetaska.github.io/hibiki/the-js-client/)).
 
 ```
 cable action arrives → mutate signals → effects render partials →
@@ -32,13 +32,14 @@ Or `gem install hibiki hibiki_rails`.
 bin/rails g hibiki:rails:install
 ```
 
-The install script will detect if your app is using importmap:
+The install generator detects whether your app uses an import map:
 
-- For importmap apps, the installation is fully automatic - you are done.
-- For apps with JS bundlers (esbuild, bun, etc), install the companion JS file (packaged as npm package) by running **one of the following**:
-  - `npm/yarn install hibiki-rails`
+- For importmap apps, installation is fully automatic — you are done.
+- For apps with a JS bundler (esbuild, vite, bun, ...), also install the companion JS client (published as an npm package) with **one of**:
+  - `npm install hibiki-rails`
+  - `yarn add hibiki-rails`
   - `bun add hibiki-rails`
-  - or any equivalent for your setup
+  - or the equivalent for your setup
 
 ### Using the generator
 
@@ -47,8 +48,8 @@ You can create reactive components easily with the provided generators.
 Create your first reactive component by running:
 
 ```sh
-# Replace [your_view_path] with your desired view path
-# e.g counters/, posts/, users/profile...
+# Replace [your_view_path] with your desired view path,
+# e.g. counters, posts, users/profile...
 bin/rails g hibiki:rails:stimulus counter [your_view_path]
 
 # For example, this creates "counter" component partials
@@ -56,17 +57,17 @@ bin/rails g hibiki:rails:stimulus counter [your_view_path]
 bin/rails g hibiki:rails:stimulus counter static_pages
 ```
 
-This will create a minimal working reactive component in the provided view path.
+This creates a minimal working reactive component in the given view path.
 
 ### Render the reactive component
 
-Since the components are just Rails partials (or Phlex component if you used Phlex generator), you can render the component anywhere by simply rendering them like any partial:
+The generated components are just Rails partials (or Phlex components, if you used the Phlex generator), so you can render one anywhere like any other partial:
 
 ```erb
 <%= render "static_pages/counter" %>
 ```
 
-Congradulations! Now you have your first reactive component!
+Congratulations! Now you have your first reactive component!
 
 ## Documentation
 
