@@ -2,15 +2,25 @@
 
 # Minimal in-process Rails app for channel specs — combustion-style, but
 # inline and transparent so the harness has no extra dependency. Only what
-# the gem touches is loaded: no ActiveRecord, no asset pipeline.
+# the gem touches is loaded: no asset pipeline. ActiveRecord is here for
+# ReactiveForm's specs (see support/todo_model.rb) — the gem itself stays
+# AR-free, duck-typing the record.
 #
 # Deliberately NOT spike/: wiring the spike as the spec dummy would couple
 # the gem's CI to the spike's Gemfile, and the spike does not travel when
 # hibiki_rails is extracted to its own repo.
 
+# DATABASE_URL instead of a config/database.yml: the dummy app has no
+# config directory on disk, and Rails' database_configuration accepts the
+# URL in place of the file on every version in the CI matrix. The schema
+# is code too (support/todo_model.rb), so nothing on disk describes the
+# database.
+ENV["DATABASE_URL"] ||= "sqlite3::memory:"
+
 require "rails"
 require "action_controller/railtie"
 require "action_cable/engine"
+require "active_record/railtie"
 require "turbo-rails"
 
 class DummyApp < Rails::Application

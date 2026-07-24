@@ -9,8 +9,10 @@ gem "actioncable", "~> 7.2.0"
 gem "railties", "~> 7.2.0"
 
 group :development do
+  gem "activerecord", "~> 7.2.0"
   gem "rake", "~> 13.0"
   gem "rspec", "~> 3.0"
   gem "rspec-rails", "~> 8.0"
   gem "rubocop", "~> 1.21"
+  gem "sqlite3"
 end
