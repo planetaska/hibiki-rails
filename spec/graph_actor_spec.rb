@@ -1,6 +1,15 @@
 # frozen_string_literal: true
 
-require "spec_helper"
+# rails_helper, not spec_helper: #work wraps every job in
+# Rails.application.executor, so an actor without a booted application is
+# not a supported configuration.
+require "rails_helper"
+
+# Named, not anonymous: CurrentAttributes keys its per-thread instance off
+# the class name, so an anonymous subclass raises on first write.
+class ActorProbeCurrent < ActiveSupport::CurrentAttributes
+  attribute :value
+end
 
 RSpec.describe Hibiki::Rails::GraphActor do
   def build_actor(**) = described_class.new(on_error: ->(e) { raise e }, **)
@@ -28,6 +37,32 @@ RSpec.describe Hibiki::Rails::GraphActor do
     actor.stop(wait: true)
 
     expect(name).to eq("hibiki-spec")
+  end
+
+  describe "the Rails executor" do
+    # A long-lived graph thread runs many actions; without the executor's
+    # per-unit-of-work reset, Current.whatever set by one action would still
+    # be set for the next one.
+    it "resets CurrentAttributes between jobs" do
+      actor = build_actor
+      seen = []
+
+      actor.post { ActorProbeCurrent.value = "first" }
+      actor.post { seen << ActorProbeCurrent.value }
+      actor.stop(wait: true)
+
+      expect(seen).to eq([nil])
+    end
+
+    it "runs the job inside an active executor" do
+      actor = build_actor
+      active = nil
+
+      actor.post { active = Rails.application.executor.active? }
+      actor.stop(wait: true)
+
+      expect(active).to be_truthy
+    end
   end
 
   describe "error isolation" do

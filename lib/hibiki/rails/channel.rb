@@ -38,11 +38,15 @@ module Hibiki
       module ClassMethods
         private
 
-        # #build_graph is a lifecycle hook, not a client-invocable action:
-        # keep it out of action_methods even when an app defines it public
-        # (a client performing "build_graph" would rebuild the graph and
-        # leak the old root).
-        def internal_methods = super + [:build_graph]
+        # Lifecycle hooks, not client-invocable actions: keep them out of
+        # action_methods even when an app defines them public (a client
+        # performing "build_graph" would rebuild the graph and leak the old
+        # root; "subscribed" would build a SECOND graph actor on the same
+        # connection). ActionCable's own #subscribed/#unsubscribed are
+        # private on the base class, so they are never subtracted by
+        # super — but a public app-side override is added straight back by
+        # public_instance_methods(false), which is the hole this closes.
+        def internal_methods = super + %i[build_graph subscribed unsubscribed]
       end
 
       # ActionCable's single dispatch point for incoming actions. The whole
@@ -101,10 +105,27 @@ module Hibiki
       # derived, or an expression over several). Values are text, never
       # markup: the client assigns textContent, so nothing is interpreted as
       # HTML. Returns the effect, owned by the graph root like any other.
+      #
+      # Equality-gated: an effect re-runs whenever ANY signal it read
+      # changed, so a bumped db_version re-sent every value's text even when
+      # the text was byte-identical — once per reactive value, per ping.
+      # The block is still called unconditionally, so dependency collection
+      # is untouched; only the transmit is skipped.
+      #
+      # NOTE for placeholders rendered INSIDE a broadcast-replaced fragment:
+      # render them with their CURRENT value, not a static default. The swap
+      # resets the DOM text, and this gate now suppresses the re-send that
+      # used to heal it. Placeholders outside the replaced fragment (a nav
+      # badge, controls that are never re-rendered) are unaffected.
       def transmit_value(name, &compute)
         name = Helpers.value_name(name)
+        last = Object.new # never == a String, so the first run always sends
         Hibiki::Effect.new do
-          transmit({ value: { name:, text: compute.call.to_s } })
+          text = compute.call.to_s
+          unless text == last
+            last = text
+            transmit({ value: { name:, text: } })
+          end
         end
       end
 

@@ -46,9 +46,23 @@ module Hibiki
 
       # Per-job rescue keeps the worker alive: one bad action must not take
       # the whole graph down. StandardError only — an Interrupt should.
+      #
+      # Each job is one unit of work in the Rails sense, so it runs inside
+      # the executor: CurrentAttributes reset between jobs (state must not
+      # leak from one action to the next on a long-lived graph thread),
+      # Zeitwerk's permit_concurrent_loads around autoloads off the main
+      # thread, an AR query cache per job, and reloader participation.
+      #
+      # The rescue sits INSIDE the wrap deliberately. ExecutionWrapper.wrap
+      # reports anything that escapes it to Rails.error itself — handled:
+      # false, source "application.active_support" — and then re-raises, so
+      # rescuing outside would report every graph error twice, once as
+      # unhandled. Rescuing inside means @on_error stays the single sink for
+      # a StandardError; a non-StandardError still escapes the wrap and takes
+      # the worker down, exactly as before.
       def work
         while (job = @queue.pop)
-          begin
+          ::Rails.application.executor.wrap do
             job.call
           rescue StandardError => e
             @on_error.call(e)

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-require "spec_helper"
+# rails_helper: the actor this schedules onto wraps jobs in the Rails
+# executor, so it needs a booted application (see graph_actor_spec).
+require "rails_helper"
 
 RSpec.describe Hibiki::Rails::Debounce do
   let(:errors) { [] }

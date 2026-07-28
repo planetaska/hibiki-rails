@@ -144,6 +144,22 @@ RSpec.describe GraphTestChannel, type: :channel do
     ensure
       Rails.error.unsubscribe(reporter)
     end
+
+    # Rails.error.report is silent with no subscriber, which is the stock dev
+    # app: the only symptom of a raising action was a fragment that stopped
+    # updating. No subscriber is registered in this example on purpose.
+    it "logs the error in a local environment with no reporter subscriber" do
+      io = StringIO.new
+      original = Rails.logger
+      Rails.logger = ActiveSupport::Logger.new(io)
+
+      perform :boom
+      drain
+
+      expect(io.string).to include("[hibiki_rails]", "RuntimeError", "graph action failed")
+    ensure
+      Rails.logger = original
+    end
   end
 
   describe "unsubscribe" do
@@ -158,6 +174,40 @@ RSpec.describe GraphTestChannel, type: :channel do
       expect(described_class.disposed).to eq(["c1"])
       expect(actor).to be_stopped
     end
+  end
+end
+
+# The lifecycle hooks written PUBLIC, which is what an app doing the
+# after_commit bridge is most likely to do. ActionCable's own #subscribed and
+# #unsubscribed are private, so `super` never subtracts them and
+# public_instance_methods(false) adds these straight back — a client could
+# then perform("subscribed") and build a second graph actor on the connection.
+class PublicHookChannel < ActionCable::Channel::Base
+  include Hibiki::Rails::Channel
+
+  def build_graph = nil
+
+  def subscribed
+    super
+    nil
+  end
+
+  def unsubscribed
+    super
+    nil
+  end
+
+  def increment = nil
+end
+
+RSpec.describe PublicHookChannel do
+  it "keeps public lifecycle hooks out of the client-invocable actions" do
+    expect(described_class.action_methods).not_to include("subscribed", "unsubscribed",
+                                                          "build_graph")
+  end
+
+  it "still exposes real actions" do
+    expect(described_class.action_methods).to include("increment")
   end
 end
 
