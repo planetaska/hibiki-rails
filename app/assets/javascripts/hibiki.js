@@ -44,10 +44,22 @@
 //   island root   data-controller="hibiki"
 //                 data-hibiki-channel-value="CounterChannel"
 //                 data-hibiki-cid-value="<per-page-load id>"
-//   controls      data-hibiki-on="<event>-><action>"   e.g. "click->increment"
+//                 data-hibiki-params-value='{"record_id":7}'  extra subscribe
+//                 params, merged UNDER channel/cid so they can't override them
+//   controls      data-hibiki-on="<event>-><action> ..."  whitespace-separated;
+//                 e.g. "click->load_more visible->load_more"
 //                 data-hibiki-with='{"index":3}'       optional JSON payload
+//                 data-hibiki-debounce="250"           ms to let the gesture settle
+//                 data-hibiki-confirm="Are you sure?"  window.confirm gate
+//                 data-hibiki-reset="false"            keep a submitted form's inputs
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
+//
+// The left side of `->` is a hibiki event name, of which DOM events are a
+// subset: click, change, input, submit are delegated listeners, and
+// `visible` is a pseudo-event backed by an IntersectionObserver (the
+// element entering the viewport). Everything that is not "which event"
+// is a sibling attribute, so the token grammar never has to grow.
 //
 // Register the generic controller under the identifier "hibiki" (the
 // helpers hardcode it):
@@ -64,6 +76,19 @@ let consumer
 
 // camelCase Stimulus method name → snake_case Ruby channel action.
 const underscore = (name) => name.replace(/([A-Z])/g, "_$1").toLowerCase()
+
+// What a changed control contributes to its action's payload. A checkbox's
+// `value` is its value ATTRIBUTE, not its state, so reading `value` made
+// checking and unchecking send byte-identical payloads; a multi-select's
+// `value` is only its first selected option. A radio needs no special case:
+// `change` fires on the newly-checked input, so `value` is already right.
+const controlValue = (control) => {
+  if (control.type === "checkbox") return control.checked
+  if (control.multiple && control.selectedOptions) {
+    return [...control.selectedOptions].map((option) => option.value)
+  }
+  return control.value
+}
 
 // The subclassable base: one channel subscription per controller element,
 // identified by a per-page-load cid (data-<identifier>-cid-value).
@@ -82,9 +107,15 @@ export class ChannelController extends Controller {
     if (source) await streamConnected(source)
     if (this.aborted) return // disconnected during the await
     this.subscription = consumer.subscriptions.create(
-      { channel: this.channelName(), cid: this.cidValue },
+      this.subscribeParams(),
       { received: (data) => this.received(data) }
     )
+  }
+
+  // What identifies this subscription to the server. Override to add
+  // params; keep channel/cid, which the Ruby side requires.
+  subscribeParams() {
+    return { channel: this.channelName(), cid: this.cidValue }
   }
 
   disconnect() {
@@ -93,9 +124,11 @@ export class ChannelController extends Controller {
     this.subscription = undefined
   }
 
-  // DOM → server: what declared action methods call.
+  // DOM → server: what declared action methods call. Optional chaining
+  // because a debounced action can fire after disconnect, and a sentinel
+  // can fire while connect is still awaiting its stream source.
   perform(action, payload = {}) {
-    this.subscription.perform(action, payload)
+    this.subscription?.perform(action, payload)
   }
 
   // Server → DOM (transmit transport). Two message shapes:
@@ -177,57 +210,174 @@ export class ChannelController extends Controller {
 // The generic controller: adds the data-hibiki-* wire protocol on top of
 // the base's plumbing.
 export default class HibikiController extends ChannelController {
-  static values = { channel: String } // cid inherited from the base
+  // cid inherited from the base. `params` defaults to {} when the island
+  // stamps no data-hibiki-params-value.
+  static values = { channel: String, params: Object }
 
   // The island stamps its channel; no inference.
   channelName() {
     return this.channelValue
   }
 
+  // Extra subscribe params go UNDER channel/cid: they are client-supplied,
+  // so a page must not be able to point its subscription at another channel
+  // or steal another tab's graph by naming its cid. The server-side rule
+  // that goes with this is in Helpers#hibiki_island.
+  subscribeParams() {
+    return { ...this.paramsValue, ...super.subscribeParams() }
+  }
+
   async connect() {
     // Root-scoped delegation (bound to the island, not document): controls
     // inside server-replaced fragments keep working with no rebinding.
     // Set up synchronously so disconnect can always tear them down.
-    this.listeners = ["click", "change", "submit"].map((type) => {
+    this.listeners = ["click", "change", "input", "submit"].map((type) => {
       const handler = (event) => this.forward(event)
       this.element.addEventListener(type, handler)
       return [type, handler]
     })
+
+    // Debounce bookkeeping: a WeakMap keyed by control (so detached
+    // elements don't pin memory) plus a flat set of live timeouts, which is
+    // what disconnect can actually iterate.
+    this.timers = new WeakMap()
+    this.pending = new Set()
+
+    // `visible` is not a DOM event, so it needs its own observer beside the
+    // delegated listeners. Always on, never a pluggable module: an
+    // IntersectionObserver watching zero elements costs nothing at runtime,
+    // while an optional import brings back the failure mode where the
+    // attribute is present, the code isn't, and nothing errors.
+    this.observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        // Fire once per observation. The re-scan after the next swap
+        // observes the REPLACEMENT element, and its fresh initial callback
+        // is what stops the classic "the new page didn't fill the viewport,
+        // so the loop stalls" trap.
+        this.observer.unobserve(entry.target)
+        this.dispatch(entry.target, { type: "visible", target: entry.target })
+      }
+    })
+
+    // Re-scan at the two points a fragment can be swapped under us, rather
+    // than blanket-observing the document: a MutationObserver over the page
+    // is a real per-mutation cost paid by every app on it.
+    this.streamRender = (event) => {
+      const render = event.detail.render
+      event.detail.render = async (streamElement) => {
+        await render(streamElement)
+        this.scanSentinels()
+      }
+    }
+    document.addEventListener("turbo:before-stream-render", this.streamRender)
+
     await super.connect()
+    if (this.aborted) return
+    this.scanSentinels()
   }
 
   disconnect() {
     for (const [type, handler] of this.listeners) {
       this.element.removeEventListener(type, handler)
     }
+    document.removeEventListener("turbo:before-stream-render", this.streamRender)
+    for (const id of this.pending) clearTimeout(id)
+    this.pending.clear()
+    this.observer.disconnect()
     super.disconnect()
   }
 
-  // DOM → server: forward a control's event as a channel action. Nested
-  // islands: events bubble to every ancestor island's listener, so each
-  // controller only acts when the control belongs to ITS island.
+  // The other swap point: hibiki's own transmit transport.
+  received(data) {
+    super.received(data)
+    if (data.html) this.scanSentinels()
+  }
+
+  // Observe every `visible->` sentinel this island owns. observe() is a
+  // no-op for an element already being observed, so re-scanning is cheap
+  // and cannot double-fire a sentinel that merely stayed put.
+  scanSentinels() {
+    for (const control of this.element.querySelectorAll('[data-hibiki-on*="visible->"]')) {
+      if (control.closest('[data-controller~="hibiki"]') === this.element) {
+        this.observer.observe(control)
+      }
+    }
+  }
+
+  // DOM → server: forward a control's event as a channel action.
   forward(event) {
     const control = event.target.closest("[data-hibiki-on]")
-    if (!control) return
+    if (control) this.dispatch(control, event)
+  }
+
+  // The shared path for both sources of events — the delegated DOM
+  // listeners and the visibility observer.
+  dispatch(control, event) {
+    // Nested islands: events bubble to every ancestor island's listener, so
+    // each controller only acts when the control belongs to ITS island.
     if (control.closest('[data-controller~="hibiki"]') !== this.element) return
 
     const token = control.dataset.hibikiOn
       .split(/\s+/)
       .find((t) => t.startsWith(`${event.type}->`))
     if (!token) return
-
     const action = token.slice(event.type.length + 2)
+
+    // Before the confirm, not after: declining must not let the form
+    // navigate away.
+    if (event.type === "submit") event.preventDefault()
+
+    const message = control.dataset.hibikiConfirm
+    if (message && !window.confirm(message)) return
+
+    // The payload is built when the action actually fires, so a debounced
+    // input sends what the user finished typing rather than the first
+    // keystroke that started the timer.
+    const wait = Number(control.dataset.hibikiDebounce)
+    const fire = () => this.send(control, event, action)
+    if (wait > 0) this.debounce(control, action, wait, fire)
+    else fire()
+  }
+
+  send(control, event, action) {
     const payload = control.dataset.hibikiWith
       ? JSON.parse(control.dataset.hibikiWith)
       : {}
     if (event.type === "submit") {
-      event.preventDefault()
       Object.assign(payload, Object.fromEntries(new FormData(control)))
-    } else if (event.type === "change" && control.name) {
-      payload[control.name] = control.value
+    } else if (control.name && (event.type === "change" || event.type === "input")) {
+      payload[control.name] = controlValue(control)
     }
     this.perform(action, payload)
-    if (event.type === "submit") control.reset()
+    // Resetting is right for an "add" form and wrong for an edit one: it
+    // runs synchronously, before the server has replied, so a failed commit
+    // would discard what the user typed.
+    if (event.type === "submit" && control.dataset.hibikiReset !== "false") {
+      control.reset()
+    }
+  }
+
+  // One timer per (control, action): two events on one element debounce
+  // independently, and a second control's typing never cancels the first's.
+  debounce(control, action, wait, fire) {
+    let byAction = this.timers.get(control)
+    if (!byAction) {
+      byAction = new Map()
+      this.timers.set(control, byAction)
+    }
+    const previous = byAction.get(action)
+    if (previous) {
+      clearTimeout(previous)
+      this.pending.delete(previous)
+    }
+    const id = setTimeout(() => {
+      byAction.delete(action)
+      this.pending.delete(id)
+      fire()
+    }, wait)
+    byAction.set(action, id)
+    this.pending.add(id)
   }
 }
 

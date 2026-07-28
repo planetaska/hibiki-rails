@@ -36,17 +36,23 @@ module Hibiki
       end
 
       module ClassMethods
-        private
+        # Lifecycle hooks, never client-invocable actions. Performing
+        # "build_graph" would rebuild the graph and leak the old root;
+        # "subscribed" would build a SECOND graph actor on the connection.
+        #
+        # These need subtracting because ActionCable computes action_methods
+        # as "public methods this class adds": #subscribed and #unsubscribed
+        # are private on its base class, so they are never subtracted for
+        # free, and a public app-side override — the shape the ActiveRecord
+        # guide's after_commit bridge invites — is added straight back by
+        # public_instance_methods(false).
+        HIDDEN_ACTIONS = %w[build_graph subscribed unsubscribed].freeze
 
-        # Lifecycle hooks, not client-invocable actions: keep them out of
-        # action_methods even when an app defines them public (a client
-        # performing "build_graph" would rebuild the graph and leak the old
-        # root; "subscribed" would build a SECOND graph actor on the same
-        # connection). ActionCable's own #subscribed/#unsubscribed are
-        # private on the base class, so they are never subtracted by
-        # super — but a public app-side override is added straight back by
-        # public_instance_methods(false), which is the hole this closes.
-        def internal_methods = super + %i[build_graph subscribed unsubscribed]
+        # Subtracted here rather than through ActionCable's #internal_methods
+        # hook, which only exists on 8.x: on Rails 7.1 and 7.2 that hook is
+        # never consulted, so an override of it is silently dead code. This
+        # works on every supported version.
+        def action_methods = super - HIDDEN_ACTIONS
       end
 
       # ActionCable's single dispatch point for incoming actions. The whole

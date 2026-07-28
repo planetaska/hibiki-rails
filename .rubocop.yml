@@ -27,3 +27,9 @@ Metrics/AbcSize:
 Metrics/MethodLength:
   Exclude:
     - spec/**/*
+
+# Keyword arguments don't have the readability problem this cop targets —
+# they name themselves at the call site. Helpers#on is the case in point:
+# every modifier it grew is optional and keyword-only.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
