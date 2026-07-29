@@ -76,8 +76,11 @@ Documentation site: <https://planetaska.github.io/hibiki/rails-introduction/>
 ## Development
 
 ```
-bundle exec rake   # specs + rubocop (same as CI)
+bundle exec rake   # Ruby specs + rubocop
+bun install && bun run test   # the client's own specs
 ```
 
-The spec suite boots a minimal inline Rails app (`spec/support/dummy_app.rb`).
+Both are what CI runs. The Ruby suite boots a minimal inline Rails app (`spec/support/dummy_app.rb`); the JS suite (`spec/js/`) drives the real Stimulus controller in happy-dom against a stubbed Action Cable consumer.
+
+The gem and the npm package are **released in lockstep**: `app/assets/javascripts/hibiki.js` is the single copy — the engine puts it on the asset path and `package.json` points `main`/`module`/`exports` at it — so importmap and bundler apps must never be able to resolve different client code. Bump `lib/hibiki/rails/version.rb` and `package.json` in the same commit, and publish both. The version table lives in [the JS client docs](https://planetaska.github.io/hibiki/the-js-client/).
 
