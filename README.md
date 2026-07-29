@@ -73,6 +73,8 @@ Congratulations! Now you have your first reactive component!
 
 Documentation site: <https://planetaska.github.io/hibiki/rails-introduction/>
 
+Release notes and upgrade advice: [CHANGELOG.md](CHANGELOG.md). **If you run Rails 7.1 or 7.2, read the 0.3.0 entry** — it fixes channel lifecycle methods that were client-invocable on those versions.
+
 ## Development
 
 ```
