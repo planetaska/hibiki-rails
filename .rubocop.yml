@@ -28,6 +28,14 @@ Metrics/MethodLength:
   Exclude:
     - spec/**/*
 
+# The --css token map is a data table, not logic: ~40 named class strings
+# transcribed from three hand-built, browser-verified variants. Splitting it to
+# satisfy a line count would separate the tokens from the accessor that
+# validates them and buy nothing.
+Metrics/ModuleLength:
+  Exclude:
+    - lib/generators/hibiki/rails/css_variant.rb
+
 # Keyword arguments don't have the readability problem this cop targets —
 # they name themselves at the call site. Helpers#on is the case in point:
 # every modifier it grew is optional and keyword-only.
