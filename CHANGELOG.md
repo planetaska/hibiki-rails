@@ -4,6 +4,37 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Added
+
+**`hibiki:rails:scaffold` and `hibiki:rails:scaffold_controller`** — a reactive
+CRUD resource generated the way `rails g scaffold` generates a plain one.
+
+```sh
+bin/rails g hibiki:rails:scaffold Book title:string author:references
+bin/rails g hibiki:rails:scaffold_controller Book   # an existing model
+```
+
+The generated index is live: search, filter, sort and pagination are signal
+state rather than page loads, rows edit in place, and a write from anywhere —
+another tab, another user, the plain controller, a console — repaints every open
+list. Everything is derived from the model's schema (columns, types, `belongs_to`
+reflections, validators) or from the same `NAME field:type` argument list Rails'
+own scaffold takes.
+
+Stock `rails g scaffold` is untouched; these live under their own namespace.
+
+Options: `--css=daisyui|tailwind|none` (detected when absent),
+`--infinite-scroll`, `--skip-pagination`, `--skip-search`, `--page-size=N`,
+`--skip-routes`.
+
+Two notes on what it does to an app you already have. The **model is modified** —
+one `delegate` per `belongs_to`, plus the `after_commit` broadcast the whole
+thing hangs off — and the generator says so when it happens. And **restart the
+server afterwards**: `app/forms/` is likely new, and Rails computes autoload
+paths from the `app/*` glob at boot.
+
 ## 0.3.0 — 2026-07-28
 
 ### Security

@@ -59,6 +59,27 @@ bin/rails g hibiki:rails:stimulus counter static_pages
 
 This creates a minimal working reactive component in the given view path.
 
+### Generating a whole CRUD resource
+
+For a full reactive resource — a live index with search, filtering, sorting and
+pagination, plus edit-in-place — use the scaffold generators:
+
+```sh
+# Model, migration, route and the reactive resource, like rails g scaffold
+bin/rails g hibiki:rails:scaffold Book title:string author:references
+
+# Or, for a model you already have — the schema is read for you
+bin/rails g hibiki:rails:scaffold_controller Book
+```
+
+Your plain `rails g scaffold` is untouched. The generated markup is styled to
+match your app (DaisyUI, Tailwind, or unstyled — detected automatically, or
+forced with `--css=`). Run `bin/rails g hibiki:rails:scaffold --help` for the
+rest of the options.
+
+Restart the server afterwards: `app/forms/` is new, and Rails works out its
+autoload paths at boot.
+
 ### Render the reactive component
 
 The generated components are just Rails partials (or Phlex components, if you used the Phlex generator), so you can render one anywhere like any other partial:
