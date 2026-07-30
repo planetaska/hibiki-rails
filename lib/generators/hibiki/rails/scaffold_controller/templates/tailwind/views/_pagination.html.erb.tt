@@ -1,0 +1,61 @@
+<%#- STRUCTURAL fork, not a class swap. DaisyUI's `join-item btn` is already an
+     abstraction, so its six item variants can repeat two tokens inline. Plain
+     Tailwind has no component class, so the shared item styling has to become a
+     template LOCAL — otherwise fourteen utilities appear six times and a tweak
+     has to be made six times. A class-token map cannot express that. -%>
+<%%# locals: (page: 1, page_count: 1) -%>
+<%%# The numbered page control. It lives INSIDE the replaced fragment, like
+    every other control in there: page_count is a server number, so a
+    single-page list simply stops rendering this element.
+
+    SCROLL. The links are anchors to the list, not buttons — the client only
+    preventDefaults `submit`, so the click both performs the action and does the
+    browser's own fragment jump. data-turbo="false" keeps Turbo Drive out of it.
+
+    `on` returns a { data: } hash, so an element needing its OWN data attributes
+    has to MERGE rather than splat, or the anchor stops scrolling. %>
+<%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
+<%% item = "relative inline-flex items-center border border-gray-300 px-4 py-2 text-sm font-medium first:rounded-l-md last:rounded-r-md" %>
+<%% item_link = "#{item} bg-white text-gray-700 hover:bg-gray-50" %>
+<%% item_current = "#{item} z-10 bg-indigo-600 border-indigo-600 text-white" %>
+<%% item_inert = "#{item} bg-white text-gray-300 cursor-not-allowed" %>
+<%%# The id-carrying wrapper stays put and stays BARE — it always renders, so
+    idiomorph always has a node to pair with, and layout classes here would
+    leave dead vertical space on a list with no page control. %>
+<div id="<%= pagination_dom_id %>">
+  <%% if page_count > 1 %>
+    <nav<%= css_attr(:pagination_nav) %> aria-label="Pagination">
+      <%%# Prev/next stay rendered and go inert at the ends rather than
+          disappearing, so the control keeps its width across a page change. A
+          span, not a disabled link: there is no page to name, so there is no
+          action to stamp. %>
+      <%% if page == 1 %>
+        <span class="<%%= item_inert %>" aria-disabled="true">«</span>
+      <%% else %>
+        <%%= link_to "«", "#<%= list_dom_id %>", class: item_link, rel: "prev",
+                    "aria-label": "Previous page", data: page_data.(page - 1) %>
+      <%% end %>
+
+      <%% <%= query_class_name %>.page_numbers(page: page, page_count: page_count).each do |n| %>
+        <%% if n.nil? %>
+          <span class="<%%= item_inert %>" aria-hidden="true">…</span>
+        <%% elsif n == page %>
+          <%%# aria-current is the only thing that tells a screen reader which
+              page it is on: the visual cue is a class, and the link text is
+              just a number either way. %>
+          <span class="<%%= item_current %>" aria-current="page"><%%= n %></span>
+        <%% else %>
+          <%%= link_to n, "#<%= list_dom_id %>", class: item_link,
+                      "aria-label": "Page #{n}", data: page_data.(n) %>
+        <%% end %>
+      <%% end %>
+
+      <%% if page == page_count %>
+        <span class="<%%= item_inert %>" aria-disabled="true">»</span>
+      <%% else %>
+        <%%= link_to "»", "#<%= list_dom_id %>", class: item_link, rel: "next",
+                    "aria-label": "Next page", data: page_data.(page + 1) %>
+      <%% end %>
+    </nav>
+  <%% end %>
+</div>

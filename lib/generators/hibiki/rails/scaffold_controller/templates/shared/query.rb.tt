@@ -1,0 +1,196 @@
+<%# GENERATION-time ERB only. NOTE: generated Ruby follows rubocop-rails-omakase
+    (spaces inside array literals), which is what a stock Rails app lints with —
+    not this gem's own style. -%>
+# The index query, in one place.
+#
+# Two readers build it: the controller's first paint (all defaults) and
+# <%= collection_channel_class_name %>'s rows derived (the island's live signal state). A
+# hand-copied scope in the controller would drift from the channel's silently,
+# which a page size makes load-bearing.
+#
+# Everything here is derived from the schema:
+<% if searchable? -%>
+#   string / text column -> a LIKE term             (SEARCHABLE)
+<% end -%>
+#   boolean column       -> a filter, and a count   (FILTERABLE)
+#   comparable column    -> a sort option           (SORTABLE)
+<% schema.belongs_tos.each do |column| -%>
+#   belongs_to           -> includes(:<%= column.association_name %>)
+<% end -%>
+#
+# Lives in app/models, not a new app/queries: Rails computes autoload paths
+# from the app/* glob at boot, so a NEW top-level directory under app/ is not
+# autoloadable until a server restart.
+class <%= query_class_name %>
+<% if searchable? -%>
+  SEARCHABLE = <%= symbol_array(schema.searchable) %>.freeze
+<% end -%>
+  FILTERABLE = <%= symbol_array(schema.filterable) %>.freeze
+  SORTABLE = <%= symbol_array(schema.sortable) %>.freeze
+  DEFAULT_SORT = :id
+
+  # How many rows a page holds.
+  #
+  # nil means "no window": .limit(nil) AND .offset(nil) are both relation
+  # no-ops — build_arel guards each clause on truthiness — so #page_count is
+  # permanently 1, #remaining permanently 0, no page control ever renders and
+  # <%= collection_channel_class_name %>#go_to_page short-circuits on its first
+  # guard. That is the whole of --skip-pagination: one constant instead of
+  # `<%% if paginated? %>` branching across five templates.
+  PAGE_SIZE = <%= page_size_literal %>
+
+  # The window, from a page number. Both pagination modes take the SAME state —
+  # a page number — so switching modes changes this method and the control
+  # partial, and nothing else.
+  #
+  # `PAGE_SIZE && ...` is what preserves the degrade-to-nil property through
+  # the arithmetic: the naive form raises TypeError on nil and would force back
+  # the template conditional this design avoids.
+  def self.window(relation, page:)
+<% if infinite? -%>
+    relation.limit(PAGE_SIZE && page * PAGE_SIZE)
+<% else -%>
+    relation.offset(PAGE_SIZE && (page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
+<% end -%>
+  end
+
+  # How many pages `matched` rows fill. The ONE place that has to know
+  # PAGE_SIZE may be nil — concentrating it here is what keeps every template
+  # branch-free. Never 0: an empty list is one (empty) page, so the control has
+  # a coherent state to render and the channel's clamp has a valid range.
+  def self.page_count(matched)
+    return 1 unless PAGE_SIZE
+
+    [ (matched.to_f / PAGE_SIZE).ceil, 1 ].max
+  end
+<% unless infinite? -%>
+
+  # How many numbered links the page control shows before it starts eliding.
+  PAGE_WINDOW = 7
+
+  # Which page numbers the control renders; nil is an elision marker ("…").
+  #
+  # Every page for a short list, but only the first, the last and the current
+  # page's neighbours for a long one. NOT cosmetic: the control lives inside
+  # the fragment that repaints on every list change, so a table of 10,000 rows
+  # would otherwise re-send 500 links on every keystroke of a search.
+  def self.page_numbers(page:, page_count:)
+    return (1..page_count).to_a if page_count <= PAGE_WINDOW
+
+    middle = ((page - 1)..(page + 1)).select { (2..page_count - 1).cover?(it) }
+    [ 1, *middle, page_count ].each_with_object([]) do |n, out|
+      out << nil if out.last && n - out.last > 1
+      out << n
+    end
+  end
+<% end -%>
+
+  # The sort-direction control's label. Reports the CURRENT order rather than
+  # the action, so it needs the arrow to say which way that is. Here beside
+  # #range_label for the same reason: a label whose text the server owns is
+  # query vocabulary, and the view should not be assembling it.
+  def self.direction_label(direction)
+    direction.to_s == "desc" ? "▼ Descending" : "▲ Ascending"
+  end
+
+<% if infinite? -%>
+  # The window half of the counts sentence. A growing limit shows a count, not
+  # a range — "Showing 40 of 200 matching". The page number is accepted and
+  # ignored so the channel has ONE call site across both modes.
+  def self.range_label(shown:, **) = shown.to_s
+<% else -%>
+  # The window half of the counts sentence — "21–40" for a page.
+  def self.range_label(page:, shown:)
+    return shown.to_s if PAGE_SIZE.nil?
+    return "0" if shown.zero?
+
+    first = (page - 1) * PAGE_SIZE + 1
+    "#{first}–#{first + shown - 1}"
+  end
+<% end -%>
+
+  def initialize(query: "", filters: {}, sort: DEFAULT_SORT, direction: :asc,
+                 page: 1)
+    @term = query.to_s.strip
+    @filters = filters
+    @sort = SORTABLE.include?(sort&.to_sym) ? sort.to_sym : DEFAULT_SORT
+    @direction = direction.to_s == "desc" ? :desc : :asc
+    @page = page
+  end
+
+  # The visible window, projected. <%= row_class_name %>.all materializes the
+  # relation, so the window clauses have to be inside it — this is the only
+  # place that knows that.
+  def rows = @rows ||= <%= row_class_name %>.all(window_scope)
+
+  # #page is already clamped by the caller; a query object never second-guesses
+  # its own arguments.
+  def page_count = self.class.page_count(counts[:matched])
+  def page = @page
+  def range_label = self.class.range_label(page: @page, shown: rows.size)
+
+<% if schema.primary_boolean -%>
+  # ONE grouped COUNT covers both numbers: how many rows match at all, and how
+  # many of those are <%= schema.primary_boolean.name %>. No ordering and no
+  # window — a count must not pay for either.
+  def counts
+    @counts ||= begin
+      by_flag = matched_scope.group(:<%= schema.primary_boolean.name %>).count
+      { matched: by_flag.values.sum, <%= schema.primary_boolean.name %>: by_flag[true].to_i }
+    end
+  end
+<% else -%>
+  # No boolean column, so there is nothing to group by and the counts sentence
+  # has no trailing clause.
+  def counts = @counts ||= { matched: matched_scope.count }
+<% end -%>
+
+  # Matching rows NOT in the window. 0 also means "unpaginated", which is what
+  # lets PAGE_SIZE = nil degrade with no branching anywhere else.
+  def remaining = counts[:matched] - rows.size
+
+  private
+
+  def matched_scope = <%= searchable? ? "apply_filters(apply_query(#{class_name}.all))" : "apply_filters(#{class_name}.all)" %>
+
+<% if schema.belongs_tos.any? -%>
+  # includes ONLY here: the belongs_to label the row projection carries is
+  # needed for the window, never for a count.
+  #
+<% if searchable? -%>
+  # NOTE: this stays a cheap two-query preload only while every SEARCHABLE
+  # column lives on this table. A search term over an association column would
+  # force references/eager_load, and LIMIT would then count JOINED rows rather
+  # than records — merely wasteful without a window, a correctness bug with one.
+<% end -%>
+  def window_scope = self.class.window(apply_sort(matched_scope.includes(<%= schema.belongs_tos.map { ":#{it.association_name}" }.join(", ") %>)), page: @page)
+<% else -%>
+  def window_scope = self.class.window(apply_sort(matched_scope), page: @page)
+<% end -%>
+<% if searchable? -%>
+
+  def apply_query(relation)
+    return relation if @term.empty?
+
+    pattern = "%#{<%= class_name %>.sanitize_sql_like(@term)}%"
+    relation.where(SEARCHABLE.map { <%= class_name %>.arel_table[it].matches(pattern) }.reduce(:or))
+  end
+<% end -%>
+
+  def apply_filters(relation)
+    @filters.reduce(relation) do |rel, (column, value)|
+      FILTERABLE.include?(column.to_sym) ? rel.where(column => value) : rel
+    end
+  end
+
+  # Allowlisted column plus a stable tiebreaker — an unstable ORDER BY makes
+  # the list reshuffle on every repaint. Under ANY window the tiebreaker is
+  # load-bearing for CORRECTNESS too: with ties and no tiebreaker, an OFFSET
+  # page can skip a row entirely, and nothing later re-shows it. Built step by
+  # step because `{ column => dir, id: :asc }` collapses when column IS :id.
+  def apply_sort(relation)
+    order = { @sort => @direction }
+    order[:id] = :asc unless @sort == :id
+    relation.order(order)
+  end
+end

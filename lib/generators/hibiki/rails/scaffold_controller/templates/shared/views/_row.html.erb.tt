@@ -1,0 +1,60 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is a
+     generation-time loop over the schema. The #{...} inside an escaped tag is
+     runtime Ruby and passes through untouched. -%>
+<%%# locals: (<%= singular_name %>:, actions: true, editing: false, form: nil<%= schema.belongs_tos.map { ", #{it.options_local}: []" }.join %>) -%>
+<%%# `<%= singular_name %>` is duck-typed: the row projection from the index and
+    from the channel's render effect, the ActiveRecord model from the show page.
+    Both answer the column readers plus the association labels (the row carries
+    them, the model delegates them), so this partial has one contract and two
+    satisfying types.
+
+    It reads NO controller context. A channel renders it through
+    ApplicationController.render, whose controller instance never ran #process:
+    action_name is nil, params and session are empty, and controller_name is
+    "application" — all SILENTLY. Anything this partial branches on arrives as
+    a local with a default instead. %>
+<%%# The root id is OUTSIDE the display/edit branch on purpose: a stable id
+    across both modes is what lets idiomorph pair the subtrees under
+    broadcast_morph instead of rebuilding them (and losing focus). %>
+<div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>"<%= css_attr(:card) %>>
+  <div<%= css_attr(:card_body) %>>
+    <%% if editing %>
+    <%%= render "<%= partial_path(row_form_partial) %>", <%= wrapped_list(row_form_render_locals, indent: render_indent(partial_path(row_form_partial))).lstrip %> %>
+    <%% else %>
+<% schema.columns.each do |column| -%>
+    <div>
+      <strong><%= column.human_name %>:</strong>
+<% if column.type == :boolean -%>
+      <%% if actions %>
+        <%%# A checkbox, because a changed control reports its CHECKED state
+            rather than its value attribute: the client sends a JSON boolean
+            under the control's name, so the server sets the value it was given
+            instead of flipping whatever it finds — which is also what makes
+            two tabs racing on one row converge.
+
+            No hidden-field pair: that convention exists for form SUBMIT, and
+            this control talks to the channel directly. %>
+        <%%= check_box_tag <%= wrapped_list(row_toggle_args(column), indent: 26).lstrip %> %>
+      <%% else %>
+        <%%= <%= singular_name %>.<%= column.name %> ? "Yes" : "No" %>
+      <%% end %>
+<% else -%>
+      <%%= <%= singular_name %>.<%= column.display_reader %> %>
+<% end -%>
+    </div>
+
+<% end -%>
+    <%% if actions %>
+    <div<%= css_attr(:card_actions) %>>
+      <%%= link_to "Show this <%= human_name.downcase %>", <%= singular_route_name %>_path(<%= singular_name %>.id)<%= css? ? %(, class: "#{css(:btn_outline)}") : "" %> %>
+      <%%= tag.button(<%= wrapped_list(row_button_args("Edit", :edit, :btn_outline), indent: 21).lstrip %>) %>
+      <%%# The scaffold's button_to carried data-turbo-confirm, which does
+          nothing on a hibiki-driven button — it is not a Turbo-driven form.
+          confirm: is the equivalent, gated client-side before the action is
+          ever performed. %>
+      <%%= tag.button(<%= wrapped_list(row_button_args("Destroy", :destroy, :btn_warning, confirm: "Are you sure?"), indent: 21).lstrip %>) %>
+    </div>
+    <%% end %>
+    <%% end %>
+  </div>
+</div>

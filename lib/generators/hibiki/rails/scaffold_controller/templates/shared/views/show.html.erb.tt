@@ -1,0 +1,27 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view. -%>
+<%% cid = SecureRandom.uuid %>
+<div<%= css_attr(:page) %>>
+  <h1<%= css_attr(:heading) %>><%= human_name.pluralize %></h1>
+
+  <div<%= css_attr(:actions_bar_spaced) %>>
+    <%%= link_to "Edit this <%= human_name.downcase %>", <%= edit_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_default)}") : "" %> %>
+    <%%= link_to "Back to <%= human_name.downcase.pluralize %>", <%= index_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_default)}") : "" %> %>
+
+    <%%= button_to "Destroy this <%= human_name.downcase %>", @<%= singular_table_name %>, method: :delete,
+                  form: { data: { turbo_confirm: "Are you sure?" } }<%= css? ? %(,\n                  class: "#{css(:btn_warning)}") : "" %> %>
+  </div>
+
+  <%%# A one-record island. `params:` is the only way a channel can learn WHICH
+      record its page is about — the subscription is the only hook that runs
+      before the graph is built — and the channel validates that id through a
+      scope IT chooses before streaming from anything.
+
+      The island root WRAPS the partial rather than being it: the broadcast
+      target is the partial's own root id, and replacing the element that
+      carries the stream source would tear down the subscription delivering the
+      replacement. %>
+  <%%= tag.div(**hibiki_island(<%= member_channel_class_name %>, cid:, params: { record_id: @<%= singular_table_name %>.id })) do %>
+    <%%= turbo_stream_from "<%= member_stream_name %>", cid %>
+    <%%= render "<%= view_dir.delete_prefix('app/views/') %>/<%= row_partial %>", <%= singular_name %>: @<%= singular_table_name %>, actions: false %>
+  <%% end %>
+</div>

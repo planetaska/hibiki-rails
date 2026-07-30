@@ -1,0 +1,52 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view. -%>
+<%%# locals: (<%= singular_name %>:<%= schema.belongs_tos.map { ", #{it.association_name.to_s.pluralize}: []" }.join %>) -%>
+<%%# The full-page form — the non-JS path, and what new/edit render. The inline
+    form on the index is a different partial built on ReactiveForm.
+<% if schema.belongs_tos.any? -%>
+
+    Each belongs_to collection arrives as a LOCAL, never an ivar. This partial
+    is only rendered from a controller today, but the rule is what matters: a
+    channel renders through ApplicationController.render, where instance
+    variables set by a controller action simply do not exist.
+<% end -%>
+ %>
+<%%= form_with(model: <%= model_resource_name(singular_name) %><%= css? ? %(, class: "#{css(:form)}") : "" %>) do |form| %>
+  <%% if <%= singular_name %>.errors.any? %>
+    <div style="color: red">
+      <h2><%%= pluralize(<%= singular_name %>.errors.count, "error") %> prohibited this <%= human_name.downcase %> from being saved:</h2>
+
+      <ul>
+        <%% <%= singular_name %>.errors.each do |error| %>
+          <li><%%= error.full_message %></li>
+        <%% end %>
+      </ul>
+    </div>
+  <%% end %>
+
+  <div<%= css_attr(:fieldset) %>>
+<% schema.columns.each_with_index do |column, index| -%>
+<% if column.type == :boolean -%>
+    <div<%= css_attr(:checkbox_wrap) %>>
+      <%%= form.label :<%= column.name %><%= css? ? %(, class: "#{css(:label)}") : "" %> do %>
+        <%%= form.<%= column.attr.field_type %> :<%= column.name %><%= css? ? %(, class: "#{css(:toggle)}") : "" %> %>
+        <%= column.human_name %>
+      <%% end %>
+    </div>
+<% elsif column.belongs_to? -%>
+    <%%= form.label :<%= column.name %><%= css? ? %(, class: "#{css(:label)}") : "" %> %>
+    <%%= form.collection_select :<%= column.name %>, <%= column.association_name.to_s.pluralize %>, :id, :<%= column.label_column %>,
+                               { include_blank: "Select <%= column.human_name.downcase %>" }<%= css? ? %(, class: "#{css(:select)}") : "" %> %>
+<% else -%>
+    <%%= form.label :<%= column.name %><%= css? ? %(, class: "#{css(:label)}") : "" %> %>
+    <%%= form.<%= column.attr.field_type %> :<%= column.name %><%= html_bounds_source(column).then { it.empty? ? "" : ", #{it}" } %><%= css? ? %(, class: "#{css(field_token(column))}") : "" %> %>
+<% end -%>
+<% unless index == schema.columns.size - 1 -%>
+
+<% end -%>
+<% end -%>
+  </div>
+
+  <div>
+    <%%= form.submit<%= css? ? %( class: "#{css(:btn_primary)}") : "" %> %>
+  </div>
+<%% end %>

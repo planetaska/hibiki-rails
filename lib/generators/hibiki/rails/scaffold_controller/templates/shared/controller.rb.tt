@@ -1,0 +1,77 @@
+<%# GENERATION-time ERB only. Scaffold-shaped: this controller still serves the
+    first paint and the whole non-JS path, so it stays as close to
+    `rails g scaffold` output as the reactive index allows. -%>
+class <%= scaffold_controller_class_name %> < ApplicationController
+  before_action :set_<%= singular_table_name %>, only: %i[ show edit update destroy ]
+
+  # GET /<%= controller_file_path %>
+  def index
+    # The same object the channel's rows derived builds, with the same
+    # defaults — first paint and every repaint share one query and one row
+    # projection, so the two cannot drift. Page 1 needs no clamping: it is the
+    # one page that always exists.
+    @<%= singular_table_name %>_query = <%= query_class_name %>.new
+  end
+
+  # GET /<%= controller_file_path %>/1
+  def show
+  end
+
+  # GET /<%= controller_file_path %>/new
+  def new
+    @<%= singular_table_name %> = <%= class_name %>.new
+<% schema.belongs_tos.each do |column| -%>
+    @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
+<% end -%>
+  end
+
+  # GET /<%= controller_file_path %>/1/edit
+  def edit
+<% schema.belongs_tos.each do |column| -%>
+    @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
+<% end -%>
+  end
+
+  # POST /<%= controller_file_path %>
+  def create
+    @<%= singular_table_name %> = <%= class_name %>.new(<%= singular_table_name %>_params)
+
+    if @<%= singular_table_name %>.save
+      redirect_to @<%= singular_table_name %>, notice: "<%= human_name %> was successfully created."
+    else
+<% schema.belongs_tos.each do |column| -%>
+      @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
+<% end -%>
+      render :new, status: :unprocessable_content
+    end
+  end
+
+  # PATCH/PUT /<%= controller_file_path %>/1
+  def update
+    if @<%= singular_table_name %>.update(<%= singular_table_name %>_params)
+      redirect_to @<%= singular_table_name %>, notice: "<%= human_name %> was successfully updated.", status: :see_other
+    else
+<% schema.belongs_tos.each do |column| -%>
+      @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
+<% end -%>
+      render :edit, status: :unprocessable_content
+    end
+  end
+
+  # DELETE /<%= controller_file_path %>/1
+  def destroy
+    @<%= singular_table_name %>.destroy!
+    redirect_to <%= index_helper(type: :path) %>, notice: "<%= human_name %> was successfully destroyed.", status: :see_other
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_<%= singular_table_name %>
+      @<%= singular_table_name %> = <%= class_name %>.find(params.expect(:id))
+    end
+
+    # Only allow a list of trusted parameters through.
+    def <%= singular_table_name %>_params
+      params.expect(<%= singular_table_name %>: [ <%= wrapped_symbols(schema.attribute_names, indent: singular_table_name.length + 24, width: 76).lstrip %> ])
+    end
+end

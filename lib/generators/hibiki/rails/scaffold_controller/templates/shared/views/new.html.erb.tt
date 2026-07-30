@@ -1,0 +1,12 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view. -%>
+<%% content_for :title, "New <%= human_name.downcase %>" %>
+
+<div<%= css_attr(:page) %>>
+  <h1<%= css_attr(:heading) %>>New <%= human_name.downcase %></h1>
+
+  <div<%= css_attr(:actions_bar_spaced) %>>
+    <%%= link_to "Back to <%= human_name.downcase.pluralize %>", <%= index_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_default)}") : "" %> %>
+  </div>
+
+  <%%= render "form", <%= singular_name %>: @<%= singular_table_name %><%= schema.belongs_tos.map { ", #{it.association_name.to_s.pluralize}: @#{it.association_name.to_s.pluralize}" }.join %> %>
+</div>

@@ -1,0 +1,31 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view. -%>
+<%% content_for :title, "<%= human_name.pluralize %>" %>
+<%% cid = SecureRandom.uuid %>
+
+<div<%= css_attr(:page) %>>
+  <h1<%= css_attr(:heading) %>><%= human_name.pluralize %></h1>
+
+  <div<%= css_attr(:actions_bar) %>>
+    <%%= link_to "New <%= human_name.downcase %>", <%= new_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_primary)}") : "" %> %>
+  </div>
+
+  <%%# Stamped through Hibiki::Rails::Helpers. The attributes it emits are a
+      private Ruby<->JS contract — always go through the helpers, never write
+      them by hand. ONE island per page, and record ids travel in action
+      payloads rather than in the subscription; `params:` exists for the case
+      where a channel must know its record BEFORE the graph is built, which the
+      show page needs and a collection does not. %>
+  <%%= tag.div(**hibiki_island(<%= collection_channel_class_name %>, cid:)) do %>
+    <%%# The client waits for this source to confirm before subscribing, so the
+        graph's first broadcast can't be lost. %>
+    <%%= turbo_stream_from "<%= collection_stream_name %>", cid %>
+
+    <%%= render "<%= partial_path('controls') %>" %>
+
+    <%%# Paint-avoidance placeholder: the graph's first broadcast replaces it
+        using the SAME partial, so first paint and every repaint are one code
+        path — which means the same locals, from the same query object the
+        channel's rows derived builds. %>
+    <%%= render "<%= partial_path('list') %>", <%= wrapped_list(index_render_locals, indent: render_indent(partial_path("list"))).lstrip %> %>
+  <%% end %>
+</div>

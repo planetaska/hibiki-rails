@@ -1,0 +1,56 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. -%>
+<%%# locals: (<%= list_locals_signature %>) -%>
+<%%# The island's re-rendered fragment, rendered by BOTH the controller's first
+    paint and the channel's render effect — one code path, so the two can't
+    drift. Its root id is the broadcast target: page-unique, stable, and
+    deliberately NOT the island root, which carries the stream source;
+    replacing that would tear down the very subscription that delivers the
+    replacement. %>
+<div id="<%= list_dom_id %>"<%= css_attr(:list) %>>
+  <%% <%= controller_file_name %>.each do |<%= singular_name %>| %>
+    <%%= render "<%= partial_path(row_partial) %>", <%= wrapped_list(row_render_locals, indent: render_indent(partial_path(row_partial)), width: 0).lstrip %> %>
+  <%% end %>
+
+  <%% if <%= controller_file_name %>.empty? %>
+    <p id="<%= empty_dom_id %>"<%= css_attr(:muted) %>>No <%= human_name.downcase.pluralize %> match.</p>
+  <%% end %>
+
+<% if infinite? -%>
+  <%%# TWO events, one element: `visible` is a pseudo-event backed by an
+      IntersectionObserver, so this same button is also the infinite-scroll
+      sentinel — scrolling it into view pages the list, clicking it still
+      works, and there is nothing extra to render or wire up. The observer
+      re-scans after each swap, so the fresh element's initial callback keeps
+      paging when a page didn't fill the viewport.
+
+      It sends the page AFTER the one it was rendered under, and needs no
+      generation token: a page number is idempotent, so an observer firing
+      again before the swap lands writes the same value and State#value=
+      returns early. %>
+  <%% if remaining.positive? %>
+    <div id="<%= load_more_dom_id %>"<%= css_attr(:load_more_wrap) %>>
+      <%%= tag.button(type: "button",
+<% if css? -%>
+                     class: "<%= css(:btn_wide) %>",
+<% end -%>
+                     **on(:go_to_page, event: %i[click visible],
+                                       with: { page: page + 1 })) do %>
+        Load more<span<%= css_attr(:muted_inline) %>>&nbsp;·&nbsp;<%%= remaining %> remaining</span>
+      <%% end %>
+    </div>
+  <%% end %>
+<% else -%>
+  <%%# The page control lives INSIDE the replaced fragment on purpose. It
+      renders from server numbers, so a list with nothing more to show simply
+      stops rendering it; placed outside it would never be re-rendered and
+      could only ever change its TEXT (reactive values are textContent-only),
+      leaving a control pointing at pages that no longer exist.
+
+      Every child of this container carries a stable id for the same reason
+      the rows do: idiomorph pairs subtrees by id, and an id-less trailing
+      node can be matched positionally against the last row and rebuilt
+      instead of kept. %>
+  <%%= render "<%= view_dir.delete_prefix('app/views/') %>/pagination", page: page, page_count: page_count %>
+<% end -%>
+</div>

@@ -1,0 +1,67 @@
+<%#- The ONE component with a per-variant template. DaisyUI expresses a page
+     item as two tokens (`join-item btn`), so each of the six variants below can
+     repeat them inline — which is exactly what plain Tailwind cannot do. -%>
+<%%# locals: (page: 1, page_count: 1) -%>
+<%%# The numbered page control. It lives INSIDE the replaced fragment, like
+    every other control in there: page_count is a server number, so a
+    single-page list simply stops rendering this element. Placed outside the
+    fragment it would never be re-rendered and could only ever change its TEXT
+    (reactive values are textContent-only), leaving a control whose links point
+    at pages that no longer exist.
+
+    SCROLL. The links are anchors to the list, not buttons, and that IS the
+    scroll answer — the client only preventDefaults `submit`, so the click both
+    performs the action and does the browser's own fragment jump, which puts the
+    top of the list back in view exactly as a full page load would. No client
+    capability needed. data-turbo="false" keeps Turbo Drive out of it: a
+    same-page hash with Turbo off is a plain scroll, not a navigation.
+
+    No generation token — a page number is idempotent, so a double fire is one
+    write and one render.
+
+    `on` returns a { data: } hash, so an element needing its OWN data attributes
+    has to MERGE rather than splat: a bare ** after `data: { turbo: false }`
+    would silently replace it and the anchor would stop scrolling. %>
+<%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
+<%%# The id-carrying wrapper stays put and stays BARE. It always renders, so
+    idiomorph always has a node to pair with, and it holds no layout classes of
+    its own — with no page control it is empty, and padding here would leave
+    dead vertical space on a list that has none. %>
+<div id="<%= pagination_dom_id %>">
+  <%% if page_count > 1 %>
+    <nav<%= css_attr(:pagination_nav) %> aria-label="Pagination">
+      <%%# Prev/next stay rendered and go inert at the ends rather than
+          disappearing, so the control keeps its width across a page change —
+          one that reflows under the pointer is how you mis-click a list that
+          just repainted. A span, not a disabled link: there is no page to
+          name, so there is no action to stamp. %>
+      <%% if page == 1 %>
+        <span class="join-item btn btn-disabled" aria-disabled="true">«</span>
+      <%% else %>
+        <%%= link_to "«", "#<%= list_dom_id %>", class: "join-item btn", rel: "prev",
+                    "aria-label": "Previous page", data: page_data.(page - 1) %>
+      <%% end %>
+
+      <%% <%= query_class_name %>.page_numbers(page: page, page_count: page_count).each do |n| %>
+        <%% if n.nil? %>
+          <span class="join-item btn btn-disabled" aria-hidden="true">…</span>
+        <%% elsif n == page %>
+          <%%# aria-current is the only thing that tells a screen reader which
+              page it is on: the visual cue is a class, and the link text is
+              just a number either way. %>
+          <span class="join-item btn btn-active" aria-current="page"><%%= n %></span>
+        <%% else %>
+          <%%= link_to n, "#<%= list_dom_id %>", class: "join-item btn",
+                      "aria-label": "Page #{n}", data: page_data.(n) %>
+        <%% end %>
+      <%% end %>
+
+      <%% if page == page_count %>
+        <span class="join-item btn btn-disabled" aria-disabled="true">»</span>
+      <%% else %>
+        <%%= link_to "»", "#<%= list_dom_id %>", class: "join-item btn", rel: "next",
+                    "aria-label": "Next page", data: page_data.(page + 1) %>
+      <%% end %>
+    </nav>
+  <%% end %>
+</div>

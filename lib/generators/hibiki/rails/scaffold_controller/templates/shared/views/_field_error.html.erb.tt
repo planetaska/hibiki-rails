@@ -1,0 +1,8 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. Never quote a closing ERB tag inside a
+     comment — a literal one terminates the comment early and leaks the rest
+     of this prose into the generated file. -%>
+<%%# locals: (message: nil) -%>
+<%% if message.present? %>
+  <p<%= css_attr(:error_text) %>><%%= message %></p>
+<%% end %>

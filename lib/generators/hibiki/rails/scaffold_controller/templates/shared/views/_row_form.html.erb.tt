@@ -1,0 +1,69 @@
+<%#- ESCAPING: the peak. <%% emits runtime ERB; a bare <% loops over the schema
+     here at generation time; #{...} inside an escaped tag is runtime Ruby and
+     passes through untouched. -%>
+<%%# locals: (<%= singular_name %>:, form:<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>) -%>
+<%%# Plain *_tag helpers with UNPREFIXED names, deliberately not form_with:
+    this payload goes to a channel action, and the client builds it with
+    Object.fromEntries(new FormData(form)) — so the keys must be exactly the
+    attribute names the ReactiveForm declares. A `model[field]` name would not
+    match.
+
+    Field ids are prefixed per row so nothing collides while idiomorph pairs
+    subtrees by id. %>
+<%% dom = "<%= row_dom_id_prefix %>_#{<%= singular_name %>.id}" %>
+<%%# reset: false. The default resets a submitted form synchronously, before
+    the server has replied — right for an "add" form, wrong here: a failed
+    commit would blank every field. %>
+<%%= tag.form(**on(:save, event: :submit, reset: false)<%= css? ? %(, class: "#{css(:row_form)}") : "" %>) do %>
+  <div<%= css_attr(:fieldset) %>>
+<% schema.columns.each_with_index do |column, index| -%>
+<% if column.type == :boolean -%>
+    <div<%= css_attr(:checkbox_wrap) %>>
+      <%%# The checkbox reports itself like every other field — a changed
+          checkbox sends its CHECKED state as a JSON boolean, so it needs no
+          hidden-field pair. An unchecked box then contributes nothing to the
+          submit payload, which is harmless: #save only assigns keys the
+          payload carries, and this field's signal is already current. %>
+      <%%= label_tag "#{dom}_<%= column.name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> do %>
+        <%%= check_box_tag "<%= column.name %>", "1", form.<%= column.name %>,
+                          id: "#{dom}_<%= column.name %>",
+<% if css? -%>
+                          class: "<%= css(:toggle) %>",
+<% end -%>
+                          **on(:set_field, event: :change, with: { field: "<%= column.name %>" }) %>
+        <%= column.human_name %>
+      <%% end %>
+    </div>
+<% else -%>
+    <%%= label_tag "#{dom}_<%= column.name %>", "<%= column.human_name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> %>
+<% if column.belongs_to? -%>
+    <%%= select_tag <%= wrapped_list(row_select_args(column), indent: 19).lstrip %> %>
+<% else -%>
+    <%%= <%= column.tag_field_helper %> <%= wrapped_list(row_field_args(column), indent: column.tag_field_helper.length + 9).lstrip %> %>
+<% end -%>
+    <%%= render "<%= view_dir.delete_prefix('app/views/') %>/field_error", message: form.error_for(:<%= column.name %>) %>
+<% end -%>
+<% unless index == schema.columns.size - 1 -%>
+
+<% end -%>
+<% end -%>
+  </div>
+
+  <div<%= css_attr(:form_actions) %>>
+    <%%# tag.button defaults to type="submit" — which is exactly why Cancel has
+        to say type: "button", or clicking it would submit the form too. Not
+        submit_tag: that would add a stray `commit` key to the payload. %>
+    <%%= tag.button("Save"<%= css? ? %(, class: "#{css(:btn_primary)}") : "" %>) %>
+    <%%= tag.button("Cancel", type: "button"<%= css? ? %(, class: "#{css(:btn)}") : "" %>,
+                   **on(:cancel, with: { id: <%= singular_name %>.id })) %>
+    <%%# A badge, not a disabled Save button. dirty? is server state delivered
+        over a websocket, so it can only move after a round trip — and a click
+        that both blurs a field and activates the button beats that round trip
+        every time. A disabled Save would swallow it. The submit carries the
+        full payload regardless, so the badge reports state without gating the
+        gesture. %>
+    <%% if form.dirty? %>
+      <span<%= css_attr(:badge_warning) %>>unsaved changes</span>
+    <%% end %>
+  </div>
+<%% end %>

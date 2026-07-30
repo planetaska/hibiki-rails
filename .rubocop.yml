@@ -28,6 +28,16 @@ Metrics/MethodLength:
   Exclude:
     - spec/**/*
 
+# A Thor generator's public methods ARE its sequence of steps, so its length
+# tracks how much it emits rather than how tangled it is. Three real concerns
+# have already been extracted out of this one (the column model, the view
+# argument lists, the model injection and the post-install notices); what is
+# left is the step sequence plus option plumbing, and splitting that further
+# would scatter the order of operations across files.
+Metrics/ClassLength:
+  Exclude:
+    - lib/generators/hibiki/rails/scaffold_controller/scaffold_controller_generator.rb
+
 # The --css token map is a data table, not logic: ~40 named class strings
 # transcribed from three hand-built, browser-verified variants. Splitting it to
 # satisfy a line count would separate the tokens from the accessor that

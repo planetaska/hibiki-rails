@@ -1,0 +1,28 @@
+Description:
+    Generates a reactive CRUD resource for a model that ALREADY exists — the
+    overlay half of hibiki:rails:scaffold.
+
+    With no field list the model's own schema is read: columns and types,
+    belongs_to reflections, and the validators behind per-field live errors.
+    Pass fields explicitly to override that, or when the table has not been
+    migrated yet.
+
+    The generated index is live: search, filter, sort and pagination are signal
+    state, edits happen in place, and a write from anywhere repaints every open
+    list. The model is MODIFIED — one delegate per belongs_to, plus the
+    after_commit broadcast the whole thing hangs off.
+
+Example:
+    bin/rails generate hibiki:rails:scaffold_controller Book
+
+    This will create:
+        app/models/book_query.rb
+        app/models/book_row.rb
+        app/channels/books_channel.rb
+        app/channels/book_channel.rb
+        app/forms/book_form.rb
+        app/controllers/books_controller.rb
+        app/views/books/*
+    And modify:
+        app/models/book.rb
+        config/routes.rb

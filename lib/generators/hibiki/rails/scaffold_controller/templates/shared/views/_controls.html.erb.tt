@@ -1,0 +1,69 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. Most of this file is GENERATION time —
+     the option lists are built from the schema and baked in. -%>
+<%%# locals: (sort: :id, direction: :asc) -%>
+<%%# Search / filter / sort: pure signal state, no database write, no page
+    reload. Deliberately NEVER re-rendered — it lives inside the island (so its
+    events reach the delegated listener) but outside the replaced fragment, so
+    a list repaint cannot clobber what the user is typing. %>
+<div<%= css_attr(:controls) %>>
+<% if searchable? -%>
+  <label<%= css_attr(:form_control) %>>
+    <span<%= css_attr(:label_text) %>>Search</span>
+    <%%# `input`, so the list follows the keystrokes instead of waiting for a
+        blur. `on` debounces :input at 250ms unless told otherwise, which is
+        what stops a word costing one round trip per letter; the number is
+        stamped into the attribute, so the markup says what it does. %>
+    <%%= search_field_tag <%= wrapped_list(search_field_args, indent: 25).lstrip %> %>
+  </label>
+
+<% end -%>
+<% schema.booleans.each do |column| -%>
+  <label<%= css_attr(:form_control) %>>
+    <span<%= css_attr(:label_text) %>><%= column.human_name %></span>
+    <%%= select_tag <%= wrapped_list(filter_select_args(column), indent: 19).lstrip %> %>
+  </label>
+
+<% end -%>
+  <label<%= css_attr(:form_control) %>>
+    <span<%= css_attr(:label_text) %>>Sort by</span>
+    <%%# The view offers, the query object's SORTABLE decides. Duplicated on
+        purpose: a view reaching into that allowlist would make a security
+        boundary look like presentation. %>
+    <%%= select_tag :sort,
+                   options_for_select(
+                     [<%= sort_option_pairs(indent: 22).lstrip %>], sort.to_s),
+                   <%= wrapped_list(sort_select_tail_args, indent: 19).lstrip %> %>
+  </label>
+
+  <%%# The label reports the CURRENT order, which means it has to change when
+      the order does — and this partial is deliberately never re-rendered. So
+      it is a reactive value: textContent-only updates to a placeholder that
+      lives outside the replaced fragment.
+
+      The visible text is a STATE reading, so the accessible name carries the
+      ACTION instead — a button called "▼ Descending" tells a screen-reader
+      user what they are looking at, not what activating it does. aria-label is
+      static because it stays true in both directions; `reactive` updates text,
+      never attributes. %>
+  <%%= tag.button(<%= wrapped_list(direction_button_args, indent: 17).lstrip %>) do %>
+    <%%= reactive :<%= value_name("direction") %>, <%= query_class_name %>.direction_label(direction) %>
+  <%% end %>
+
+  <%%# The window half of the sentence, then counts scoped to what the query
+      MATCHES rather than to what is shown — so the sentence stays true as the
+      window moves.
+
+      All of these sit here rather than inside the replaced fragment on
+      purpose: transmit_value is equality-gated, and a placeholder inside a
+      broadcast-replaced fragment would have its text reset by the swap while
+      the gate suppressed the re-send that used to heal it. Out here, nothing
+      ever swaps them. %>
+  <p<%= css_attr(:counts) %>>
+    Showing <%%= reactive :<%= value_name("range") %>, "" %>
+    of <%%= reactive :<%= value_name("matched") %>, "" %> matching
+<% if schema.primary_boolean -%>
+    · <%%= reactive :<%= value_name(schema.primary_boolean.name) %>, "" %> <%= schema.primary_boolean.name %>
+<% end -%>
+  </p>
+</div>

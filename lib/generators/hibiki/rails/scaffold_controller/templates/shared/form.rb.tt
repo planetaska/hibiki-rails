@@ -1,0 +1,40 @@
+<%# GENERATION-time ERB only. -%>
+class <%= form_class_name %>
+  include Hibiki::Rails::ReactiveForm
+
+  # Every attribute the controller permits. This list IS the strong-params
+  # analogue: #to_h is what #commit assigns and what the channel's #assign
+  # iterates, so a channel action cannot mass-assign past it. The generated
+  # writers cast through the model's own type_for_attribute, which is what
+  # turns the wire's strings into booleans, integers and dates.
+  reactive_attributes <%= class_name %>, <%= wrapped_symbols(schema.attribute_names, indent: class_name.length + 24).lstrip %>
+
+<% if schema.live_errors.any? -%>
+  # Live validation, before any round trip. Generated from what the model
+  # actually declares — presence validators, required belongs_to associations,
+  # numericality bounds — and from `null: false` on a column with no default.
+  #
+  # Nothing here is invented: a rule the schema does not state cannot be
+  # guessed, so anything you want checked before a round trip needs either a
+  # validator on the model or an edit here. The model's own `validates` stay
+  # authoritative at commit time; they land in #errors.
+  derived(:live_errors) do
+    {
+<% schema.live_errors.each_with_index do |(name, clause), index| -%>
+      <%= name %>: <%= clause %><%= "," unless index == schema.live_errors.size - 1 %>
+<% end -%>
+    }.compact
+  end
+<% else -%>
+  # No declared validator states anything checkable before a round trip, so
+  # this starts empty — deliberately still DEFINED, so #error_for, #valid? and
+  # every field's error partial stay branch-free. Add clauses here (or
+  # validators on the model) and they light up with no other change.
+  derived(:live_errors) { {} }
+<% end -%>
+
+  derived(:valid?) { live_errors.empty? }
+
+  # The record's mirrored errors win once a commit has actually failed.
+  def error_for(name) = super || live_errors[name.to_sym]
+end
