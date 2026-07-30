@@ -26,7 +26,10 @@ Gem::Specification.new do |spec|
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
-  spec.files = Dir["lib/**/*.rb", "lib/generators/**/*.tt",
+  # USAGE files are load-bearing, not documentation: ResourceGenerator.desc
+  # reads usage_path unconditionally, so a scaffold generator without one
+  # raises TypeError while `bin/rails g` is merely LISTING generators.
+  spec.files = Dir["lib/**/*.rb", "lib/generators/**/*.tt", "lib/generators/**/USAGE",
                    "app/assets/javascripts/*.js",
                    "config/importmap.rb", "README.md", "CHANGELOG.md"]
   spec.require_paths = ["lib"]

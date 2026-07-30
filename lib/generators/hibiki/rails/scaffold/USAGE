@@ -1,0 +1,32 @@
+Description:
+    Generates a reactive CRUD resource the way `rails g scaffold` generates a
+    plain one: the model and its migration and route come from Rails itself,
+    and the controller half is replaced with a hibiki island — a collection
+    channel, a per-record channel, a shared query object, a ReactiveForm, and
+    views wired through Hibiki::Rails::Helpers.
+
+    Everything is derived from the field list you pass, exactly as Rails'
+    scaffold derives its own output. Stock `rails g scaffold` is untouched.
+
+    The generated index is live: search, filter, sort and pagination are signal
+    state, edits happen in place, and a write from anywhere — another tab,
+    another user, the plain controller, a console — repaints every open list.
+
+Example:
+    bin/rails generate hibiki:rails:scaffold Book title:string author:references
+
+    This will create:
+        db/migrate/XXXXXXXXXXXX_create_books.rb
+        app/models/book.rb
+        app/models/book_query.rb
+        app/models/book_row.rb
+        app/channels/books_channel.rb
+        app/channels/book_channel.rb
+        app/forms/book_form.rb
+        app/controllers/books_controller.rb
+        app/views/books/*
+    And add to config/routes.rb:
+        resources :books
+
+    Restart the server afterwards: Rails computes autoload paths from the
+    app/* glob at boot, and app/forms is new.
