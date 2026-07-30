@@ -49,14 +49,6 @@ module Hibiki
         private
 
         def view_dir = view_path.presence || file_path
-
-        def wiring_hint
-          return if hibiki_registered? && helpers_included?
-
-          say_status :hint, "the packaged client is not fully wired " \
-                            "(register line and/or Helpers include) — run: " \
-                            "bin/rails g hibiki:rails:install", :yellow
-        end
       end
     end
   end

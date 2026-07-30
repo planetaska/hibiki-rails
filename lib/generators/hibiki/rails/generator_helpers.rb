@@ -56,6 +56,17 @@ module Hibiki
           say_status :skip, "#{path} not found — add this yourself:", :yellow
           say snippet
         end
+
+        # Shared by every generator that emits an island: without the register
+        # line and the Helpers include, the markup is present and inert, with
+        # no error anywhere.
+        def wiring_hint
+          return if hibiki_registered? && helpers_included?
+
+          say_status :hint, "the packaged client is not fully wired " \
+                            "(register line and/or Helpers include) — run: " \
+                            "bin/rails g hibiki:rails:install", :yellow
+        end
       end
     end
   end
