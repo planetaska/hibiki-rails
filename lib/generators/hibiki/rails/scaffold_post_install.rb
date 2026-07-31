@@ -75,10 +75,16 @@ module Hibiki
           reason = if schema.introspected?
                      "#{class_name} declares no validators readable before a round trip"
                    else
-                     "no model exists yet, so there are no validators to read"
+                     "the migration has not run, so this command had no schema and no validators to read"
                    end
-          say_status :form, "#{form_path}'s live_errors is thin — #{reason}. Add validators to the model " \
-                            "(or clauses there) and per-field feedback lights up with no other change", :blue
+          # Deliberately NOT "add validators and it lights up": the clauses are
+          # generated ONCE, into a file the generator then stops owning. A
+          # commit-time failure still mirrors the model's own errors into the
+          # same per-field slots with no change at all — it is the check BEFORE
+          # the round trip that has to be re-derived.
+          say_status :form, "#{form_path}'s live_errors is thin — #{reason}. Add validators to the model, " \
+                            "then re-run `bin/rails g hibiki:rails:scaffold_controller #{name}` to derive " \
+                            "the clauses from them (or write them there by hand)", :blue
         end
 
         def skipped_notice
