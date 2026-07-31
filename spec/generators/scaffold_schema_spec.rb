@@ -99,6 +99,40 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
     end
   end
 
+  # Regression, measured in a browser during the Phase 2 pass: a nil `print`
+  # under `allow_nil: true` showed "must be greater than 0" live while #commit
+  # accepted it. A live check that contradicts the model is worse than no live
+  # check, because the user sees the contradiction and the generator does not.
+  describe ".from_model with validators that cannot be copied naively" do
+    subject(:schema) { described_class.from_model(Gauge) }
+
+    it "lets a blank value through a bound the model allows to be blank" do
+      expect(schema.live_errors).to eq(
+        [
+          [:reading, %{("must be greater than 0" if !reading.nil? && reading.to_i <= 0)}],
+          [:peak, %{("must be less than 100" if peak.present? && peak.to_i >= 100)}]
+        ]
+      )
+    end
+
+    it "drops conditional validators entirely, message and bound alike" do
+      label = schema.columns.find { it.name == :label }
+
+      # `presence: true, if: :calibrated?` and `length:, on: :create` both
+      # depend on a fact the form has no access to.
+      expect(label).not_to be_required
+      expect(label.live_error_clause).to be_nil
+      expect(schema.live_errors.map(&:first)).not_to include(:label)
+    end
+
+    it "keeps html bounds honest too — no min from a rule it refuses to state" do
+      by_name = schema.columns.index_by(&:name)
+
+      expect(by_name[:reading].html_bounds).to eq(min: 1)
+      expect(by_name[:peak].html_bounds).to eq(max: 99)
+    end
+  end
+
   describe ".from_attributes" do
     subject(:schema) do
       described_class.from_attributes(

@@ -41,6 +41,15 @@ ActiveRecord::Schema.define do
     t.boolean :active, default: false, null: false
     t.timestamps
   end
+
+  # Validator SHAPES rather than column types — the options that decide
+  # whether a rule can be checked before a round trip at all.
+  create_table :gauges, force: true do |t|
+    t.integer :reading
+    t.integer :peak
+    t.string :label
+    t.timestamps
+  end
 end
 
 class Shelf < ActiveRecord::Base
@@ -62,4 +71,17 @@ class Item < ActiveRecord::Base
   validates :title, presence: true
   validates :notes, presence: true
   validates :count, numericality: { greater_than_or_equal_to: 0 }
+end
+
+# Every validator here is one the generator must NOT copy naively: a blank
+# value is legal for the first two, and the last two run only sometimes. All
+# four still run at #commit and still land in #errors — the question is only
+# what may be asserted before the round trip.
+class Gauge < ActiveRecord::Base
+  validates :reading, numericality: { greater_than: 0, allow_nil: true }
+  validates :peak, numericality: { less_than: 100, allow_blank: true }
+  validates :label, presence: true, if: :calibrated?
+  validates :label, length: { maximum: 8 }, on: :create
+
+  def calibrated? = true
 end

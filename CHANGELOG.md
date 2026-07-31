@@ -25,6 +25,14 @@ own scaffold takes.
 
 Stock `rails g scaffold` is untouched; these live under their own namespace.
 
+Live per-field validation is derived only from rules the form can actually
+evaluate before a round trip: presence, length, and numericality bounds that
+carry no `allow_nil:`/`allow_blank:` exemption for the value in hand. A
+validator gated on `if:`, `unless:` or `on:` depends on the record rather than
+the field, so it contributes nothing live — it still runs at commit and still
+lands in `#errors`, which the same per-field slots mirror. The clauses are
+generated once; add validators and re-run `scaffold_controller` to pick them up.
+
 Options: `--css=daisyui|tailwind|none` (detected when absent),
 `--infinite-scroll`, `--skip-pagination`, `--skip-search`, `--page-size=N`,
 `--skip-routes`.

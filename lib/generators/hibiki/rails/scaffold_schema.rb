@@ -51,6 +51,13 @@ module Hibiki
           less_than: ">=", less_than_or_equal_to: ">"
         }.freeze
 
+        # Options that make a validator run only sometimes. Whatever they
+        # depend on is a fact about the RECORD, which a form signal does not
+        # have — so a validator carrying one of these contributes nothing
+        # before a round trip and is dropped rather than guessed at. It still
+        # runs at #commit and still lands in #errors.
+        CONDITIONAL = %i[if unless on].freeze
+
         attr_reader :attr, :reflection, :validators
 
         def initialize(attr:, required: false, reflection: nil,
@@ -140,14 +147,28 @@ module Hibiki
 
         def numericality_clauses
           numericality.flat_map do |validator|
+            guard = blank_guard(validator)
             validator.options.filter_map do |option, limit|
               comparison = COMPARISONS[option]
               next unless comparison && limit.is_a?(Numeric)
 
               message = "must be #{option.to_s.tr('_', ' ')} #{limit}"
-              %{("#{message}" if #{name}.#{cast} #{comparison} #{limit})}
+              %{("#{message}" if #{guard}#{name}.#{cast} #{comparison} #{limit})}
             end
           end
+        end
+
+        # AR skips a numericality check entirely when the value is blank and
+        # the validator says so, and #cast turns a cleared field into nil — so
+        # an unguarded clause reports an error the record does not have.
+        # Measured in a browser: a nil `print` under
+        # `numericality: { greater_than: 0, allow_nil: true }` showed "must be
+        # greater than 0" live while #commit succeeded.
+        def blank_guard(validator)
+          return "!#{name}.nil? && " if validator.options[:allow_nil]
+          return "#{name}.present? && " if validator.options[:allow_blank]
+
+          ""
         end
 
         def length_clause
@@ -227,18 +248,26 @@ module Hibiki
             required: belongs_to_required?(reflection),
             reflection: reflection,
             label_column: label_column_for(reflection),
-            validators: @model.validators_on(reflection.foreign_key)
+            validators: unconditional(@model.validators_on(reflection.foreign_key))
           )
         end
 
         def scalar_column(column)
-          validators = @model.validators_on(column.name)
+          validators = unconditional(@model.validators_on(column.name))
 
           ScaffoldColumn.new(
             attr: ::Rails::Generators::GeneratedAttribute.new(column.name, column.type),
             required: required_scalar?(column, validators),
             validators: validators
           )
+        end
+
+        # Filtered once, here, so `required?`, the live clauses and the number
+        # field's html bounds all read the same list — a validator the
+        # generator cannot evaluate must not turn into a message, a `min:` or a
+        # required field either.
+        def unconditional(validators)
+          validators.reject { it.options.keys.intersect?(ScaffoldColumn::CONDITIONAL) }
         end
 
         def belongs_to_required?(reflection)
