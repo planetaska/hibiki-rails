@@ -43,11 +43,11 @@ module Hibiki
           schema.belongs_tos.each do |column|
             say_status :assoc, "using #{column.association_class_name}##{column.label_column} as the " \
                                "display label — edit #{row_path} and the form views if that's wrong", :blue
-            next if schema.introspected?
-
-            say_status :assoc, "#{column.association_class_name} needs `has_many :#{controller_file_name}` " \
-                               "with a dependent: option, or destroying one raises InvalidForeignKey", :blue
           end
+
+          # The parent's own notices live with the code that decided them, in
+          # ScaffoldParentInjection — the outcomes are that module's vocabulary.
+          parent_notices
         end
 
         # Field order follows whatever columns_hash reports, which for an app

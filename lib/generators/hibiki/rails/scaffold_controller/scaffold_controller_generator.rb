@@ -6,6 +6,8 @@ require_relative "../generator_helpers"
 require_relative "../scaffold_helpers"
 require_relative "../scaffold_view_helpers"
 require_relative "../scaffold_model_injection"
+require_relative "../scaffold_parent_injection"
+require_relative "../scaffold_parent_notices"
 require_relative "../scaffold_post_install"
 require_relative "../scaffold_schema"
 require_relative "../css_variant"
@@ -28,6 +30,8 @@ module Hibiki
         include ScaffoldHelpers
         include ScaffoldViewHelpers
         include ScaffoldModelInjection
+        include ScaffoldParentInjection
+        include ScaffoldParentNotices
         include ScaffoldPostInstall
 
         TEMPLATE_ROOT = File.expand_path("templates", __dir__)
@@ -99,7 +103,8 @@ module Hibiki
           template "views/_pagination.html.erb.tt", view_path("_pagination.html.erb") unless infinite?
         end
 
-        # The one place this generator modifies a file the app already owned.
+        # The model being scaffolded — one of two files this generator modifies
+        # that the app already owned.
         #
         # It is not optional, and not only about the ping: the row partial
         # prints an association's LABEL, and the show page hands that partial a
@@ -115,6 +120,15 @@ module Hibiki
 
           inject_into_model model_path, class_name, model_support
           announce_model_change
+        end
+
+        # The other one: the model a belongs_to points AT, which Rails' own
+        # scaffold never touches. It owes this resource two things it cannot
+        # write for itself — the has_many half of the association, and a ping,
+        # because a row prints the parent's label rather than its id. Both are
+        # derived from the reflection; see ScaffoldParentInjection.
+        def inject_parent_support
+          inject_parent_models
         end
 
         # The `route` action directly rather than `hook_for :resource_route`.

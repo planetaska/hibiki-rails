@@ -243,6 +243,121 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     end
   end
 
+  # The model a belongs_to points AT — the file Rails' own scaffold never
+  # touches, and the one that owes this resource the has_many half plus a ping,
+  # because a row prints the parent's label rather than its id.
+  describe "the parent model injection" do
+    before do
+      write("app/models/book.rb", "class Book < ApplicationRecord\n  belongs_to :author\nend\n")
+      write("app/models/author.rb", "class Author < ApplicationRecord\nend\n")
+    end
+
+    it "adds the has_many and the cross-resource ping" do
+      output = generate(["Book", *book_fields])
+      author = generated("app/models/author.rb")
+
+      expect(author).to include("has_many :books, dependent: :destroy")
+      expect(author).to include("ActionCable.server.broadcast(BooksChannel::CHANGED, {})")
+      expect(output).to include("app/models/author.rb already existed and was MODIFIED")
+    end
+
+    # Reaching each book's own streamable would mean loading the children inside
+    # the callback, unbounded, on every write — so the show page keeps the old
+    # label until reload. A stated boundary; nobody should "fix" it silently.
+    it "pings the collection grain only" do
+      generate(["Book", *book_fields])
+
+      expect(generated("app/models/author.rb")).not_to include("BookChannel.changed")
+    end
+
+    it "is idempotent per piece" do
+      generate(["Book", *book_fields])
+      generate(["Book", *book_fields, "--force"])
+      author = generated("app/models/author.rb")
+
+      expect(author.scan("has_many :books").size).to eq(1)
+      expect(author.scan("BooksChannel::CHANGED").size).to eq(1)
+    end
+
+    # A hand-written has_many is a decision, and dependent: is the part of it
+    # the user most likely thought about.
+    it "leaves an existing has_many alone while still adding the ping" do
+      write("app/models/author.rb",
+            "class Author < ApplicationRecord\n  has_many :books, dependent: :restrict_with_error\nend\n")
+      output = generate(["Book", *book_fields])
+      author = generated("app/models/author.rb")
+
+      expect(author).to include("dependent: :restrict_with_error")
+      expect(author).not_to include("dependent: :destroy")
+      expect(author).to include("BooksChannel::CHANGED")
+      expect(output).to include("left alone")
+    end
+
+    # `has_many :books_on_loan` CONTAINS "has_many :books". Read as already
+    # wired, the parent silently keeps no dependent: option.
+    it "does not read a longer association name as the one it wanted" do
+      write("app/models/author.rb", "class Author < ApplicationRecord\n  has_many :books_on_loan\nend\n")
+      generate(["Book", *book_fields])
+
+      expect(generated("app/models/author.rb")).to include("has_many :books, dependent: :destroy")
+    end
+
+    it "prints what is owed when there is no parent file to edit" do
+      FileUtils.rm(File.join(@destination, "app/models/author.rb"))
+      output = generate(["Book", *book_fields])
+
+      expect(output).to include("app/models/author.rb")
+      expect(output).to include("InvalidForeignKey")
+      expect(output).to include("has_many :books, dependent: :destroy")
+    end
+
+    it "names the child class when the child is namespaced" do
+      write("app/models/admin/book.rb", "class Admin::Book < ApplicationRecord\n  belongs_to :author\nend\n")
+      generate(["admin/book", *book_fields])
+
+      expect(generated("app/models/author.rb"))
+        .to include('has_many :books, class_name: "Admin::Book", dependent: :destroy')
+      expect(generated("app/models/author.rb")).to include("Admin::BooksChannel::CHANGED")
+      expect_valid_generated_sources(@destination)
+    end
+
+    describe "dependent:, derived from the reflection and not the column" do
+      before { write("app/models/shelf.rb", "class Shelf < ApplicationRecord\nend\n") }
+
+      # Crate.shelf_id is NULLABLE and the association is still required —
+      # belongs_to_required_by_default — so :nullify would leave rows that fail
+      # their own validations.
+      it "destroys for a required belongs_to over a nullable column" do
+        generate(["Crate"])
+
+        expect(generated("app/models/shelf.rb")).to include("has_many :crates, dependent: :destroy")
+      end
+
+      it "nullifies for an optional belongs_to over the same column shape" do
+        generate(["Basket"])
+
+        expect(generated("app/models/shelf.rb")).to include("has_many :baskets, dependent: :nullify")
+      end
+    end
+
+    # Category belongs_to :parent, class_name: "Category" — the parent file IS
+    # the child file. The ping is already covered; no plural of `parent` is a
+    # generator's to invent.
+    describe "a self-referential belongs_to" do
+      before { write("app/models/category.rb", "class Category < ApplicationRecord\nend\n") }
+
+      it "adds no has_many and does not double the ping" do
+        output = generate(["Category"])
+        model = generated("app/models/category.rb")
+
+        expect(model).not_to include("has_many")
+        expect(model.scan("CategoriesChannel::CHANGED").size).to eq(1)
+        expect(output).to include("points back at Category")
+        expect(output).to include("has_many :children")
+      end
+    end
+  end
+
   describe "routes" do
     it "adds the resource route" do
       write("config/routes.rb", "Rails.application.routes.draw do\nend\n")
@@ -270,6 +385,17 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(output).to include("autoload paths")
       expect(output).to include("using Shelf#name as the display label")
       expect(output).to include("bin/rails g hibiki:rails:install")
+    end
+
+    # This used to be skipped on the whole introspection path, on the
+    # assumption that a model read from the schema must already declare its
+    # inverse. That is a guess, not a check — and it meant the generator spoke
+    # when it could not look at the parent and stayed silent when it could.
+    it "says what the parent needs on the schema path too, where it can actually check" do
+      output = generate(["Item"])
+
+      expect(output).to include("app/models/shelf.rb")
+      expect(output).to include("InvalidForeignKey")
     end
 
     it "suggests a field list using association names, not foreign keys" do

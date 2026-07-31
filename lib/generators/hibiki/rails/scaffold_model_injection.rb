@@ -33,8 +33,11 @@ module Hibiki
           inject_into_class path, anchor, snippet
         end
 
+        # Trailing newline on purpose: inject_into_class splices this in right
+        # after the class line, so without it the injection butts straight up
+        # against whatever the model already declared.
         def model_support
-          [association_delegates, ping_callback].compact.join("\n").indent(2)
+          "#{[association_delegates, ping_callback].compact.join("\n").indent(2)}\n"
         end
 
         def association_delegates

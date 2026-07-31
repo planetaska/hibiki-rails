@@ -42,6 +42,31 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # The parent injection's dependent: derivation, in two rows. Both foreign
+  # keys are NULLABLE and the associations differ, which is the whole point:
+  # dependent: follows the reflection, never the column. With
+  # belongs_to_required_by_default a nullable column routinely backs a required
+  # belongs_to, and :nullify there leaves rows that fail their own validations.
+  create_table :crates, force: true do |t|
+    t.integer :shelf_id
+    t.string :name
+    t.timestamps
+  end
+
+  create_table :baskets, force: true do |t|
+    t.integer :shelf_id
+    t.string :name
+    t.timestamps
+  end
+
+  # Parent and child are the same file, and `parent` has no plural a generator
+  # may invent.
+  create_table :categories, force: true do |t|
+    t.integer :parent_id
+    t.string :name
+    t.timestamps
+  end
+
   # Validator SHAPES rather than column types — the options that decide
   # whether a rule can be checked before a round trip at all.
   create_table :gauges, force: true do |t|
@@ -71,6 +96,23 @@ class Item < ActiveRecord::Base
   validates :title, presence: true
   validates :notes, presence: true
   validates :count, numericality: { greater_than_or_equal_to: 0 }
+end
+
+# Nullable shelf_id, REQUIRED association -> dependent: :destroy.
+class Crate < ActiveRecord::Base
+  belongs_to :shelf
+end
+
+# Same column, optional association -> dependent: :nullify. The pair is what
+# proves the derivation reads the reflection.
+class Basket < ActiveRecord::Base
+  belongs_to :shelf, optional: true
+end
+
+# The parent file IS the child file, so the ping is already covered by the
+# model's own after_commit and only the has_many is owed.
+class Category < ActiveRecord::Base
+  belongs_to :parent, class_name: "Category", optional: true
 end
 
 # Every validator here is one the generator must NOT copy naively: a blank
