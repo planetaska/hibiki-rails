@@ -9,8 +9,13 @@ Description:
 
     The generated index is live: search, filter, sort and pagination are signal
     state, edits happen in place, and a write from anywhere repaints every open
-    list. The model is MODIFIED — one delegate per belongs_to, plus the
-    after_commit broadcast the whole thing hangs off.
+    list.
+
+    Two models are MODIFIED. This one gets a delegate per belongs_to plus the
+    after_commit broadcast the whole thing hangs off; each model a belongs_to
+    POINTS AT gets the has_many half Rails' scaffold never writes, and a ping,
+    because a row prints the parent's label rather than its id. Both are
+    idempotent, both are announced, and anything already declared is left alone.
 
 Example:
     bin/rails generate hibiki:rails:scaffold_controller Book
@@ -25,4 +30,5 @@ Example:
         app/views/books/*
     And modify:
         app/models/book.rb
+        app/models/author.rb   # each model a belongs_to points at
         config/routes.rb

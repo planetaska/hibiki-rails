@@ -77,6 +77,12 @@ match your app (DaisyUI, Tailwind, or unstyled — detected automatically, or
 forced with `--css=`). Run `bin/rails g hibiki:rails:scaffold --help` for the
 rest of the options.
 
+Your models are edited, not just read: the one being scaffolded gains the
+`after_commit` broadcast that makes writes from anywhere reach an open list, and
+each model a `belongs_to` points at gains the `has_many` half plus a ping of its
+own, so renaming a parent repaints the lists that print its name. Both are
+idempotent, announced, and leave anything you already declared alone.
+
 Restart the server afterwards: `app/forms/` is new, and Rails works out its
 autoload paths at boot.
 

@@ -37,11 +37,33 @@ Options: `--css=daisyui|tailwind|none` (detected when absent),
 `--infinite-scroll`, `--skip-pagination`, `--skip-search`, `--page-size=N`,
 `--skip-routes`.
 
-Two notes on what it does to an app you already have. The **model is modified** —
-one `delegate` per `belongs_to`, plus the `after_commit` broadcast the whole
-thing hangs off — and the generator says so when it happens. And **restart the
-server afterwards**: `app/forms/` is likely new, and Rails computes autoload
-paths from the `app/*` glob at boot.
+Three notes on what it does to an app you already have.
+
+**The model is modified** — one `delegate` per `belongs_to`, plus the
+`after_commit` broadcast the whole thing hangs off.
+
+**So is each model a `belongs_to` points at.** It gains the `has_many` half
+Rails' own scaffold never writes (without it the generated destroy button raises
+`InvalidForeignKey`) and a ping of its own, because a row prints the parent's
+label rather than its id — rename an author and every open books index would
+otherwise keep the old name. `dependent:` follows the association: `:destroy`
+when it is required, `:nullify` when it is `optional: true`. That ping is
+collection-grained, so an open *show* page keeps the old label until reload.
+
+Both injections are idempotent and announced, and anything you already declared
+is left alone — including a `dependent:` you chose yourself.
+
+And **restart the server afterwards**: `app/forms/` is likely new, and Rails
+computes autoload paths from the `app/*` glob at boot.
+
+### Fixed
+
+**The model injection missed every namespaced model.** Thor anchors
+`inject_into_class` on the class name as the file spells it, and the generator
+passed the demodulized one — so `app/models/admin/book.rb`, which Rails writes as
+`class Admin::Book < ApplicationRecord`, never matched. Silently: Thor rewrote
+the file byte-identical and the generator reported a modification. The delegate
+never landed, so the show page raised on arrival.
 
 ## 0.3.0 — 2026-07-28
 
