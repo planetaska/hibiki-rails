@@ -217,6 +217,30 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(output).to include("app/models/book.rb not found")
       expect(output).to include("after_commit do")
     end
+
+    # Thor anchors inject_into_class on /class #{klass}\n|class #{klass} .*\n/,
+    # so the anchor has to be spelled the way the FILE spells it. Rails' own
+    # model template emits the COMPACT form outside an isolated engine, and a
+    # demodulized "Book" matches neither "class Admin::Book <" nor the nested
+    # "module Admin / class Book". A miss is not an error either: Thor writes
+    # the file back byte-identical and the generator announces a modification
+    # that never happened.
+    it "injects into a namespaced model written in the compact form" do
+      write("app/models/admin/book.rb", "class Admin::Book < ApplicationRecord\n  belongs_to :author\nend\n")
+      generate(["admin/book", *book_fields])
+
+      expect(generated("app/models/admin/book.rb")).to include("delegate :name, to: :author")
+      expect(generated("app/models/admin/book.rb")).to include("Admin::BooksChannel::CHANGED")
+    end
+
+    it "injects into a namespaced model written in the nested form" do
+      write("app/models/admin/book.rb",
+            "module Admin\n  class Book < ApplicationRecord\n    belongs_to :author\n  end\nend\n")
+      generate(["admin/book", *book_fields])
+
+      expect(generated("app/models/admin/book.rb")).to include("delegate :name, to: :author")
+      expect(generated("app/models/admin/book.rb")).to include("Admin::BooksChannel::CHANGED")
+    end
   end
 
   describe "routes" do

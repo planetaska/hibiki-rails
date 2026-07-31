@@ -113,7 +113,7 @@ module Hibiki
           return manual_wiring(model_path, model_support) unless exists?(model_path)
           return if wired?(model_path, ping_marker)
 
-          inject_into_class model_path, class_name.demodulize, model_support
+          inject_into_model model_path, class_name, model_support
           announce_model_change
         end
 

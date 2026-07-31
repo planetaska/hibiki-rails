@@ -47,9 +47,17 @@ module Hibiki
 
         def exists?(path) = File.exist?(File.join(destination_root, path))
 
+        # A String fragment is a substring test; a Regexp is matched. The
+        # Regexp form exists because a substring is the wrong test whenever the
+        # fragment is a Ruby declaration rather than a constant: "has_many
+        # :books" is contained in "has_many :books_on_loan", and reading that
+        # as "already wired" is a silent wrong answer.
         def wired?(path, fragment)
           full = File.join(destination_root, path)
-          File.exist?(full) && File.read(full).include?(fragment)
+          return false unless File.exist?(full)
+
+          content = File.read(full)
+          fragment.is_a?(Regexp) ? content.match?(fragment) : content.include?(fragment)
         end
 
         def manual_wiring(path, snippet)

@@ -19,6 +19,20 @@ module Hibiki
         def ping_marker = "#{collection_channel_class_name}::CHANGED"
         def route_declared? = wired?("config/routes.rb", "resources :#{plural_name}")
 
+        # Thor anchors inject_into_class on /class #{klass}\n|class #{klass} .*\n/,
+        # so the anchor has to be spelled the way the FILE spells it.
+        # `class Admin::Book < ApplicationRecord` — what Rails' own model
+        # template writes outside an isolated engine — contains no "class Book ",
+        # and the nested `module Admin` / `class Book` form contains no
+        # "class Admin::Book". Guessing wrong is not an error: Thor prints one
+        # red `unchanged` line, writes the file back byte-identical, and the
+        # caller goes on to announce a modification that never happened.
+        def inject_into_model(path, full_name, snippet)
+          anchor = wired?(path, /^\s*class #{Regexp.escape(full_name)}\b/) ? full_name : full_name.demodulize
+
+          inject_into_class path, anchor, snippet
+        end
+
         def model_support
           [association_delegates, ping_callback].compact.join("\n").indent(2)
         end
