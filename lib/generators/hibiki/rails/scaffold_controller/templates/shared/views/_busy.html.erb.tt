@@ -35,11 +35,20 @@
   [data-hibiki-state][data-hibiki-busy] .hbk-island-busy { visibility: visible }
 
   /* The bar above the list. Non-blocking on purpose: the list underneath it
-     is still the real list, still scrollable, still clickable. */
-  .hbk-bar { height: 3px; overflow: hidden; border-radius: 3px; opacity: .35 }
+     is still the real list, still scrollable, still clickable.
+
+     A faint track under the moving segment, so the bar reads as present
+     even at the moments the segment is off at one end — and both tinted
+     from currentColor with color-mix rather than `opacity`, which would
+     stack and leave the segment at 4% of what it should be. */
+  .hbk-bar {
+    height: 3px; overflow: hidden; border-radius: 3px;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+  }
   .hbk-bar::after {
     content: ""; display: block; height: 100%; width: 30%;
-    background: currentColor; transform: translateX(-100%);
+    background: color-mix(in srgb, currentColor 55%, transparent);
+    transform: translateX(-100%);
   }
   [data-hibiki-state][data-hibiki-busy] .hbk-bar::after {
     animation: hbk-slide 1.1s ease-in-out infinite;
