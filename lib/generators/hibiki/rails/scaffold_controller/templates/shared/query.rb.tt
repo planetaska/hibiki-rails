@@ -188,6 +188,14 @@ class <%= query_class_name %>
   # load-bearing for CORRECTNESS too: with ties and no tiebreaker, an OFFSET
   # page can skip a row entirely, and nothing later re-shows it. Built step by
   # step because `{ column => dir, id: :asc }` collapses when column IS :id.
+  #
+  # No NULLS clause, and that is not an omission: NULL placement is the
+  # database's call, and the databases disagree. sqlite and MySQL sort NULLs
+  # FIRST ascending and last descending; Postgres does the opposite. So a
+  # nullable sort column puts its blanks at opposite ends of the list depending
+  # on where this runs, which is worth knowing before you read it as a bug.
+  # `NULLS LAST` is not portable enough to generate — sqlite needs 3.30+ and
+  # MySQL has no such syntax — so pinning the order is yours to do, per adapter.
   def apply_sort(relation)
     order = { @sort => @direction }
     order[:id] = :asc unless @sort == :id
