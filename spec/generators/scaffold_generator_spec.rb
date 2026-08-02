@@ -58,6 +58,18 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldGenerator do
     expect(File.read(migration)).to include("t.string :title, null: false")
   end
 
+  # This command writes the model and then invokes the controller generator in
+  # the same process, where the constant is not autoloadable yet. Asking Ruby
+  # would answer "there is no Widget" about a file the user just watched
+  # scroll past — the migration really is the reason here, and the only path
+  # where it is.
+  it "blames the migration for a thin live_errors, since here that is the reason" do
+    output = run_generator(described_class, %w[Widget title:string --css=none], destination: @destination)
+
+    expect(output).to include("the migration has not run")
+    expect(output).not_to include("there is no Widget yet")
+  end
+
   it "refuses without fields, before writing a model or a migration" do
     output = run_generator(described_class, %w[Widget], destination: @destination)
 

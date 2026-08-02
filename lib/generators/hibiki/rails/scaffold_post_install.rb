@@ -112,12 +112,17 @@ module Hibiki
         # declares none this generator can use.
         def live_errors_reason
           return "#{class_name} declares no validators readable before a round trip" if schema.introspected?
-          return "there is no #{class_name} yet, so this command had no validators to read" unless model_defined?
+          return "there is no #{class_name} yet, so this command had no validators to read" unless model_present?
 
-          "#{class_name} has no table yet, so this command had no schema and no validators to read"
+          "the migration has not run, so this command had no schema and no validators to read"
         end
 
-        def model_defined? = !class_name.safe_constantize.nil?
+        # The FILE, not the constant. `hibiki:rails:scaffold` writes the model
+        # and then invokes this generator in the same process, where the new
+        # constant is not autoloadable yet — so asking Ruby would answer "there
+        # is no Widget" about a file the user just watched scroll past, and
+        # send them to write a model they already have.
+        def model_present? = exists?(model_path) || class_name.safe_constantize
 
         # Re-running has to preserve the field list, or the advice costs the
         # user the order they chose — which was §5.16 in the other direction.
