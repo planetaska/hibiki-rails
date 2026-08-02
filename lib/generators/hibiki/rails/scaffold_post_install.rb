@@ -20,6 +20,7 @@ module Hibiki
           field_order_notice
           unmatched_fields_notice
           live_errors_notice
+          uniqueness_notice
           skipped_notice
           wiring_hint
         end
@@ -124,6 +125,37 @@ module Hibiki
           fields = attributes.map { to_argv(it) }.join(" ")
 
           "bin/rails g hibiki:rails:scaffold_controller #{name}#{" #{fields}" unless fields.empty?}"
+        end
+
+        # §5.15. A unique index the model says nothing about: #commit can only
+        # mirror what the model checks, so the constraint fires first and
+        # raises RecordNotUnique instead of returning false. On the graph
+        # thread that is a dev-log line, and since the post-batch ack clears
+        # the busy indicator from an `ensure`, the user sees a round trip that
+        # completes cleanly and saves nothing.
+        #
+        # Silent until someone types a duplicate, which is what every notice
+        # here has in common.
+        def uniqueness_notice
+          schema.unmirrored_uniqueness.each do |columns|
+            say_status :unique, "#{indexed_columns(columns)} #{columns.one? ? 'has' : 'have'} a unique " \
+                                "index and #{class_name} has no matching validator, so a duplicate raises " \
+                                "RecordNotUnique instead of showing a field error — add " \
+                                "`#{uniqueness_validator(columns)}`", :yellow
+          end
+        end
+
+        def indexed_columns(columns)
+          columns.one? ? "#{plural_table_name}.#{columns.first}" : "#{plural_table_name} (#{columns.join(', ')})"
+        end
+
+        # A composite index is mirrored by scoping the validator to the rest of
+        # its columns; AR attaches that to the first one.
+        def uniqueness_validator(columns)
+          first, *rest = columns
+          scope = rest.one? ? ":#{rest.first}" : "%i[#{rest.join(' ')}]"
+
+          rest.empty? ? "validates :#{first}, uniqueness: true" : "validates :#{first}, uniqueness: { scope: #{scope} }"
         end
 
         def skipped_notice

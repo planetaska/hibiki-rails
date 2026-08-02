@@ -491,6 +491,36 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
         .to include("Gauge declares no validators readable before a round trip")
     end
 
+    # §5.15. The generator cannot fix this — a DB constraint is not a
+    # validator and #commit can only mirror what the model checks — but it can
+    # see it, and the failure is otherwise silent until someone types a
+    # duplicate.
+    it "names a unique index the model does not mirror, and the line that fixes it" do
+      output = generate(["Badge"])
+
+      expect(output).to include("badges.slug has a unique index")
+      expect(output).to include("validates :slug, uniqueness: true")
+      expect(output).to include("RecordNotUnique")
+    end
+
+    it "scopes the suggested validator for a composite index" do
+      expect(generate(["Badge"])).to include("validates :season, uniqueness: { scope: :number }")
+    end
+
+    it "says nothing about an index the model already validates, or one that is not unique" do
+      output = generate(["Badge"])
+
+      expect(output).not_to include("badges.code")
+      expect(output).not_to include("badges.sortable")
+    end
+
+    it "reads :uniq from an argument list, where there is no model to ask" do
+      output = generate(["Book", "title:string:uniq", "intro:text"])
+
+      expect(output).to include("books.title has a unique index")
+      expect(output).to include("validates :title, uniqueness: true")
+    end
+
     it "keeps the field list when it tells you to re-run" do
       # Re-running without the arguments would cost the order the user just
       # chose, which is §5.16 pointing the other way.

@@ -133,6 +133,37 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
     end
   end
 
+  # §5.15. ReactiveForm#commit can only mirror what the MODEL checks, so a
+  # unique index with no validator behind it raises instead of returning false.
+  # Both builders can see it — one from the schema, one from `:uniq`.
+  describe "unique indexes with nothing mirroring them" do
+    it "names the unmirrored ones and stays quiet about the rest" do
+      schema = described_class.from_model(Badge)
+
+      # `code` is validated and `sortable`'s index is not unique.
+      expect(schema.unmirrored_uniqueness).to contain_exactly(%i[slug], %i[season number])
+    end
+
+    it "ignores an index no generated field can violate" do
+      schema = described_class.from_attributes(parse("code:string"), model: Badge)
+
+      expect(schema.unmirrored_uniqueness).to be_empty
+    end
+
+    # GeneratedAttribute#has_uniq_index? answers on 7.1, 7.2 and 8.1 alike —
+    # checked against all three before this leaned on it, because "CI resolving
+    # latest" is not evidence about the declared floor (§5.6, §5.8).
+    it "reads `:uniq` off an argument list, where there is no model to ask" do
+      schema = described_class.from_attributes(parse("title:string:uniq", "body:text", "isbn:string:index"))
+
+      expect(schema.unmirrored_uniqueness).to eq([%i[title]])
+    end
+
+    it "finds nothing to say about a model with no unique index" do
+      expect(described_class.from_model(Item).unmirrored_uniqueness).to be_empty
+    end
+  end
+
   describe ".from_attributes" do
     subject(:schema) do
       described_class.from_attributes(
@@ -267,6 +298,16 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.attribute_names).to eq(%i[label])
       expect(schema.skipped).to eq([["taggable", described_class::REFUSALS[:polymorphic?]]])
       expect(schema.unmatched).to be_empty
+    end
+
+    it "reads unique indexes off the model, not off the argument list" do
+      # The arguments cannot state a composite index at all, and here they do
+      # not state the single-column one either.
+      schema = described_class.from_attributes(
+        parse("slug:string", "season:string", "number:integer"), model: Badge
+      )
+
+      expect(schema.unmirrored_uniqueness).to contain_exactly(%i[slug], %i[season number])
     end
 
     it "matches a belongs_to whose foreign key disagrees with its name" do

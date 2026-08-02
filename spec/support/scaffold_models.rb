@@ -77,6 +77,23 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # §5.15, in four shapes: a unique index nothing mirrors, a unique index the
+  # model does validate, a COMPOSITE unique index, and a plain non-unique one
+  # that must never produce a notice.
+  create_table :badges, force: true do |t|
+    t.string :slug
+    t.string :code
+    t.string :season
+    t.integer :number
+    t.string :sortable
+    t.timestamps
+  end
+
+  add_index :badges, :slug, unique: true
+  add_index :badges, :code, unique: true
+  add_index :badges, %i[season number], unique: true
+  add_index :badges, :sortable
+
   # Validator SHAPES rather than column types — the options that decide
   # whether a rule can be checked before a round trip at all.
   create_table :gauges, force: true do |t|
@@ -127,6 +144,13 @@ end
 
 class Tag < ActiveRecord::Base
   belongs_to :taggable, polymorphic: true
+end
+
+# `slug` and the season/number pair are the unmirrored ones. `code` is
+# validated, so the generator has nothing to say about it — a notice that fires
+# anyway is noise, and noise is what gets post-install output ignored.
+class Badge < ActiveRecord::Base
+  validates :code, uniqueness: true
 end
 
 # Every validator here is one the generator must NOT copy naively: a blank

@@ -231,6 +231,33 @@ module Hibiki
 
         def timestamps? = @model.columns_hash.key?("created_at")
 
+        # Unique indexes the model does not mirror with a validator of its own,
+        # as column-name lists.
+        #
+        # A database constraint is not a validator, and ReactiveForm#commit can
+        # only mirror what the model checks — so a duplicate raises
+        # RecordNotUnique instead of returning false, which on the graph thread
+        # is a dev-log line and a form that quietly saves nothing.
+        #
+        # Restricted to indexes at least one of whose columns this form
+        # actually writes: an index nothing here can violate is not this
+        # generator's business.
+        #
+        # A CONDITIONAL uniqueness validator counts as mirrored, unlike
+        # everywhere else in this class. Elsewhere the question is "can this be
+        # checked before a round trip", where a condition the form cannot
+        # evaluate disqualifies it; here it is "does the model know about this
+        # constraint at all", and a deliberate `if:` is an answer.
+        def unmirrored_unique_indexes(names)
+          @model.connection.indexes(@model.table_name)
+                .select { unmirrored?(it, names) }
+                .map { it.columns.map(&:to_sym) }
+        rescue StandardError
+          # Introspecting indexes is the one thing here that needs more than
+          # the schema cache. A generator must not fail over a notice.
+          []
+        end
+
         # The introspected column an argument names, or nil when the model has
         # no such column.
         #
@@ -255,6 +282,17 @@ module Hibiki
         def polymorphic?(attr) = @polymorphic.any? { it.name.to_s == attr.name }
 
         private
+
+        def unmirrored?(index, names)
+          # An expression index (`add_index :people, "lower(email)"`) reports a
+          # String, and no column name can be recovered from it.
+          return false unless index.unique && index.columns.is_a?(Array)
+
+          index.columns.any? { names.include?(it.to_sym) } &&
+            index.columns.none? { uniqueness_validated?(it) }
+        end
+
+        def uniqueness_validated?(column) = @model.validators_on(column).any? { it.kind == :uniqueness }
 
         def by_name = @by_name ||= columns.index_by(&:name)
         def by_association = @by_association ||= columns.select(&:belongs_to?).index_by(&:association_name)
@@ -384,8 +422,8 @@ module Hibiki
             introspection = ModelIntrospection.new(model)
 
             new(columns: introspection.columns, skipped: introspection.skipped,
-                timestamps: introspection.timestamps?, introspected: true,
-                schema_ordered: true)
+                introspection: introspection, timestamps: introspection.timestamps?,
+                introspected: true, schema_ordered: true)
           end
 
           private
@@ -421,7 +459,8 @@ module Hibiki
             new(columns: paired.map { |attr, column| column || column_from_attribute(attr) },
                 skipped: skipped_pairs(refused) + skipped_pairs(polymorphic, REFUSALS[:polymorphic?]),
                 unmatched: paired.filter_map { |attr, column| attr.name unless column },
-                timestamps: introspection.timestamps?, introspected: true)
+                introspection: introspection, timestamps: introspection.timestamps?,
+                introspected: true)
           end
 
           def column_from_attribute(attr)
@@ -435,11 +474,12 @@ module Hibiki
           end
         end
 
-        def initialize(columns:, skipped: [], unmatched: [], timestamps: true,
-                       introspected: false, schema_ordered: false)
+        def initialize(columns:, skipped: [], unmatched: [], introspection: nil,
+                       timestamps: true, introspected: false, schema_ordered: false)
           @columns = columns
           @skipped = skipped
           @unmatched = unmatched
+          @introspection = introspection
           @timestamps = timestamps
           @introspected = introspected
           @schema_ordered = schema_ordered
@@ -483,6 +523,17 @@ module Hibiki
 
         def live_errors
           columns.filter_map { |column| [column.name, column.live_error_clause] if column.live_error_clause }
+        end
+
+        # §5.15: unique indexes with no validator mirroring them, as column-name
+        # lists. The model is authoritative wherever there is one — it knows
+        # composite indexes, which no argument list can express — and
+        # `title:string:uniq` is the fallback for the path with no model to ask.
+        # Read off the attribute rather than the column for the same reason
+        # `refusal_for` is: it is a question about what was TYPED.
+        def unmirrored_uniqueness
+          @unmirrored_uniqueness ||= @introspection&.unmirrored_unique_indexes(columns.map(&:name)) ||
+                                     columns.select { it.attr.has_uniq_index? }.map { [it.name] }
         end
       end
     end
