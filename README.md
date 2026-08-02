@@ -70,12 +70,19 @@ bin/rails g hibiki:rails:scaffold Book title:string author:references
 
 # Or, for a model you already have — the schema is read for you
 bin/rails g hibiki:rails:scaffold_controller Book
+
+# Same, but you pick the field order; everything else still comes from the model
+bin/rails g hibiki:rails:scaffold_controller Book title:string author:references
 ```
 
 Your plain `rails g scaffold` is untouched. The generated markup is styled to
 match your app (DaisyUI, Tailwind, or unstyled — detected automatically, or
 forced with `--css=`). Run `bin/rails g hibiki:rails:scaffold --help` for the
 rest of the options.
+
+Listing the fields yourself only chooses their order and which ones appear — the
+model still answers everything else, so the live validation, a number field's
+`min:`/`max:` and a `belongs_to`'s display label all survive the choice.
 
 Your models are edited, not just read: the one being scaffolded gains the
 `after_commit` broadcast that makes writes from anywhere reach an open list, and
