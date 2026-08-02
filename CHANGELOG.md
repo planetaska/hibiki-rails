@@ -33,6 +33,28 @@ the field, so it contributes nothing live — it still runs at commit and still
 lands in `#errors`, which the same per-field slots mirror. The clauses are
 generated once; add validators and re-run `scaffold_controller` to pick them up.
 
+**Field order is yours, and choosing it costs nothing.** With no field list the
+columns follow the schema, which for an app built from `schema.rb` means
+alphabetical. Passing them explicitly picks the order — and against a model that
+already exists the generator still reads that model for everything else, so the
+live clauses, a number field's `min:`/`max:` and a `belongs_to`'s display label
+all survive the choice:
+
+```sh
+bin/rails g hibiki:rails:scaffold_controller Author name:string bio:text age:integer
+```
+
+A field the model has no column for is still generated, from the argument list
+alone, and named in the post-install output — it may be a column whose migration
+is still to come, and a silently missing field is the worse failure.
+
+**A unique index with no uniqueness validator is called out.** A database
+constraint is not a validator, and the generated form can only mirror what the
+model checks — so without one, a duplicate raises `ActiveRecord::RecordNotUnique`
+on the graph thread instead of showing a field error, and the round trip
+completes having saved nothing. The generator names the column and the exact
+`validates` line, for single and composite indexes alike.
+
 Options: `--css=daisyui|tailwind|none` (detected when absent),
 `--infinite-scroll`, `--skip-pagination`, `--skip-search`, `--page-size=N`,
 `--skip-routes`.
