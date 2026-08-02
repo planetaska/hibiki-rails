@@ -55,6 +55,20 @@
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
 //
+// The protocol also has a client-written half — the first attributes in it
+// that no Ruby helper emits. These are stamped here at runtime and are
+// read-only to app code; app CSS is their whole audience:
+//
+//   island root   data-hibiki-busy       present while an action is in flight
+//                 aria-busy="true"       the same fact, for assistive tech
+//                 data-hibiki-state      connecting | ready | offline | stalled
+//   firing control data-hibiki-busy      on the control that started it
+//
+// Everything the app wants out of that is a descendant selector —
+// `[data-hibiki-busy] .spinner { display: inline-block }` — so per-row and
+// per-button feedback needs no server state and no `{#if loading}` branch.
+// Content is stale during a round trip, never absent.
+//
 // The left side of `->` is a hibiki event name, of which DOM events are a
 // subset: click, change, input, submit are delegated listeners, and
 // `visible` is a pseudo-event backed by an IntersectionObserver (the
@@ -95,8 +109,53 @@ const controlValue = (control) => {
 export class ChannelController extends Controller {
   static values = { cid: String }
 
+  // Transport-state timings. Class properties on purpose: not Stimulus
+  // values and not helper options, so the Ruby surface stays unchanged and
+  // an island stamps nothing about them. An app that wants different
+  // numbers subclasses and re-registers.
+  //
+  // busyDelay   ms before a round trip is worth mentioning. A localhost
+  //             trip measures 18–25 ms, so 150 suppresses that flicker
+  //             outright while a 150 ms-RTT link crosses it about exactly.
+  //             Borrowed from Turbo's progress bar, which waits ~500 ms.
+  // busyGrace   ms to wait after an ack for a Turbo render still in
+  //             flight. The ack travels the island's own socket; a
+  //             broadcast takes a pubsub hop, and measured against
+  //             generated output the direct frame beats the paint by
+  //             3.3–3.6 ms. That gap belongs to the server and its
+  //             backend, so it does not shrink on a fast link — and Redis
+  //             widens it. Hence a bound in tens of ms, not single digits.
+  // busyCeiling ms before a trip is declared stalled rather than silently
+  //             cleared. On a bad link "we lost it" beats "nothing
+  //             happened".
+  static busyDelay = 150
+  static busyGrace = 60
+  static busyCeiling = 10000
+
   async connect() {
+    this.prepareTransport()
+    await this.openSubscription()
+  }
+
+  // The synchronous half of connect: everything a listener firing in the
+  // next millisecond depends on. HibikiController attaches its delegated
+  // listeners before openSubscription is even called, and the window
+  // before the subscription confirms is ~3 serialised round trips on the
+  // Turbo-broadcast path (Turbo's own subscribe, a SECOND websocket
+  // handshake, then ours) — tens of ms on localhost, about a second on a
+  // real remote link. Clicks in it used to vanish without a trace.
+  prepareTransport() {
     this.aborted = false
+    this.subscribed = false
+    this.connectedOnce = false
+    this.seq = 0
+    this.renders = 0
+    this.busy = new Map()
+    this.queued = []
+    this.setState("connecting")
+  }
+
+  async openSubscription() {
     consumer ??= createConsumer()
     this.defineForwarders()
     // Turbo-broadcast transport: wait for the element's own stream source
@@ -106,10 +165,11 @@ export class ChannelController extends Controller {
     const source = this.streamSource()
     if (source) await streamConnected(source)
     if (this.aborted) return // disconnected during the await
-    this.subscription = consumer.subscriptions.create(
-      this.subscribeParams(),
-      { received: (data) => this.received(data) }
-    )
+    this.subscription = consumer.subscriptions.create(this.subscribeParams(), {
+      received: (data) => this.handleMessage(data),
+      connected: () => this.linkOpened(),
+      disconnected: () => this.linkClosed()
+    })
   }
 
   // What identifies this subscription to the server. Override to add
@@ -120,15 +180,174 @@ export class ChannelController extends Controller {
 
   disconnect() {
     this.aborted = true
+    this.settleAll()
     this.subscription?.unsubscribe()
     this.subscription = undefined
+    this.subscribed = false
+    this.queued = []
   }
 
-  // DOM → server: what declared action methods call. Optional chaining
-  // because a debounced action can fire after disconnect, and a sentinel
-  // can fire while connect is still awaiting its stream source.
+  // DOM → server: what declared action methods call. Every perform carries
+  // a sequence number under the reserved `hbk` key and opens a busy record
+  // that the matching ack closes; the seq is stamped LAST so a form field
+  // can never overwrite it. (`hbk` is the second reserved payload key —
+  // ActionCable's own Subscription#perform already writes `action`.)
+  //
+  // Returns the seq so a caller that knows which control fired can attach
+  // it; nobody has to.
   perform(action, payload = {}) {
-    this.subscription?.perform(action, payload)
+    const seq = ++this.seq
+    payload.hbk = seq
+    if (this.subscribed) {
+      this.beginBusy(seq)
+      this.subscription.perform(action, payload)
+      return seq
+    }
+    // Queue rather than drop while the subscription is still coming up.
+    // ActionCable's Subscription#perform silently returns false on a socket
+    // that is not open yet, so this was a silent no-op for the whole
+    // connect window — and the trigger has to be the `connected` callback,
+    // not "the subscription object exists", because the second websocket's
+    // handshake sits between the two.
+    //
+    // Only that first window. Once the link has been up, a gap means the
+    // socket dropped, and reconnecting builds a FRESH graph server-side
+    // with default state — so replaying intent formed against the old one
+    // is worse than dropping it. The island is stamped `offline` for the
+    // whole gap, which is the signal the connect window cannot give: there
+    // the page is painted and looks live.
+    if (!this.connectedOnce) {
+      this.beginBusy(seq)
+      this.queued.push([action, payload])
+    }
+    return seq
+  }
+
+  // ActionCable's `connected`, i.e. the server confirmed the subscription.
+  // Fires again after every reconnect.
+  linkOpened() {
+    this.subscribed = true
+    this.connectedOnce = true
+    this.setState("ready")
+    const queued = this.queued
+    this.queued = []
+    for (const [action, payload] of queued) this.subscription.perform(action, payload)
+  }
+
+  linkClosed() {
+    this.subscribed = false
+    this.setState("offline")
+    // Deliberately NOT queued across the gap. A reconnect builds a fresh
+    // graph server-side with default state, so replaying intent formed
+    // against the old one is worse than dropping it. Outstanding records
+    // settle for the same reason: their acks are never coming.
+    this.queued = []
+    this.settleAll()
+  }
+
+  setState(state) {
+    this.state = state
+    this.element.setAttribute("data-hibiki-state", state)
+  }
+
+  // ── The busy machine ──────────────────────────────────────────────────
+  //
+  // A depth counter, not a boolean: typing while a page loads is one island
+  // with two actions outstanding. No requestAnimationFrame anywhere — it
+  // never fires in a background tab, which is exactly when a stuck
+  // indicator goes unnoticed.
+
+  beginBusy(seq) {
+    const record = {
+      control: null,
+      // Which render the island was on when this started, so the ack can
+      // ask "has anything painted since?" without consulting a clock.
+      renders: this.renders,
+      ceiling: setTimeout(() => this.stall(seq), this.constructor.busyCeiling)
+    }
+    this.busy.set(seq, record)
+    // Start the show-delay on 0→1 only: a second overlapping action must
+    // not restart it, because the user has been waiting since the first.
+    if (this.busy.size === 1) {
+      this.showTimer = setTimeout(() => this.showBusy(), this.constructor.busyDelay)
+    }
+    return record
+  }
+
+  // Attach the control that started a trip, so it can carry its own flag.
+  // Controls inside a server-replaced fragment are cleared by the swap
+  // itself (an idiomorph repaint syncs attributes, and the incoming HTML
+  // has none); controls outside it — the search field — need the removal
+  // in settle().
+  trackControl(seq, control) {
+    const record = this.busy.get(seq)
+    if (!record) return
+    record.control = control
+    if (this.busyShown) control.setAttribute("data-hibiki-busy", "")
+  }
+
+  showBusy() {
+    this.showTimer = undefined
+    this.busyShown = true
+    this.element.setAttribute("data-hibiki-busy", "")
+    this.element.setAttribute("aria-busy", "true")
+    for (const record of this.busy.values()) {
+      record.control?.setAttribute("data-hibiki-busy", "")
+    }
+  }
+
+  // The clear rule, and the whole design: a `dropped` ack settles at once
+  // because nothing is coming; a normal ack settles at once if a render has
+  // already landed, and otherwise waits out the grace window for one still
+  // in flight, then settles regardless — an action that legitimately
+  // rendered nothing is the ordinary case the ack exists for.
+  acknowledge({ ack, dropped }) {
+    // Any ack proves the link is alive again.
+    if (this.state === "stalled") this.setState("ready")
+    const record = this.busy.get(ack)
+    if (!record) return
+    if (dropped || this.renders > record.renders) return this.settle(ack)
+    record.grace = setTimeout(() => this.settle(ack), this.constructor.busyGrace)
+  }
+
+  settle(seq) {
+    const record = this.busy.get(seq)
+    if (!record) return
+    clearTimeout(record.ceiling)
+    clearTimeout(record.grace)
+    this.busy.delete(seq)
+    record.control?.removeAttribute("data-hibiki-busy")
+    if (this.busy.size === 0) this.hideBusy()
+  }
+
+  settleAll() {
+    for (const seq of [...this.busy.keys()]) this.settle(seq)
+    this.hideBusy() // an already-empty map still has a show timer to cancel
+  }
+
+  hideBusy() {
+    clearTimeout(this.showTimer)
+    this.showTimer = undefined
+    this.busyShown = false
+    this.element.removeAttribute("data-hibiki-busy")
+    this.element.removeAttribute("aria-busy")
+  }
+
+  // Say so rather than clearing silently: on a bad link the honest report
+  // is "we lost it", and a cleared indicator claims the opposite.
+  stall(seq) {
+    this.settle(seq)
+    this.setState("stalled")
+  }
+
+  // Every inbound frame lands here first. Acks are transport bookkeeping,
+  // handled by the base and deliberately NOT routed through received() — so
+  // a subclass that overrides received without calling super still clears
+  // its pending state.
+  handleMessage(data) {
+    if (data && "ack" in data) return this.acknowledge(data)
+    if (data && data.html) this.renders++
+    this.received(data)
   }
 
   // Server → DOM (transmit transport). Two message shapes:
@@ -228,6 +447,13 @@ export default class HibikiController extends ChannelController {
   }
 
   async connect() {
+    // Before the listeners, not after: a click delegated in the next
+    // millisecond reaches perform(), which needs the busy map and the
+    // queue to exist. This is also what stamps data-hibiki-state
+    // ="connecting" synchronously, so the island can be dimmed for the
+    // whole window rather than from the middle of it.
+    this.prepareTransport()
+
     // Root-scoped delegation (bound to the island, not document): controls
     // inside server-replaced fragments keep working with no rebinding.
     // Set up synchronously so disconnect can always tear them down.
@@ -267,12 +493,18 @@ export default class HibikiController extends ChannelController {
       const render = event.detail.render
       event.detail.render = async (streamElement) => {
         await render(streamElement)
+        // The Turbo transport's paint. Counting it here is what lets an ack
+        // settle immediately instead of waiting out its grace window. The
+        // listener is on the document, so an unrelated broadcast counts too
+        // — which at worst settles an already-acked trip a few ms early,
+        // never one that has not been acked at all.
+        this.renders++
         this.scanSentinels()
       }
     }
     document.addEventListener("turbo:before-stream-render", this.streamRender)
 
-    await super.connect()
+    await this.openSubscription()
     if (this.aborted) return
     this.scanSentinels()
   }
@@ -349,7 +581,9 @@ export default class HibikiController extends ChannelController {
     } else if (control.name && (event.type === "change" || event.type === "input")) {
       payload[control.name] = controlValue(control)
     }
-    this.perform(action, payload)
+    // perform stamps `hbk` after this merge, so a field literally named hbk
+    // loses to the seq rather than corrupting it.
+    this.trackControl(this.perform(action, payload), control)
     // Resetting is right for an "add" form and wrong for an edit one: it
     // runs synchronously, before the server has replied, so a failed commit
     // would discard what the user typed.

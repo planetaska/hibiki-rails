@@ -8,6 +8,17 @@ import { Application } from "@hotwired/stimulus"
 // Recorded by the consumer stub. Reset per example by mount().
 export const subscriptions = []
 export const performed = []
+// The same performs with their transport bookkeeping intact. `performed`
+// strips `hbk` so payload examples stay about payloads; the busy examples
+// read the seq from here.
+export const sent = []
+
+// Whether the stub confirms a new subscription on its own. A real server's
+// confirmation is a round trip, so it is deferred to a microtask rather than
+// fired inside create() — which is also the only order the client can
+// survive, since it assigns this.subscription from create's return value.
+// Set false to hold an island in its connect window.
+export const cable = { autoConnect: true }
 
 vi.mock("@rails/actioncable", () => ({
   createConsumer: () => ({
@@ -16,15 +27,38 @@ vi.mock("@rails/actioncable", () => ({
         const subscription = {
           params,
           handlers,
-          perform: (action, payload) => performed.push([action, payload]),
+          perform: (action, payload) => {
+            const { hbk, ...rest } = payload
+            sent.push([action, payload])
+            performed.push([action, rest])
+          },
           unsubscribe: () => {}
         }
         subscriptions.push(subscription)
+        if (cable.autoConnect) queueMicrotask(() => handlers.connected())
         return subscription
       }
     }
   })
 }))
+
+// The server confirmed (or re-confirmed) every live subscription.
+export const connectAll = async () => {
+  for (const subscription of subscriptions) subscription.handlers.connected()
+  await flush()
+}
+
+// The socket dropped under every live subscription.
+export const disconnectAll = async () => {
+  for (const subscription of subscriptions) subscription.handlers.disconnected()
+  await flush()
+}
+
+// Push a server frame at the most recently created subscription.
+export const receive = async (data) => {
+  subscriptions.at(-1).handlers.received(data)
+  await flush()
+}
 
 // Let queued microtasks and any due timers run. Async so it works under
 // vitest's fake timers, which the debounce tests turn on.
@@ -35,9 +69,11 @@ export const flush = async () => {
 
 let application
 
-export async function mount(html) {
+export async function mount(html, { autoConnect = true } = {}) {
   subscriptions.length = 0
   performed.length = 0
+  sent.length = 0
+  cable.autoConnect = autoConnect
   document.body.innerHTML = html
 
   const { default: HibikiController } = await import(
@@ -57,6 +93,7 @@ export async function unmount() {
   await flush()
   await application?.stop()
   application = undefined
+  cable.autoConnect = true
 }
 
 // The island wrapper every example builds its controls inside.
