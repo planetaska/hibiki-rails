@@ -80,6 +80,12 @@ module Hibiki
           select_full: "select w-full",
           textarea_full: "textarea w-full",
           badge_warning: "badge badge-warning",
+          # The LOOK of a spinner, never its visibility — showing and hiding
+          # it is an attribute-descendant rule, which no class token can
+          # express, so it lives in the transport stylesheet instead. Absent
+          # under --css=none, where that stylesheet hand-rolls the ring too.
+          spinner: "loading loading-spinner loading-xs",
+          warning_text: "text-warning",
           error_text: "text-error text-sm mt-1",
           muted: "opacity-60 italic",
           muted_inline: "opacity-60",
@@ -114,6 +120,14 @@ module Hibiki
           textarea_full: "#{FIELD_FULL} min-h-20",
           badge_warning: "inline-flex items-center rounded-full bg-amber-100 px-2 py-1 " \
                          "text-xs font-medium text-amber-800",
+          # `inline-block` is load-bearing, not decoration: a bare span is
+          # inline, where h-3/w-3 do nothing. It is safe against the
+          # visibility rules because this stylesheet is linked in <head> and
+          # the transport <style> is in the body, so equal specificity goes
+          # hibiki's way.
+          spinner: "inline-block h-3 w-3 animate-spin rounded-full border-2 " \
+                   "border-current border-r-transparent align-[-0.15em]",
+          warning_text: "text-amber-600",
           error_text: "text-red-600 text-sm mt-1",
           muted: "text-gray-500 italic",
           muted_inline: "text-gray-400",

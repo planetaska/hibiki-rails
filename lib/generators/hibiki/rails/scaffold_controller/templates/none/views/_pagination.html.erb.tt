@@ -17,6 +17,11 @@
 
     `on` returns a { data: } hash, so an element needing its OWN data attributes
     has to MERGE rather than splat, or the anchor stops scrolling. %>
+<%%# PENDING. Nothing here asks for it: the client stamps data-hibiki-busy on
+    the control that fired, so the clicked page link dims itself while the trip
+    is out, and the swap that answers it destroys the attribute along with the
+    link. The bar above the list is the other half — the anchor jump has
+    already put it in view by then. %>
 <%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
 <%%# The id-carrying wrapper always renders, so idiomorph always has a node to
     pair with. %>

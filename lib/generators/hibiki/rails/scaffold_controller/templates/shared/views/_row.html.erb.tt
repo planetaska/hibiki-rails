@@ -48,6 +48,13 @@
     <div<%= css_attr(:card_actions) %>>
       <%%= link_to "Show this <%= human_name.downcase %>", <%= singular_route_name %>_path(<%= singular_name %>.id)<%= css? ? %(, class: "#{css(:btn_outline)}") : "" %> %>
       <%%= tag.button(<%= wrapped_list(row_button_args("Edit", :edit, :btn_outline), indent: 21).lstrip %>) %>
+      <%%# Per-row pending feedback costs nothing at this site and there is
+          nothing here to see: the client stamps data-hibiki-busy on the
+          control that fired, so the transport stylesheet dims THIS row's
+          button and no other while its trip is in flight. No server state, no
+          markup, no per-row bookkeeping. Destroy is also the site where the
+          feedback matters most — it is the one gesture nobody wants to repeat
+          because the first click looked like it did nothing. %>
       <%%# The scaffold's button_to carried data-turbo-confirm, which does
           nothing on a hibiki-driven button — it is not a Turbo-driven form.
           confirm: is the equivalent, gated client-side before the action is

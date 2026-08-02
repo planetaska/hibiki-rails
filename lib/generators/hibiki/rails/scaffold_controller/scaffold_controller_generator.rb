@@ -91,7 +91,7 @@ module Hibiki
         end
 
         def create_views
-          %w[index show new edit _form _list _controls _field_error].each do |view|
+          %w[index show new edit _form _list _controls _field_error _busy].each do |view|
             template "views/#{view}.html.erb.tt", view_path("#{view}.html.erb")
           end
 

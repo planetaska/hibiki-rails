@@ -65,5 +65,23 @@
 <% if schema.primary_boolean -%>
     · <%%= reactive :<%= value_name(schema.primary_boolean.name) %>, "" %> <%= schema.primary_boolean.name %>
 <% end -%>
+
+    <%%# The island-level indicator, and the safest home for one: this
+        partial is never re-rendered, so a list swap cannot destroy the
+        indicator mid-flight the way it would inside the fragment.
+
+        aria-hidden, because the client puts aria-busy on the island root and
+        that is how assistive tech expects to hear this. Duplicating it as
+        visible text would announce the same fact twice, in the wrong idiom. %>
+    <span<%= hbk_attr("hbk-island-busy", "hbk-spinner", token: :spinner) %> aria-hidden="true"></span>
+
+    <%%# Connection state, which is a different thing from busy: the numbers
+        above are real, they have simply stopped moving. A live region so the
+        news is announced rather than merely displayed — the text inside it
+        changes, which is what makes that work. %>
+    <span role="status"<%= css_attr(:warning_text) %>>
+      <span class="hbk-offline">offline — reconnecting…</span>
+      <span class="hbk-stalled">no response</span>
+    </span>
   </p>
 </div>

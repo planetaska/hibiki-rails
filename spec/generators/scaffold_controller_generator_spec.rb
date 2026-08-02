@@ -89,9 +89,19 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     # The gem's private Ruby<->JS contract: app code always goes through
     # Hibiki::Rails::Helpers. Inherited verbatim from the island generator's
     # own guard, because generated views are app code too.
-    it "never hand-writes a hibiki data attribute" do
+    #
+    # Narrowed for the client-written half of the protocol (data-hibiki-busy,
+    # data-hibiki-state): no helper emits those, they are stamped at runtime,
+    # and an app's whole relationship with them is a CSS selector. So a
+    # selector may read one, and a comment may name one, where markup still
+    # may not write one — which is the whole of what the guard was ever about.
+    it "never hand-writes a hibiki data attribute, and only reads them in CSS" do
       Dir[File.join(@destination, "app/views/**/*.erb")].each do |view|
-        expect(File.read(view)).not_to include("data-hibiki")
+        markup = File.read(view)
+                     .gsub(/<%#.*?%>/m, "")                            # a comment may NAME one
+                     .gsub(%r{/\*.*?\*/}m, "")                         # so may a CSS comment
+                     .gsub(/\[data-hibiki-[a-z-]+(?:="[^"]*")?\]/, "") # a selector may READ one
+        expect(markup).not_to include("data-hibiki")
       end
     end
   end
@@ -139,11 +149,18 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
   end
 
   describe "options" do
-    it "--css=none emits no class attribute at all, not an empty one" do
+    # The rule is "no STYLING class, and no empty class attribute either". The
+    # hbk-* hooks are the exception and have to be: they are what the transport
+    # stylesheet selects on, they are identical in all three variants, and
+    # under this one they are the only classes in the generated views.
+    it "--css=none emits no styling class — only the transport state hooks" do
       generate(["Book", *book_fields, "--css=none"])
 
       Dir[File.join(@destination, "app/views/**/*.erb")].each do |view|
-        expect(File.read(view)).not_to match(/class[=:]\s*["']/)
+        File.read(view).scan(/class[=:]\s*["']([^"']*)["']/) do |(value)|
+          expect(value.split).not_to be_empty
+          expect(value.split).to all(start_with("hbk-"))
+        end
       end
     end
 

@@ -27,7 +27,13 @@
       It sends the page AFTER the one it was rendered under, and needs no
       generation token: a page number is idempotent, so an observer firing
       again before the swap lands writes the same value and State#value=
-      returns early. %>
+      returns early.
+
+      It is also its own loading indicator, with nothing added: the client
+      stamps data-hibiki-busy on the control that fired, so this button dims
+      while the next page is on its way. The bar above the list is the wrong
+      answer here — when this fires you are at the BOTTOM of the page and
+      would never see it. %>
   <%% if remaining.positive? %>
     <div id="<%= load_more_dom_id %>"<%= css_attr(:load_more_wrap) %>>
       <%%= tag.button(type: "button",

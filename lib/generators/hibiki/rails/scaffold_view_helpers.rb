@@ -30,6 +30,15 @@ module Hibiki
           value ? %( class="#{value}") : ""
         end
 
+        # The one kind of class that survives --css=none: a state hook the
+        # transport stylesheet selects on. The hook names what the element IS
+        # to the busy machine and is identical in all three variants; the
+        # optional token only dresses it. So this attribute is always present,
+        # where css_attr's is not.
+        def hbk_attr(*hooks, token: nil)
+          %( class="#{[*hooks, (css(token) if token)].compact.join(' ')}")
+        end
+
         def field_token(column)
           return :select if column.belongs_to?
 

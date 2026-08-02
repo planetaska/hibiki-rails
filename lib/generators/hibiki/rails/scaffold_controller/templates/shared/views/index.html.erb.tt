@@ -22,10 +22,26 @@
 
     <%%= render "<%= partial_path('controls') %>" %>
 
+    <%%# A non-blocking progress bar, and the site that needs one most: the
+        page links are real anchors that jump to the list, so by the time a
+        reply lands the user is already staring at this spot — at the OLD
+        list, scrolled to the top of it.
+
+        Outside the replaced fragment on purpose, like the controls: a swap
+        must not be able to destroy the very indicator that says the swap is
+        coming. It reserves its own 3px, so appearing never reflows the list.
+        Styling is in the transport stylesheet below. %>
+    <div<%= hbk_attr("hbk-island-busy", "hbk-bar") %> aria-hidden="true"></div>
+
     <%%# Paint-avoidance placeholder: the graph's first broadcast replaces it
         using the SAME partial, so first paint and every repaint are one code
         path — which means the same locals, from the same query object the
         channel's rows derived builds. %>
     <%%= render "<%= partial_path('list') %>", <%= wrapped_list(index_render_locals, indent: render_indent(partial_path("list"))).lstrip %> %>
   <%% end %>
+
+  <%%# What turns the client's transport attributes into something visible.
+      Rendered once per page and deliberately OUTSIDE the island, so the
+      island stays pure markup the channel can re-render. %>
+  <%%= render "<%= partial_path('busy') %>" %>
 </div>

@@ -53,7 +53,23 @@
     <%%# tag.button defaults to type="submit" — which is exactly why Cancel has
         to say type: "button", or clicking it would submit the form too. Not
         submit_tag: that would add a stray `commit` key to the payload. %>
-    <%%= tag.button("Save"<%= css? ? %(, class: "#{css(:btn_primary)}") : "" %>) %>
+<% if css? -%>
+    <%%= tag.button(class: "<%= css(:btn_primary) %>") do %>
+<% else -%>
+    <%%= tag.button do %>
+<% end -%>
+      <%%# The one site that earns a spinner rather than the automatic dim.
+          Saving is the gesture with the longest tail — a commit, validation,
+          a re-render — and it is the visual answer the dirty badge below
+          could not give: the badge means "unsaved", the spinner means
+          "saving".
+
+          It shows while THIS form is in flight, not while the island is. The
+          control that fires a submit is the form, so the rule reaches down
+          into its button; a sibling row's Save is untouched. %>
+      <span<%= hbk_attr("hbk-control-busy", "hbk-spinner", token: :spinner) %> aria-hidden="true"></span>
+      Save
+    <%% end %>
     <%%= tag.button("Cancel", type: "button"<%= css? ? %(, class: "#{css(:btn)}") : "" %>,
                    **on(:cancel, with: { id: <%= singular_name %>.id })) %>
     <%%# A badge, not a disabled Save button. dirty? is server state delivered
