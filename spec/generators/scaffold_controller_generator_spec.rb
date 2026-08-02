@@ -138,6 +138,39 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     end
   end
 
+  # §5.16 end to end: the same command the field-order notice recommends,
+  # against a model that exists. Before 3.6 this emitted a form with one live
+  # clause, no min:, and a guessed label column — the schema spec proves the
+  # merge, and this proves it reaches the files.
+  describe "from an explicit field list against a migrated model" do
+    before { generate(["Item", "title:string", "shelf:references", "count:integer"]) }
+
+    it "emits the columns in the order the arguments asked for" do
+      expect(generated("app/models/item_row.rb")).to include(":id, :title, :shelf_id, :shelf_name, :count")
+      expect(generated("app/models/item_query.rb")).to include("SORTABLE = %i[id title count created_at].freeze")
+    end
+
+    it "still reads the validators the argument list cannot state" do
+      form = generated("app/forms/item_form.rb")
+
+      expect(form).to include(%{title: ("can't be blank" if title.to_s.strip.empty?)})
+      expect(form).to include(%{count: ("must be greater than or equal to 0" if count.to_i < 0)})
+      expect(generated("app/views/items/_item_form.html.erb")).to include("min: 0")
+    end
+
+    it "still resolves the association's label column" do
+      expect(generated("app/channels/items_channel.rb")).to include("Shelf.order(:name).pluck(:name, :id)")
+    end
+
+    it "omits a column the arguments left out, and every list derived from it" do
+      # An explicit list is a subset filter as well as an ordering — that is
+      # the point of the lever, so nothing may quietly put `notes` back.
+      expect(generated("app/models/item_query.rb")).to include("SEARCHABLE = %i[title].freeze")
+      expect(generated("app/models/item_row.rb")).not_to include(":notes")
+      expect(generated("app/forms/item_form.rb")).not_to include("notes")
+    end
+  end
+
   describe "when the schema cannot be read" do
     it "aborts with the two ways forward rather than emitting an empty scaffold" do
       output = generate(["Nonexistent"])
@@ -427,6 +460,30 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(output).to include("cover")
       expect(output).to include("Active Storage")
+    end
+
+    # §5.16, the notice half. The order notice offers a lever; before 3.6
+    # taking it cost the validators, so the generator recommended something
+    # with an unstated price.
+    it "does not offer the field-order lever to someone who already used it" do
+      expect(generate(["Item"])).to include("fields follow the schema's column order")
+      expect(generate(["Item", "title:string", "count:integer", "due_on:date"]))
+        .not_to include("fields follow the schema's column order")
+    end
+
+    it "names a field the model has no column for instead of emitting it silently" do
+      output = generate(["Item", "title:string", "blurb:text"])
+
+      expect(output).to include("Item has no column for blurb")
+      expect(output).to include("Check the spelling")
+    end
+
+    it "keeps the field list when it tells you to re-run" do
+      # Re-running without the arguments would cost the order the user just
+      # chose, which is §5.16 pointing the other way.
+      output = generate(["Gauge", "label:string"])
+
+      expect(output).to include("bin/rails g hibiki:rails:scaffold_controller Gauge label:string")
     end
   end
 

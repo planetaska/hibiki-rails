@@ -18,6 +18,7 @@ module Hibiki
           rebuild_css_notice
           association_notices
           field_order_notice
+          unmatched_fields_notice
           live_errors_notice
           skipped_notice
           wiring_hint
@@ -55,12 +56,31 @@ module Hibiki
         # "Available, Intro, Title" where a person would have led with the
         # title. There is no authored order to recover from a schema, so the
         # lever is the argument list.
+        #
+        # `schema_ordered?`, not `introspected?`: an argument list against a
+        # migrated model is introspected TOO, and there the user has already
+        # chosen the order this notice exists to offer.
         def field_order_notice
-          return unless schema.introspected? && schema.columns.size > 2
+          return unless schema.schema_ordered? && schema.columns.size > 2
 
           say_status :order, "fields follow the schema's column order — pass them explicitly to " \
                              "choose it: bin/rails g hibiki:rails:scaffold_controller " \
-                             "#{name} #{schema.columns.first(2).map { field_syntax(it) }.join(' ')} ...", :blue
+                             "#{name} #{schema.columns.first(2).map { field_syntax(it) }.join(' ')} ... " \
+                             "(the validators still come from the model either way; " \
+                             "the generated views are yours to reorder by hand too)", :blue
+        end
+
+        # An explicit field the model has no column for. Kept rather than
+        # dropped — it may be a column whose migration is still to come — but
+        # it cannot carry a validator, a bound or an association label, and if
+        # it is a typo the form will not discover that until #commit.
+        def unmatched_fields_notice
+          return if schema.unmatched.empty?
+
+          say_status :fields, "#{class_name} has no column for " \
+                              "#{schema.unmatched.to_sentence} — generated from the argument list alone, " \
+                              "so nothing about #{schema.unmatched.one? ? 'it' : 'them'} was read from the " \
+                              "model. Check the spelling, or migrate first and re-run", :yellow
         end
 
         # A belongs_to is declared by its ASSOCIATION name, not its foreign key:
@@ -72,19 +92,27 @@ module Hibiki
         def live_errors_notice
           return if schema.live_errors.any? && schema.introspected?
 
-          reason = if schema.introspected?
-                     "#{class_name} declares no validators readable before a round trip"
-                   else
-                     "the migration has not run, so this command had no schema and no validators to read"
-                   end
           # Deliberately NOT "add validators and it lights up": the clauses are
           # generated ONCE, into a file the generator then stops owning. A
           # commit-time failure still mirrors the model's own errors into the
           # same per-field slots with no change at all — it is the check BEFORE
           # the round trip that has to be re-derived.
-          say_status :form, "#{form_path}'s live_errors is thin — #{reason}. Add validators to the model, " \
-                            "then re-run `bin/rails g hibiki:rails:scaffold_controller #{name}` to derive " \
-                            "the clauses from them (or write them there by hand)", :blue
+          reason = if schema.introspected?
+                     "#{class_name} declares no validators readable before a round trip"
+                   else
+                     "the migration has not run, so this command had no schema and no validators to read"
+                   end
+          say_status :form, "#{form_path}'s live_errors is thin — #{reason}. Add validators to " \
+                            "the model, then re-run `#{rerun_command}` to derive the clauses from them " \
+                            "(or write them there by hand)", :blue
+        end
+
+        # Re-running has to preserve the field list, or the advice costs the
+        # user the order they chose — which was §5.16 in the other direction.
+        def rerun_command
+          fields = attributes.map { to_argv(it) }.join(" ")
+
+          "bin/rails g hibiki:rails:scaffold_controller #{name}#{" #{fields}" unless fields.empty?}"
         end
 
         def skipped_notice

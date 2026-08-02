@@ -162,15 +162,44 @@ module Hibiki
         end
 
         # Explicit attributes always win, matching Rails' own precedence; the
-        # schema is only consulted when the argument list is empty. That order
-        # also happens to be the only workable one, because `hibiki:rails:
-        # scaffold` invokes this generator BEFORE its migration has run.
+        # schema decides the column list only when the argument list is empty.
+        # That order also happens to be the only workable one, because
+        # `hibiki:rails:scaffold` invokes this generator BEFORE its migration
+        # has run.
+        #
+        # An argument list does NOT mean the model is ignored, though: when
+        # there is one to read, the arguments choose the order and the model
+        # still answers everything else. #introspectable_model is what makes
+        # that conditional, and it is nil on exactly the path where the
+        # arguments are the only source there is.
         def schema
           @schema ||= if attributes.any?
-                        ScaffoldSchema.from_attributes(attributes)
+                        ScaffoldSchema.from_attributes(attributes, model: introspectable_model)
                       else
                         ScaffoldSchema.from_model(model_class)
                       end
+        end
+
+        # The model whose facts an argument list can borrow, or nil when there
+        # is nothing to borrow yet.
+        #
+        # Deliberately NOT #model_class: a missing model is an ERROR there,
+        # because an empty argument list leaves the generator with no source at
+        # all. Here it is the ordinary case — `hibiki:rails:scaffold` writes the
+        # model file and then invokes this generator with the migration still
+        # unrun, so the constant may load and the table will not exist.
+        def introspectable_model
+          return @introspectable_model if defined?(@introspectable_model)
+
+          klass = class_name.safe_constantize
+          # Parenthesised: `@ivar = x if cond` leaves the ivar UNDEFINED when
+          # the condition is false, which would defeat the guard above and
+          # re-query the database on every call.
+          @introspectable_model = (klass if klass.respond_to?(:table_exists?) && klass.table_exists?)
+        rescue StandardError
+          # No connection, no database, an abstract class: all "nothing to read
+          # from", none of them worth failing a generate over.
+          @introspectable_model = nil
         end
 
         # Aborts rather than falling back to an empty attribute list. A silent

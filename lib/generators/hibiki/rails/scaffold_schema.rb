@@ -217,7 +217,7 @@ module Hibiki
         end
 
         def columns
-          @model.columns_hash.each_value.filter_map do |column|
+          @columns ||= @model.columns_hash.each_value.filter_map do |column|
             next if ignored.include?(column.name)
 
             reflection = @by_foreign_key[column.name]
@@ -231,7 +231,33 @@ module Hibiki
 
         def timestamps? = @model.columns_hash.key?("created_at")
 
+        # The introspected column an argument names, or nil when the model has
+        # no such column.
+        #
+        # A reference is matched by its ASSOCIATION name first, because that is
+        # how a belongs_to is declared (`author:references`, never
+        # `author_id:references`) and because `belongs_to :author, foreign_key:
+        # :writer_id` is precisely the case where the association and its
+        # column disagree — the argument can only name the association, and
+        # only the reflection knows the column.
+        def column_for(attr)
+          return by_association[attr.name.to_sym] || by_name[attr.column_name.to_sym] if attr.reference?
+
+          by_name[attr.column_name.to_sym]
+        end
+
+        # A polymorphic belongs_to is refused whether the ARGUMENT says so
+        # (`imageable:references{polymorphic}`) or only the model does. Without
+        # this the plain `imageable:references` spelling would match nothing —
+        # both its columns are ignored — and fall through to the argument's own
+        # answer, emitting a collection_select over a table that does not
+        # exist.
+        def polymorphic?(attr) = @polymorphic.any? { it.name.to_s == attr.name }
+
         private
+
+        def by_name = @by_name ||= columns.index_by(&:name)
+        def by_association = @by_association ||= columns.select(&:belongs_to?).index_by(&:association_name)
 
         # The primary key, the timestamps, STI's discriminator and the
         # optimistic-locking counter are all framework bookkeeping — excluded
@@ -312,6 +338,15 @@ module Hibiki
       #                    field list — the only source is the real schema.
       #
       # Explicit attributes always win, matching Rails' own precedence.
+      #
+      # But ORDER and FACTS are separate questions, and only order has to come
+      # from the arguments. `from_attributes` takes a `model:` for the case
+      # where both sources exist — `scaffold_controller Book title:string ...`
+      # against a migrated app, which is exactly what the field-order notice
+      # recommends — and reads every fact from the schema while the argument
+      # list decides the sequence. Without it, taking that advice silently cost
+      # the validators behind live_errors, a number field's min/max, and the
+      # label column a belongs_to's select displays.
       class ScaffoldSchema
         TIMESTAMPS = %w[created_at updated_at].freeze
 
@@ -328,27 +363,66 @@ module Hibiki
           polymorphic?: "a polymorphic belongs_to has no single collection to select from"
         }.freeze
 
-        attr_reader :columns, :skipped
+        attr_reader :columns, :skipped, :unmatched
 
         class << self
           def refusal_for(attr) = REFUSALS.find { |query, _| attr.public_send(query) }&.last
 
-          def from_attributes(attributes, timestamps: true)
+          # `model` is nil whenever there is nothing to read: no constant, or
+          # no table yet — which is EVERY `hibiki:rails:scaffold` run, since it
+          # invokes the controller generator before its own migration. That
+          # case is this method's original behaviour, unchanged.
+          def from_attributes(attributes, timestamps: true, model: nil)
+            introspection = ModelIntrospection.new(model) if model
             supported, refused = attributes.partition { refusal_for(it).nil? }
+            return from_arguments_only(supported, refused, timestamps) unless introspection
 
-            new(columns: supported.map { column_from_attribute(it) },
-                skipped: refused.map { |attr| [attr.name, refusal_for(attr)] },
-                timestamps: timestamps, introspected: false)
+            merge(supported, refused, introspection)
           end
 
           def from_model(model)
             introspection = ModelIntrospection.new(model)
 
             new(columns: introspection.columns, skipped: introspection.skipped,
-                timestamps: introspection.timestamps?, introspected: true)
+                timestamps: introspection.timestamps?, introspected: true,
+                schema_ordered: true)
           end
 
           private
+
+          def from_arguments_only(supported, refused, timestamps)
+            new(columns: supported.map { column_from_attribute(it) },
+                skipped: skipped_pairs(refused), timestamps: timestamps, introspected: false)
+          end
+
+          # One reason for the whole list, or each attribute's own.
+          def skipped_pairs(attributes, reason = nil)
+            attributes.map { [it.name, reason || refusal_for(it)] }
+          end
+
+          # Order from the arguments, facts from the model.
+          #
+          # A matched argument contributes nothing but its POSITION — the
+          # column object itself is the introspected one, so the type, the
+          # reflection, the label column, the validators and the requiredness
+          # are all the schema's answer rather than the argument's. That is
+          # deliberate even where they disagree: `title:string!` is a migration
+          # instruction, and on this path the migration has already run, so the
+          # column's real nullability is the fact a form has to respect.
+          #
+          # An argument the model has no column for is kept rather than
+          # dropped — it may be a field whose migration is still to come, and a
+          # silently missing field is the §10 failure class — but it is
+          # recorded, and the post-install output names it.
+          def merge(supported, refused, introspection)
+            polymorphic, matchable = supported.partition { introspection.polymorphic?(it) }
+            paired = matchable.map { [it, introspection.column_for(it)] }
+
+            new(columns: paired.map { |attr, column| column || column_from_attribute(attr) },
+                skipped: skipped_pairs(refused) + skipped_pairs(polymorphic, REFUSALS[:polymorphic?]),
+                unmatched: paired.filter_map { |attr, column| attr.name unless column },
+                timestamps: introspection.timestamps?, introspected: true)
+          end
 
           def column_from_attribute(attr)
             ScaffoldColumn.new(
@@ -361,14 +435,22 @@ module Hibiki
           end
         end
 
-        def initialize(columns:, skipped: [], timestamps: true, introspected: false)
+        def initialize(columns:, skipped: [], unmatched: [], timestamps: true,
+                       introspected: false, schema_ordered: false)
           @columns = columns
           @skipped = skipped
+          @unmatched = unmatched
           @timestamps = timestamps
           @introspected = introspected
+          @schema_ordered = schema_ordered
         end
 
+        # Two independent facts, and the merge is the case that separates them:
+        # `introspected?` says the FACTS came from a live model, while
+        # `schema_ordered?` says the schema also decided the ORDER — which is
+        # the only thing the field-order notice has anything to say about.
         def introspected? = @introspected
+        def schema_ordered? = @schema_ordered
         def timestamps? = @timestamps
         def empty? = columns.empty?
 

@@ -180,4 +180,100 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.skipped.map(&:last)).to all(be_a(String))
     end
   end
+
+  # §5.16. The field-order lever used to cost every fact only a schema can
+  # state, because an explicit list switched builders wholesale. Order and
+  # facts are separate questions, and this is the case where both sources
+  # exist: `scaffold_controller Item title:string ...` against a migrated app.
+  describe ".from_attributes with a model to read" do
+    subject(:schema) do
+      described_class.from_attributes(
+        parse("title:string", "shelf:references", "count:integer"), model: Item
+      )
+    end
+
+    it "takes the order from the arguments and the facts from the model" do
+      # columns_hash reports shelf_id, title, notes, count, due_on, active —
+      # this is none of that order, and a strict subset besides.
+      expect(schema.attribute_names).to eq(%i[title shelf_id count])
+      expect(schema).to be_introspected
+      expect(schema).not_to be_schema_ordered
+    end
+
+    it "derives live errors from the model's validators, in the argument's order" do
+      expect(schema.live_errors).to eq(
+        [
+          [:title, %{("can't be blank" if title.to_s.strip.empty?)}],
+          [:shelf_id, %{("must be selected" if shelf_id.blank?)}],
+          [:count, %{("must be greater than or equal to 0" if count.to_i < 0)}]
+        ]
+      )
+    end
+
+    it "keeps the html bounds the argument list cannot state" do
+      expect(schema.columns.find { it.name == :count }.html_bounds).to eq(min: 0)
+    end
+
+    it "resolves the association's label column instead of guessing :name" do
+      shelf = schema.belongs_tos.sole
+
+      expect(shelf.label_column).to eq(:name)
+      expect(shelf.display_reader).to eq(:shelf_name)
+      expect(schema.row_members).to eq(%i[id title shelf_id shelf_name count])
+    end
+
+    it "reads timestamps off the model rather than assuming them" do
+      expect(schema).to be_timestamps
+      expect(schema.sortable).to eq(%i[id title count created_at])
+    end
+
+    it "lets the schema win where the argument disagrees about a type" do
+      # `notes` is text in the database. The argument says string, and the
+      # migration it would have described has already run — so the column the
+      # form writes to is the fact that matters.
+      schema = described_class.from_attributes(parse("notes:string"), model: Item)
+
+      expect(schema.columns.sole.type).to eq(:text)
+      expect(schema.columns.sole.tag_field_helper).to eq(:text_area_tag)
+    end
+
+    it "lets the schema win about requiredness too", if: BANG_SUFFIX do
+      # Same reasoning as the type: `!` is a migration instruction, and on this
+      # path there is nothing left for it to instruct.
+      schema = described_class.from_attributes(parse("due_on:date!"), model: Item)
+
+      expect(schema.columns.sole).not_to be_required
+    end
+
+    it "keeps a field the model has no column for, and records it" do
+      schema = described_class.from_attributes(parse("title:string", "blurb:text"), model: Item)
+
+      # Kept: it may be a column whose migration is still to come, and a
+      # silently dropped field is worse than an announced guess.
+      expect(schema.attribute_names).to eq(%i[title blurb])
+      expect(schema.unmatched).to eq(%w[blurb])
+      expect(schema.columns.find { it.name == :blurb }.live_error_clause).to be_nil
+    end
+
+    it "reports nothing unmatched when every argument lands" do
+      expect(schema.unmatched).to be_empty
+    end
+
+    it "refuses a polymorphic belongs_to the model declares but the argument does not" do
+      # Both of taggable's columns are ignored, so this matches nothing and
+      # would otherwise fall through to a collection_select over no table.
+      schema = described_class.from_attributes(parse("taggable:references", "label:string"), model: Tag)
+
+      expect(schema.attribute_names).to eq(%i[label])
+      expect(schema.skipped).to eq([["taggable", described_class::REFUSALS[:polymorphic?]]])
+      expect(schema.unmatched).to be_empty
+    end
+
+    it "matches a belongs_to whose foreign key disagrees with its name" do
+      # The argument can only name the association; only the reflection knows
+      # the column. Matching on the foreign key alone would miss this.
+      expect(described_class.from_attributes(parse("shelf:references"), model: Item)
+                            .columns.sole.name).to eq(:shelf_id)
+    end
+  end
 end

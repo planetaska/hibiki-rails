@@ -67,6 +67,16 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # A polymorphic belongs_to, whose two columns are BOTH ignored — so an
+  # explicit `taggable:references` argument matches nothing and would fall
+  # through to the argument's own answer if the merge did not refuse it.
+  create_table :tags, force: true do |t|
+    t.integer :taggable_id
+    t.string :taggable_type
+    t.string :label
+    t.timestamps
+  end
+
   # Validator SHAPES rather than column types — the options that decide
   # whether a rule can be checked before a round trip at all.
   create_table :gauges, force: true do |t|
@@ -113,6 +123,10 @@ end
 # model's own after_commit and only the has_many is owed.
 class Category < ActiveRecord::Base
   belongs_to :parent, class_name: "Category", optional: true
+end
+
+class Tag < ActiveRecord::Base
+  belongs_to :taggable, polymorphic: true
 end
 
 # Every validator here is one the generator must NOT copy naively: a blank
