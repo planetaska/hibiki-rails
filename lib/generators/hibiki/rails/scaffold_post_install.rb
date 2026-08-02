@@ -97,15 +97,26 @@ module Hibiki
           # commit-time failure still mirrors the model's own errors into the
           # same per-field slots with no change at all — it is the check BEFORE
           # the round trip that has to be re-derived.
-          reason = if schema.introspected?
-                     "#{class_name} declares no validators readable before a round trip"
-                   else
-                     "the migration has not run, so this command had no schema and no validators to read"
-                   end
-          say_status :form, "#{form_path}'s live_errors is thin — #{reason}. Add validators to " \
+          say_status :form, "#{form_path}'s live_errors is thin — #{live_errors_reason}. Add validators to " \
                             "the model, then re-run `#{rerun_command}` to derive the clauses from them " \
                             "(or write them there by hand)", :blue
         end
+
+        # Three reachable situations, and two of them used to share one
+        # sentence that was true of only one. "The migration has not run" is
+        # right for `hibiki:rails:scaffold`, which really does generate ahead of
+        # its own schema — and wrong for both a name with no model behind it at
+        # all and, since the order/facts merge, an explicit field list against a
+        # migrated app, where the validators WERE read and the model simply
+        # declares none this generator can use.
+        def live_errors_reason
+          return "#{class_name} declares no validators readable before a round trip" if schema.introspected?
+          return "there is no #{class_name} yet, so this command had no validators to read" unless model_defined?
+
+          "#{class_name} has no table yet, so this command had no schema and no validators to read"
+        end
+
+        def model_defined? = !class_name.safe_constantize.nil?
 
         # Re-running has to preserve the field list, or the advice costs the
         # user the order they chose — which was §5.16 in the other direction.

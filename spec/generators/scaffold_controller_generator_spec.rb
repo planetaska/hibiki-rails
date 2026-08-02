@@ -478,6 +478,19 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(output).to include("Check the spelling")
     end
 
+    # One sentence used to cover two different situations and was true of only
+    # one of them — and the merge made a third situation reachable.
+    it "blames the migration only when the migration is actually the reason" do
+      # No Book constant at all: nothing to read, and saying so beats blaming a
+      # migration nobody has written yet.
+      expect(generate(["Book", *book_fields])).to include("there is no Book yet")
+
+      # Gauge exists and is migrated, and `label`'s validators are all
+      # conditional — so its live_errors is thin for the third reason.
+      expect(generate(["Gauge", "label:string"]))
+        .to include("Gauge declares no validators readable before a round trip")
+    end
+
     it "keeps the field list when it tells you to re-run" do
       # Re-running without the arguments would cost the order the user just
       # chose, which is §5.16 pointing the other way.
