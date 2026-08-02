@@ -63,10 +63,38 @@ module Hibiki
       # `rescue_from` handlers still run (dispatch_action applies them
       # inside the job, now on the graph thread); what they don't handle
       # propagates to the actor's on_error — ::Rails.error by default.
+      #
+      # The client stamps a sequence number under the reserved `hbk` key to
+      # get a post-batch ack back, which is what stops its pending
+      # indicator. It cannot wait for a render instead: the core's equality
+      # gate (hibiki 0.2.0) means an ordinary action — paging to the page
+      # you are already on, a search that doesn't change the query, a
+      # destroy of a row another tab already deleted — legitimately
+      # produces zero bytes, and "clear on the next render" would hang
+      # forever. `delete`, not `[]`: the key must not reach the action
+      # method's data. No `hbk`, no ack, so a 0.3.0 page keeps working.
       def perform_action(data)
+        seq = data.delete("hbk")
+
         # A nil actor means the subscription was rejected or already torn
         # down; drop the action rather than blow up the cable thread.
-        @__hibiki_actor&.post { Hibiki.batch { super(data) } }
+        posted = @__hibiki_actor&.post do
+          Hibiki.batch { super(data) }
+        ensure
+          # Hibiki.batch flushes in its own ensure, so effects queued
+          # before a raise have run by the time this does — the ack is
+          # genuinely post-batch. GraphActor#work rescues around the whole
+          # job, so without this a raising action would hang the indicator
+          # in exactly the case the user most needs it to stop.
+          transmit({ ack: seq }) if seq
+        end
+
+        # post yields nil (no actor) or false (queue closed): the block
+        # never ran, so neither did its ensure. `dropped` is also what lets
+        # the client tell "late" from "never" — nothing is coming for this
+        # seq, so it settles immediately rather than waiting out the grace
+        # window.
+        transmit({ ack: seq, dropped: true }) if seq && !posted
       end
 
       private
