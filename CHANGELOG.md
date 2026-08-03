@@ -4,9 +4,56 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
-## Unreleased
+## 0.4.0 — 2026-08-03
 
 ### Added
+
+**Loading and connection state, stamped by the client.** The first growth of the
+`data-hibiki-*` protocol since 0.3.0, and the first attributes in it that no Ruby
+helper emits — the client writes them at runtime and app CSS reads them:
+
+```
+island root      data-hibiki-busy      present while an action is in flight
+                 aria-busy="true"      the same fact, for assistive tech
+                 data-hibiki-state     connecting | ready | offline | stalled
+firing control   data-hibiki-busy      on the control that started it
+```
+
+Everything an app wants out of that is a descendant selector —
+`[data-hibiki-busy] .spinner { display: inline-block }` — so per-row and
+per-button feedback needs no server state and no `{#if loading}` branch. The
+Ruby surface is unchanged: no new option on `on`, `hibiki_island` or `reactive`.
+
+**Actions are acknowledged once their batch has run**, and the ack is what clears
+the indicator. It cannot be "clear on the next render": the core's equality gate
+(hibiki 0.2.0) lets an ordinary action produce zero bytes — paging to the page
+you are already on, a search that does not change the query, a destroy of a row
+another tab already deleted — so a render-based rule hangs forever on gestures
+users make all the time. The ack sits in an `ensure`, so a raising action stops
+the spinner too, and a subscription that has gone away acks `dropped: true` from
+the cable thread instead, which is what lets the client tell "late" from "never".
+
+A page running the 0.3.0 client sends no sequence number and gets no ack, so
+nothing about this reaches an app that has not upgraded both halves.
+
+**Actions performed before the subscription confirms are queued, not dropped.**
+ActionCable's `Subscription#perform` silently returns false on a socket that is
+not open yet, and on the Turbo-broadcast path that window is about three
+serialised round trips — a click in it used to vanish. The queue covers the first
+connect window only: after a reconnect the server rebuilds the graph with default
+state, so replaying intent formed against the old one is worse than dropping it,
+and the island reads `offline` for the whole gap instead.
+
+Three class properties on `ChannelController` are the entire tuning surface —
+`busyDelay` (150 ms before a trip is worth mentioning), `busyGrace` (60 ms for a
+broadcast still in flight after its ack), `busyCeiling` (10 s before a trip is
+declared stalled rather than cleared silently). Deliberately not Stimulus values
+and not helper options; an app that wants different numbers subclasses and
+re-registers.
+
+The scaffold generators wire five sites to all of this — the counts line, the
+pagination bar, the infinite-scroll sentinel, the destroy button and the
+inline-edit Save — through a generated `_busy.html.erb` the app owns.
 
 **`hibiki:rails:scaffold` and `hibiki:rails:scaffold_controller`** — a reactive
 CRUD resource generated the way `rails g scaffold` generates a plain one.
