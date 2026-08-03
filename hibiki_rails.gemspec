@@ -35,7 +35,10 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actioncable", ">= 7.1"
-  spec.add_dependency "hibiki", "~> 0.1"
+  # 0.2 floor: generated code relies on the effect equality gate, which is what
+  # lets an ordinary action produce zero bytes — and the post-batch ack exists
+  # because of it.
+  spec.add_dependency "hibiki", "~> 0.2"
   spec.add_dependency "railties", ">= 7.1"
   spec.add_dependency "turbo-rails", ">= 2.0"
 end
