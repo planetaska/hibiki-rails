@@ -10,7 +10,7 @@ Turbo Streams broadcast → Turbo morphs the DOM
 
 A graph lives per cable connection (in practice: per browser tab), built when the channel subscribes and disposed when it unsubscribes. Effects subscribe to whatever signals they read; when an action writes a signal, exactly the affected effects re-render and broadcast.
 
-Supports Rails >= 7.1, Ruby >= 3.4.
+Supports Rails >= 8.0, Ruby >= 3.4.
 
 ## Rails quick start
 
@@ -107,7 +107,7 @@ Congratulations! Now you have your first reactive component!
 
 Documentation site: <https://planetaska.github.io/hibiki/rails-introduction/>
 
-Release notes and upgrade advice: [CHANGELOG.md](CHANGELOG.md). **If you run Rails 7.1 or 7.2, read the 0.3.0 entry** — it fixes channel lifecycle methods that were client-invocable on those versions.
+Release notes and upgrade advice: [CHANGELOG.md](CHANGELOG.md). **Rails 7.1 and 7.2 are supported up to 0.4.0 only** — 0.5.0 raises the floor to 8.0. If you are staying on 0.4.0 with Rails 7.x, read the 0.3.0 entry: it fixes channel lifecycle methods that were client-invocable on those versions.
 
 ## Development
 

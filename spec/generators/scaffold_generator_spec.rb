@@ -52,7 +52,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldGenerator do
   # which .parse then rejects — so handing attributes down through to_s would
   # drop every required field's null constraint on exactly the versions that
   # support declaring it.
-  it "preserves a required field through the hand-off", if: BANG_SUFFIX do
+  it "preserves a required field through the hand-off" do
     run_generator(described_class, %w[Widget title:string! --css=none], destination: @destination)
 
     expect(File.read(migration)).to include("t.string :title, null: false")

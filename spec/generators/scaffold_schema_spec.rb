@@ -188,7 +188,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.live_errors).to eq([[:author_id, %{("must be selected" if author_id.blank?)}]])
     end
 
-    it "reads a bang-suffixed scalar as required", if: BANG_SUFFIX do
+    it "reads a bang-suffixed scalar as required" do
       # GeneratedAttribute#required? is belongs_to-only; `title:string!` lands
       # in attr_options as null: false and would otherwise be missed.
       schema = described_class.from_attributes(parse("title:string!"))
@@ -268,7 +268,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.columns.sole.tag_field_helper).to eq(:text_area_tag)
     end
 
-    it "lets the schema win about requiredness too", if: BANG_SUFFIX do
+    it "lets the schema win about requiredness too" do
       # Same reasoning as the type: `!` is a migration instruction, and on this
       # path there is nothing left for it to instruct.
       schema = described_class.from_attributes(parse("due_on:date!"), model: Item)

@@ -9,10 +9,10 @@ module Hibiki
       #
       # Both sources wrap a ::Rails::Generators::GeneratedAttribute, even when
       # the facts came from a real schema, because railties' own per-version
-      # knowledge rides on it: #field_type answers :textarea on Rails 8.1 and
-      # :text_area on 7.1, which is the difference between a generated _form
-      # that runs on this gem's floor and one that doesn't. Synthesizing the
-      # attribute on the introspection path buys that for both paths at once.
+      # knowledge rides on it — #field_type, requiredness, index handling —
+      # and tracking that by hand is how a generated _form stops matching the
+      # Rails it runs on. Synthesizing the attribute on the introspection path
+      # buys that for both paths at once.
       class ScaffoldColumn
         # Types that can carry a LIKE term.
         TEXTUAL = %i[string text].freeze
@@ -24,10 +24,13 @@ module Hibiki
         COMPARABLE = %i[string integer decimal float date datetime time].freeze
 
         # Which *_tag helper renders the control in the channel-backed form.
-        # These are the OLD names on purpose: Rails 8.1 renamed them to
-        # #textarea_tag / #checkbox_tag but kept these as aliases, while 7.1
-        # and 7.2 have only these. One spelling valid across the whole
-        # supported matrix beats a version branch in a template.
+        # These are the OLD names: Rails 8.1 renamed them to #textarea_tag /
+        # #checkbox_tag and kept these as aliases. Originally that was the only
+        # spelling valid across a matrix that included 7.1/7.2; with the floor
+        # now at 8.0 both spellings work, and these stay because changing them
+        # would rewrite generated output — a byte-diff against every reference
+        # and test app — to buy nothing. Revisit if Rails ever drops the
+        # aliases; that is the one thing that would make it worth the churn.
         TAG_HELPERS = {
           string: :text_field_tag, text: :text_area_tag,
           integer: :number_field_tag, decimal: :text_field_tag,

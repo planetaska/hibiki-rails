@@ -103,13 +103,13 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
       end
     end
 
-    it "round-trips title:string!", if: BANG_SUFFIX do
+    it "round-trips title:string!" do
       attribute = Rails::Generators::GeneratedAttribute.parse("title:string!")
 
       expect(helpers_for("Book").call(:to_argv, attribute)).to eq("title:string!")
     end
 
-    it "is not what railties' own to_s would have produced", if: BANG_SUFFIX do
+    it "is not what railties' own to_s would have produced" do
       attribute = Rails::Generators::GeneratedAttribute.parse("title:string!")
 
       expect(attribute.to_s).to eq("title:string{null}")

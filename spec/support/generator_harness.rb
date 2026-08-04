@@ -15,16 +15,6 @@ Rails::Generators.configure!(Rails.application.config.generators)
 
 Dir[File.expand_path("../../lib/generators/**/*_generator.rb", __dir__)].each { |file| require file }
 
-# The `field:string!` bang suffix (null: false) is a Rails 8 addition: 7.1 and
-# 7.2 have no `type.ends_with?("!")` branch in parse_type_and_options and raise
-# "unknown type 'string!'". Nothing in the gem depends on it — to_argv simply
-# never sees null: false on those legs — but specs that exercise it have to say
-# which versions they mean.
-#
-# The recurring lesson, third time in this track: a framework feature present on
-# the newest version is not a feature on the supported matrix.
-BANG_SUFFIX = Rails::VERSION::MAJOR >= 8
-
 module GeneratorHarness
   # Run a generator class against a throwaway destination root, returning
   # everything it printed (say/say_status write to $stdout via Thor's shell,

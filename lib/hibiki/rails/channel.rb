@@ -48,10 +48,14 @@ module Hibiki
         # public_instance_methods(false).
         HIDDEN_ACTIONS = %w[build_graph subscribed unsubscribed].freeze
 
-        # Subtracted here rather than through ActionCable's #internal_methods
-        # hook, which only exists on 8.x: on Rails 7.1 and 7.2 that hook is
-        # never consulted, so an override of it is silently dead code. This
-        # works on every supported version.
+        # Subtracted from #action_methods rather than through ActionCable's
+        # #internal_methods hook. That hook would work now the floor is 8.0 —
+        # it is what #action_methods subtracts — but this is deliberately left
+        # alone: it is the fix for a real vulnerability (0.3.0, when the floor
+        # still included 7.1/7.2 where #internal_methods is never consulted and
+        # an override of it was silently dead code), and it holds on every
+        # version either way. Churning security-relevant code for idiom is not
+        # a trade worth making.
         def action_methods = super - HIDDEN_ACTIONS
       end
 

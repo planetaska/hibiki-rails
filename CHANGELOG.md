@@ -4,6 +4,33 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Changed — BREAKING
+
+**The Rails floor is now 8.0.** `actioncable` and `railties` move from
+`>= 7.1` to `>= 8.0`, and the 7.1 / 7.2 CI legs are gone. Ruby stays at `>= 3.4`.
+
+This is a correction as much as a policy change: **generated controllers never
+ran on Rails 7.** `hibiki:rails:scaffold` emits `params.expect` at two sites,
+inherited from Rails 8's own scaffold, and `ActionController::Parameters#expect`
+does not exist before 8.0 — so a generated controller raised `NoMethodError` on
+the first request to `show`, `edit`, `update`, `create` or `destroy` on 7.1 and
+7.2. The generator suite never caught it because those specs assert on emitted
+source text and never boot the result.
+
+The alternative — branching the template on `Rails::VERSION` — was rejected: it
+would also need a way to *execute* generated output on the old legs, which is
+more work than dropping two CI legs for a version combination (Rails 7.x on
+Ruby >= 3.4) that barely exists.
+
+**If you are on Rails 7.1 or 7.2, stay on 0.4.0.** It remains available and is
+unaffected; nothing in 0.5.0 is a security fix for it. Note that the *runtime*
+half of the gem — channels, the graph, the broadcast helpers, the client — has
+no known 8.0-only dependency; it is the generators whose output does. The floor
+applies to the whole gem anyway, because shipping a gem whose headline generator
+cannot run on its own declared floor is what got us here.
+
 ## 0.4.0 — 2026-08-03
 
 ### Added

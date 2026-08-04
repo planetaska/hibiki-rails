@@ -2,9 +2,9 @@ PATH
   remote: .
   specs:
     hibiki_rails (0.4.0)
-      actioncable (>= 7.1)
+      actioncable (>= 8.0)
       hibiki (~> 0.2)
-      railties (>= 7.1)
+      railties (>= 8.0)
       turbo-rails (>= 2.0)
 
 GEM
