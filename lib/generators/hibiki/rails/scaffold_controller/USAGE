@@ -28,7 +28,12 @@ Example:
         app/forms/book_form.rb
         app/controllers/books_controller.rb
         app/views/books/*
+        app/assets/stylesheets/hibiki_busy.css
     And modify:
         app/models/book.rb
         app/models/author.rb   # each model a belongs_to points at
         config/routes.rb
+
+    Pass --phlex to emit Phlex components under app/views/books/*.rb instead of
+    ERB templates. The view layer is the only thing it changes; it needs the
+    phlex-rails gem and `bin/rails g phlex:install`.

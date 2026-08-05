@@ -25,8 +25,13 @@ Example:
         app/forms/book_form.rb
         app/controllers/books_controller.rb
         app/views/books/*
+        app/assets/stylesheets/hibiki_busy.css
     And add to config/routes.rb:
         resources :books
 
     Restart the server afterwards: Rails computes autoload paths from the
     app/* glob at boot, and app/forms is new.
+
+    Pass --phlex to emit Phlex components under app/views/books/*.rb instead of
+    ERB templates. The view layer is the only thing it changes; it needs the
+    phlex-rails gem and `bin/rails g phlex:install`.

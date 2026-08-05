@@ -4,7 +4,65 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
-## Unreleased
+## 0.5.0 — 2026-08-05
+
+### Added
+
+**`--phlex` on both scaffold generators.** `bin/rails g hibiki:rails:scaffold
+Book title:string --phlex` emits Phlex components under `app/views/books/*.rb`,
+namespaced `Views::`, instead of ERB templates. Purely additive: without the
+flag nothing about the generated output changes, byte for byte.
+
+Only the view layer moves. The channels, the query object, the ReactiveForm,
+the model injections, every action and the whole `data-hibiki-*` protocol are
+the same either way — the controller gains an explicit `render Views::…` at
+each of its six render sites, and the two `broadcast_morph` calls swap
+`partial:`/`locals:` for `renderable:`, and that is the entire difference
+outside the templates.
+
+Needs `phlex-rails` and `bin/rails g phlex:install`. The generator warns when
+either is missing and writes the files anyway, so the scaffold can come first.
+
+Four things worth knowing, because they are not what an ERB reader expects.
+Phlex renders `String`, `Symbol`, `Integer` and `Float` and raises on anything
+else, so date, time and decimal columns are emitted with an explicit `to_s`.
+Phlex omits a `false`-valued attribute entirely, so the page control's
+`data-turbo` is the string `"false"`. Phlex emits no whitespace between
+siblings, so the components space their inline neighbours explicitly. And
+`options_for_select` outputs directly and raises if its return value is passed
+on, so both select sites take their options from a block.
+
+The page control is still the one component with a per-`--css` fork, in both
+trees. Under Phlex the plain-Tailwind fork's *reason* dissolves — a hoisted
+template local becomes an ordinary constant — but it stays forked so the two
+trees match file for file and a future `--css` decision stays a diff rather
+than a judgement call.
+
+### Changed
+
+**The loading and connection recipes are an asset, not a partial.** They were a
+103-line inline `<style>` emitted as `app/views/<resource>/_busy.html.erb` and
+rendered once per page; they are now
+`app/assets/stylesheets/hibiki_busy.css`, written once per app.
+
+Per resource was always wrong: every rule keys on an attribute the client
+stamps and none of them mentions a model, so a two-resource app carried two
+byte-identical copies. It also put CSS somewhere a Content-Security-Policy that
+forbids inline styles would reject.
+
+The generator wires it for you: a cssbundling or tailwindcss-rails entry
+stylesheet gets an `@import`, a layout already using
+`stylesheet_link_tag :app` or `:all` needs nothing, and anything else gets a
+`stylesheet_link_tag` injected into the layout. Only when none of those applies
+does it print the line to add. Every branch is idempotent.
+
+**If you re-run the generator on an app scaffolded before this**, the old
+`_busy.html.erb` stays on disk — a generator never deletes — and nothing
+renders it any more. The post-install output names it; delete it.
+
+The rules are deliberately unlayered, and the file says so: two of them set
+`display` on elements that also carry Tailwind utilities, and unlayered
+declarations beat `@layer utilities` whatever the link order.
 
 ### Fixed
 

@@ -80,6 +80,13 @@ match your app (DaisyUI, Tailwind, or unstyled — detected automatically, or
 forced with `--css=`). Run `bin/rails g hibiki:rails:scaffold --help` for the
 rest of the options.
 
+Pass `--phlex` for Phlex components under `app/views/books/*.rb` instead of ERB
+templates. It needs `phlex-rails` and `bin/rails g phlex:install`, and it
+changes the view layer only — the channels, the query object, the form and the
+whole client protocol are the same either way. Note this is a different thing
+from the `hibiki_phlex` gem, which makes a component own reactive state; here
+the channel owns the state and the components are ordinary stateless views.
+
 Listing the fields yourself only chooses their order and which ones appear — the
 model still answers everything else, so the live validation, a number field's
 `min:`/`max:` and a `belongs_to`'s display label all survive the choice.
@@ -89,6 +96,12 @@ Your models are edited, not just read: the one being scaffolded gains the
 each model a `belongs_to` points at gains the `has_many` half plus a ping of its
 own, so renaming a parent repaints the lists that print its name. Both are
 idempotent, announced, and leave anything you already declared alone.
+
+One file lands outside the resource: `app/assets/stylesheets/hibiki_busy.css`,
+which styles the loading and connection state the client stamps. It is written
+once per app, shared by every generated resource, and wired into your stylesheet
+or layout automatically — the post-install output says which, or gives you the
+line to add when it cannot tell.
 
 Restart the server afterwards: `app/forms/` is new, and Rails works out its
 autoload paths at boot.
