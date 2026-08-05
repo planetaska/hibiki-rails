@@ -30,6 +30,16 @@ module Hibiki
           value ? %( class="#{value}") : ""
         end
 
+        # The same decision as an ARGUMENT rather than an attribute: one
+        # element, or none. Every argument list below splats it, so --css=none
+        # drops the `class:` keyword entirely instead of emitting `class: nil` —
+        # which would render an empty attribute and, worse, read as an oversight
+        # in a file the user now owns.
+        def css_args(token)
+          value = css(token)
+          value ? [%(class: "#{value}")] : []
+        end
+
         # The one kind of class that survives --css=none: a state hook the
         # transport stylesheet selects on. The hook names what the element IS
         # to the busy machine and is identical in all three variants; the
@@ -66,7 +76,7 @@ module Hibiki
           [%("#{column.name}"), "form.#{column.name}",
            *(bounds unless bounds.empty?),
            %(id: "\#{dom}_#{column.name}"),
-           *(%(class: "#{css(row_field_token(column))}") if css?),
+           *css_args(row_field_token(column)),
            %(**on(:set_field, event: :#{column.tag_event}, with: { field: "#{column.name}" }))]
         end
 
@@ -75,7 +85,7 @@ module Hibiki
            "options_for_select(#{column.options_local}, form.#{column.name})",
            %(include_blank: "Select #{column.human_name.downcase}"),
            %(id: "\#{dom}_#{column.name}"),
-           *(%(class: "#{css(row_field_token(column))}") if css?),
+           *css_args(row_field_token(column)),
            %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))]
         end
 
@@ -86,13 +96,13 @@ module Hibiki
         def row_toggle_args(column)
           [%("#{column.name}"), %("1"), "#{singular_name}.#{column.name}",
            %(id: "#{row_dom_id_prefix}_\#{#{singular_name}.id}_#{column.name}"),
-           *(%(class: "#{css(:toggle_sm)}") if css?),
+           *css_args(:toggle_sm),
            %(**on(:set_#{column.name}, event: :change, with: { id: #{singular_name}.id }))]
         end
 
         def row_button_args(label, action, token, confirm: nil)
           [%("#{label}"), %(type: "button"),
-           *(%(class: "#{css(token)}") if css?),
+           *css_args(token),
            %(**on(:#{action}, #{%(confirm: "#{confirm}", ) if confirm}with: { id: #{singular_name}.id }))]
         end
 
@@ -100,7 +110,7 @@ module Hibiki
 
         def search_field_args
           [":query", "nil",
-           *(%(class: "#{css(:input)}") if css?),
+           *css_args(:input),
            %(placeholder: "#{schema.searchable.map { it.to_s.humanize.downcase }.join(' or ')}"),
            "**on(:search, event: :input)"]
         end
@@ -108,17 +118,17 @@ module Hibiki
         def filter_select_args(column)
           [":#{column.name}",
            %(options_for_select([["Any", ""], ["Yes", "true"], ["No", "false"]])),
-           *(%(class: "#{css(:select)}") if css?),
+           *css_args(:select),
            %(**on(:set_filter, event: :change, with: { column: "#{column.name}" }))]
         end
 
         def sort_select_tail_args
-          [*(%(class: "#{css(:select)}") if css?), "**on(:set_sort, event: :change)"]
+          [*css_args(:select), "**on(:set_sort, event: :change)"]
         end
 
         def direction_button_args
           [%(type: "button"),
-           *(%(class: "#{css(:btn_ghost)}") if css?),
+           *css_args(:btn_ghost),
            %("aria-label": "Reverse sort direction"),
            "**on(:toggle_direction)"]
         end
@@ -151,14 +161,25 @@ module Hibiki
            *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" }]
         end
 
-        # The strict-locals header for the list fragment. Every local carries a
-        # default except the rows themselves, because a partial rendered from a
-        # channel has no controller context to fall back on — it branches on
-        # locals or it branches on nothing.
+        # What the list fragment is handed, as [name, default] pairs — nil
+        # default meaning required. Every local carries one except the rows
+        # themselves, because a fragment rendered from a channel has no
+        # controller context to fall back on: it branches on locals or it
+        # branches on nothing.
+        #
+        # Pairs rather than source text because the two view layers spell this
+        # differently — a strict-locals header one side, a keyword initializer
+        # the other — and the SET has to stay the same or the channel's
+        # broadcast stops matching what the view accepts.
+        def list_locals
+          [[controller_file_name, nil], %w[page 1], %w[page_count 1], %w[remaining 0],
+           %w[editing_id nil], %w[form nil],
+           *schema.belongs_tos.map { [it.options_local.to_s, "[]"] }]
+        end
+
+        # The strict-locals header for the list fragment.
         def list_locals_signature
-          ["#{controller_file_name}:", "page: 1", "page_count: 1", "remaining: 0",
-           "editing_id: nil", "form: nil",
-           *schema.belongs_tos.map { "#{it.options_local}: []" }].join(", ")
+          list_locals.map { |name, default| default ? "#{name}: #{default}" : "#{name}:" }.join(", ")
         end
       end
     end

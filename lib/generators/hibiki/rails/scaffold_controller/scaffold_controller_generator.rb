@@ -8,6 +8,7 @@ require_relative "../scaffold_view_helpers"
 require_relative "../scaffold_model_injection"
 require_relative "../scaffold_parent_injection"
 require_relative "../scaffold_parent_notices"
+require_relative "../scaffold_phlex_helpers"
 require_relative "../scaffold_post_install"
 require_relative "../scaffold_transport_stylesheet"
 require_relative "../scaffold_schema"
@@ -30,6 +31,7 @@ module Hibiki
         include GeneratorHelpers
         include ScaffoldHelpers
         include ScaffoldViewHelpers
+        include ScaffoldPhlexHelpers
         include ScaffoldModelInjection
         include ScaffoldParentInjection
         include ScaffoldParentNotices
@@ -57,6 +59,8 @@ module Hibiki
                                  desc: "Rows per page"
         class_option :skip_routes, type: :boolean,
                                    desc: "Don't add routes to config/routes.rb"
+        class_option :phlex, type: :boolean, default: false,
+                             desc: "Emit Phlex components under app/views instead of ERB templates"
 
         # Deliberately NO check_class_collision on the controller. Rails' own
         # scaffold_controller assumes a brand-new resource; this one's primary
@@ -256,6 +260,11 @@ module Hibiki
 
         def infinite? = options[:infinite_scroll]
         def searchable? = schema.searchable? && !options[:skip_search]
+
+        # The view layer. It reaches the templates and nothing else: the graph,
+        # the query object, the form, the actions and the whole data-hibiki
+        # protocol are the same either way.
+        def phlex? = options[:phlex]
       end
     end
   end

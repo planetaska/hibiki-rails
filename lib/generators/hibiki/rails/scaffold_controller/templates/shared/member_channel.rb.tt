@@ -29,8 +29,7 @@ class <%= member_channel_class_name %> < ApplicationCable::Channel
       row = @row.value
       next unless row
 
-      broadcast_morph target: "<%= row_dom_id_prefix %>_#{row.id}", partial: "<%= view_dir.delete_prefix('app/views/') %>/<%= row_partial %>",
-                      locals: { <%= singular_name %>: row, actions: false }
+      broadcast_morph target: "<%= row_dom_id_prefix %>_#{row.id}", <%= row_broadcast_source(indent: 22) %>
     end
   end
 

@@ -192,7 +192,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
 
       expect(output).to include("nothing links it")
       expect(output).to include(%(stylesheet_link_tag "hibiki_busy"))
-      expect(output).to include(%(@import "hibiki_busy.css";))
+      expect(output).to include(%(@import "./hibiki_busy.css";))
     end
   end
 

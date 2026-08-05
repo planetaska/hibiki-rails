@@ -11,10 +11,12 @@ class <%= scaffold_controller_class_name %> < ApplicationController
     # projection, so the two cannot drift. Page 1 needs no clamping: it is the
     # one page that always exists.
     @<%= singular_table_name %>_query = <%= query_class_name %>.new
+<%= phlex_render(:index, indent: 4) -%>
   end
 
   # GET /<%= controller_file_path %>/1
   def show
+<%= phlex_render(:show, indent: 4) -%>
   end
 
   # GET /<%= controller_file_path %>/new
@@ -23,6 +25,7 @@ class <%= scaffold_controller_class_name %> < ApplicationController
 <% schema.belongs_tos.each do |column| -%>
     @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
 <% end -%>
+<%= phlex_render(:new, indent: 4) -%>
   end
 
   # GET /<%= controller_file_path %>/1/edit
@@ -30,6 +33,7 @@ class <%= scaffold_controller_class_name %> < ApplicationController
 <% schema.belongs_tos.each do |column| -%>
     @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
 <% end -%>
+<%= phlex_render(:edit, indent: 4) -%>
   end
 
   # POST /<%= controller_file_path %>
@@ -42,7 +46,11 @@ class <%= scaffold_controller_class_name %> < ApplicationController
 <% schema.belongs_tos.each do |column| -%>
       @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
 <% end -%>
+<% if phlex? -%>
+<%= phlex_render(:new, indent: 6, status: ":unprocessable_content") -%>
+<% else -%>
       render :new, status: :unprocessable_content
+<% end -%>
     end
   end
 
@@ -54,7 +62,11 @@ class <%= scaffold_controller_class_name %> < ApplicationController
 <% schema.belongs_tos.each do |column| -%>
       @<%= column.association_name.to_s.pluralize %> = <%= column.association_class_name %>.all
 <% end -%>
+<% if phlex? -%>
+<%= phlex_render(:edit, indent: 6, status: ":unprocessable_content") -%>
+<% else -%>
       render :edit, status: :unprocessable_content
+<% end -%>
     end
   end
 

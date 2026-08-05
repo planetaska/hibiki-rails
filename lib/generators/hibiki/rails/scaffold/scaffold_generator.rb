@@ -45,6 +45,8 @@ module Hibiki
         class_option :skip_search, type: :boolean, default: false,
                                    desc: "Omit the search box and the LIKE terms behind it"
         class_option :page_size, type: :numeric, default: 20, desc: "Rows per page"
+        class_option :phlex, type: :boolean, default: false,
+                             desc: "Emit Phlex components under app/views instead of ERB templates"
 
         def initialize(...)
           super

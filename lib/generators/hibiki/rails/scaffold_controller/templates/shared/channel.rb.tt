@@ -107,8 +107,7 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     # subtrees by id (which is why every row id is stable across display/edit)
     # and Turbo passes ignoreActiveValue.
     Hibiki::Effect.new do
-      broadcast_morph target: "<%= list_dom_id %>", partial: "<%= view_dir.delete_prefix('app/views/') %>/list",
-                      locals: list_locals
+      broadcast_morph target: "<%= list_dom_id %>", <%= list_broadcast_source(indent: 22) %>
     end
 
     # Reactive values: text only, matched document-wide, so a placeholder can
