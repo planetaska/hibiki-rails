@@ -1,0 +1,20 @@
+<%#- ESCAPING: a Phlex component is plain Ruby, so there is no runtime ERB here
+     and nothing to double-escape. Every <% in this tree is generation time,
+     which is the one genuine simplification the port buys. -%>
+# frozen_string_literal: true
+
+# One field's live validation message, or nothing at all.
+#
+# The smallest component in the set, and the one that shows the shape: keyword
+# arguments where the ERB twin had a strict-locals header. Ruby enforces these,
+# so handing it the wrong name raises at the call site instead of rendering
+# blank.
+class <%= view_class_name(:field_error) %> < Views::Base
+<%= initializer_source([%w[message nil]]) %>
+
+  def view_template
+    return if @message.blank?
+
+    p<%= arg_list(*css_args(:error_text)) %> { @message }
+  end
+end

@@ -1,0 +1,101 @@
+<%#- ESCAPING: none. Plain Ruby out, so every <% here is generation time. The
+     ERB twin of this file carries the densest escaping in the set and this one
+     carries none, which is the port's one real simplification. -%>
+# frozen_string_literal: true
+
+# The inline edit form for one row, talking to the channel rather than to a
+# controller.
+#
+# Plain *_tag helpers with UNPREFIXED names, deliberately not form_with: this
+# payload goes to a channel action, and the client builds it with
+# Object.fromEntries(new FormData(form)) — so the keys must be exactly the
+# attribute names the ReactiveForm declares. A `model[field]` name would not
+# match.
+class <%= view_class_name(:row_form) %> < Views::Base
+<%= phlex_includes(:label_tag, *row_field_helper_modules,
+                   *(%i[select_tag options_for_select] if schema.belongs_tos.any?), hibiki: true) %>
+
+<%= initializer_source([[singular_name, nil], ["form", nil],
+                        *schema.belongs_tos.map { [it.options_local.to_s, nil] }]) %>
+
+  def view_template
+    # reset: false. The default resets a submitted form synchronously, before
+    # the server has replied — right for an "add" form, wrong here: a failed
+    # commit would blank every field.
+    form<%= arg_list("**on(:save, event: :submit, reset: false)", *css_args(:row_form)) %> do
+      div<%= arg_list(*css_args(:fieldset)) %> do
+<% schema.columns.each do |column| -%>
+        <%= column.name %>_field
+<% end -%>
+      end
+
+      form_actions
+    end
+  end
+
+  private
+
+  # Field ids are prefixed per row so nothing collides while idiomorph pairs
+  # subtrees by id.
+  def dom = "<%= row_dom_id_prefix %>_#{@<%= singular_name %>.id}"
+
+<% schema.columns.each do |column| -%>
+  def <%= column.name %>_field
+<% if column.type == :boolean -%>
+    # The checkbox reports itself like every other field — a changed checkbox
+    # sends its CHECKED state as a JSON boolean, so it needs no hidden-field
+    # pair. An unchecked box then contributes nothing to the submit payload,
+    # which is harmless: #save only assigns keys the payload carries, and this
+    # field's signal is already current.
+    div<%= arg_list(*css_args(:checkbox_wrap)) %> do
+      label_tag<%= arg_list(%("\#{dom}_#{column.name}"), *css_args(:label)) %> do
+        check_box_tag <%= wrapped_list([%("#{column.name}"), %("1"), "#{form_ref}.#{column.name}", %(id: "\#{dom}_#{column.name}"), *css_args(:toggle), %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))], indent: 22).lstrip %>
+        plain "<%= column.human_name %>"
+      end
+    end
+<% else -%>
+    label_tag <%= wrapped_list([%("\#{dom}_#{column.name}"), %("#{column.human_name}"), *css_args(:label)], indent: 14).lstrip %>
+<% if column.belongs_to? -%>
+    # options_for_select OUTPUTS directly and its return value RAISES if passed
+    # to another helper, so the options are a block here rather than an
+    # argument. That is phlex-rails' own prescription, not a workaround.
+    select_tag<%= arg_list(*row_select_head_args(column), indent: 15) %> do
+      <%= row_select_options_source(column) %>
+    end
+<% else -%>
+    <%= column.tag_field_helper %> <%= wrapped_list(row_field_args(column), indent: column.tag_field_helper.length + 5).lstrip %>
+<% end -%>
+<%= render_call(:field_error, [%(message: #{form_ref}.error_for(:#{column.name}))], indent: 4) %>
+<% end -%>
+  end
+
+<% end -%>
+  def form_actions
+    div<%= arg_list(*css_args(:form_actions)) %> do
+      # Phlex's button defaults to type="submit", which is exactly why Cancel
+      # has to say type: "button" — otherwise clicking it submits the form too.
+      button<%= arg_list(*css_args(:btn_primary)) %> do
+        # The one site that earns a spinner rather than the automatic dim.
+        # Saving is the gesture with the longest tail — a commit, validation, a
+        # re-render — and it is the visual answer the dirty badge below could
+        # not give: the badge means "unsaved", the spinner means "saving".
+        #
+        # It shows while THIS form is in flight, not while the island is. The
+        # control that fires a submit is the form, so the rule reaches down
+        # into its button; a sibling row's Save is untouched.
+        span(<%= hbk_args("hbk-control-busy", "hbk-spinner", token: :spinner).first %>, aria_hidden: "true")
+        plain "Save"
+      end
+
+      button<%= arg_list(%(type: "button"), *css_args(:btn), %(**on(:cancel, with: { id: #{record_ref}.id }))) %> { "Cancel" }
+
+      # A badge, not a disabled Save button. dirty? is server state delivered
+      # over a websocket, so it can only move after a round trip — and a click
+      # that both blurs a field and activates the button beats that round trip
+      # every time. A disabled Save would swallow it. The submit carries the
+      # full payload regardless, so the badge reports state without gating the
+      # gesture.
+      span<%= arg_list(*css_args(:badge_warning)) %> { "unsaved changes" } if <%= form_ref %>.dirty?
+    end
+  end
+end

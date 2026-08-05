@@ -68,6 +68,13 @@ module Hibiki
         # controller existing is the normal case rather than an error. Thor's
         # per-file conflict prompt is the right granularity for that.
 
+        # First, so a --phlex app missing its wiring reads that at the TOP of
+        # the output rather than under forty created-file lines. It only warns,
+        # so the files are written either way — see ScaffoldPhlexHelpers.
+        def check_phlex_wiring
+          warn_without_phlex_rails
+        end
+
         # Resolving the schema first means a missing model or an unmigrated
         # table aborts before anything is written, rather than half-way through.
         def resolve_schema
@@ -105,6 +112,8 @@ module Hibiki
         end
 
         def create_views
+          return create_phlex_views if phlex?
+
           %w[index show new edit _form _list _controls _field_error].each do |view|
             template "views/#{view}.html.erb.tt", view_path("#{view}.html.erb")
           end
@@ -163,16 +172,46 @@ module Hibiki
 
         private
 
+        # No underscore, no .html.erb, and no _row/_row_form rename: all three
+        # are Rails PARTIAL conventions, and a Phlex component is reached by
+        # constant. Dropping the rename also drops a step — the file is
+        # row.rb because Zeitwerk wants basename.camelize, and calling it
+        # book.rb would put Views::Books::Book one reformat away from shadowing
+        # the model inside its own namespace.
+        #
+        # Private, because a public method on a Thor generator is a command.
+        def create_phlex_views
+          %w[index show new edit form list row row_form controls field_error].each do |view|
+            template "views/#{view}.rb.tt", view_path("#{view}.rb")
+          end
+
+          template "views/pagination.rb.tt", view_path("pagination.rb") unless infinite?
+        end
+
         # Ordered so an app's own lib/templates/... override wins first, then
-        # the per-variant fork, then the one shared template set. Only
-        # _pagination has a per-variant file — a tag-name change under `none`
-        # and a shared-local extraction under `tailwind`, neither of which a
-        # class-token map can express — so everything else falls through to
-        # shared/ and there is exactly one template set to maintain.
+        # the view layer, then the per-variant fork, then the one shared
+        # template set. Only the page control has a per-variant file — a
+        # tag-name change under `none` and a shared-local extraction under
+        # `tailwind`, neither of which a class-token map can express — so
+        # everything else falls through to shared/.
+        #
+        # The two layers' templates never collide (list.rb.tt vs
+        # _list.html.erb.tt), so the phlex roots could have lived beside the
+        # ERB ones. They are a subtree instead because `ls` is where this
+        # phase's permanent cost should be visible: every view change is now
+        # two templates, forever.
         def source_paths
           @source_paths ||= [*self.class.source_paths_for_search,
+                             *phlex_source_paths,
                              File.join(TEMPLATE_ROOT, css_variant.to_s),
                              File.join(TEMPLATE_ROOT, "shared")]
+        end
+
+        def phlex_source_paths
+          return [] unless phlex?
+
+          [File.join(TEMPLATE_ROOT, "phlex", css_variant.to_s),
+           File.join(TEMPLATE_ROOT, "phlex", "shared")]
         end
 
         # Explicit attributes always win, matching Rails' own precedence; the

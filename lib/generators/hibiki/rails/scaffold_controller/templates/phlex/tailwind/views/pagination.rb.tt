@@ -1,0 +1,94 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+# frozen_string_literal: true
+
+# The numbered page control. It lives INSIDE the replaced fragment, like every
+# other control in there: page_count is a server number, so a single-page list
+# simply stops rendering this element. Placed outside the fragment it would
+# never be re-rendered and could only ever change its TEXT (reactive values are
+# textContent-only), leaving a control whose links point at pages that no
+# longer exist.
+#
+# SCROLL. The links are anchors to the list, not buttons, and that IS the
+# scroll answer — the client only preventDefaults `submit`, so the click both
+# performs the action and does the browser's own fragment jump, which puts the
+# top of the list back in view exactly as a full page load would. No client
+# capability needed. data-turbo="false" keeps Turbo Drive out of it: a
+# same-page hash with Turbo off is a plain scroll, not a navigation.
+#
+# THE STRING "false", not the boolean. Phlex OMITS a false-valued attribute
+# entirely, so `turbo: false` would emit no data-turbo at all and Turbo Drive
+# would take the click back. The ERB twin's boolean is right there and wrong
+# here.
+#
+# No generation token — a page number is idempotent, so a double fire is one
+# write and one render.
+#
+# PENDING. Nothing here asks for it: the client stamps data-hibiki-busy on the
+# control that fired, so the clicked page link dims itself while the trip is
+# out, and the swap that answers it destroys the attribute along with the link.
+# The bar above the list is the other half — the anchor jump has already put it
+# in view by then.
+#
+# The one component with a per-variant template, and under Phlex the reason has
+# CHANGED. In ERB, plain Tailwind had to hoist the shared item styling into a
+# template local or repeat fourteen utilities six times — a structural fork a
+# class-token map cannot express. Here it is an ordinary private method, so
+# this file differs from the daisyui one only in strings. It stays forked
+# anyway, so the two trees keep matching file for file and a future --css
+# decision is a diff rather than a judgement call.
+class <%= view_class_name(:pagination) %> < Views::Base
+<%= phlex_includes(:link_to, hibiki: true) %>
+
+  ITEM = "relative inline-flex items-center border border-gray-300 px-4 py-2 " \
+         "text-sm font-medium first:rounded-l-md last:rounded-r-md"
+  ITEM_LINK = "#{ITEM} bg-white text-gray-700 hover:bg-gray-50"
+  ITEM_CURRENT = "#{ITEM} z-10 bg-indigo-600 border-indigo-600 text-white"
+  ITEM_INERT = "#{ITEM} bg-white text-gray-300 cursor-not-allowed"
+
+<%= initializer_source([%w[page 1], %w[page_count 1]]) %>
+
+  def view_template
+    # The id-carrying wrapper stays put and stays BARE — it always renders, so
+    # idiomorph always has a node to pair with, and layout classes here would
+    # leave dead vertical space on a list with no page control.
+    div(id: "<%= pagination_dom_id %>") do
+      nav<%= arg_list(*css_args(:pagination_nav), %(aria_label: "Pagination")) %> { items } if @page_count > 1
+    end
+  end
+
+  private
+
+  def items
+    # Prev/next stay rendered and go inert at the ends rather than
+    # disappearing, so the control keeps its width across a page change. A
+    # span, not a disabled link: there is no page to name, so there is no
+    # action to stamp.
+    @page == 1 ? inert("«") : step("«", @page - 1, rel: "prev", label: "Previous page")
+
+    <%= query_class_name %>.page_numbers(page: @page, page_count: @page_count).each do |n|
+      if n.nil?
+        span(class: ITEM_INERT, aria_hidden: "true") { "…" }
+      elsif n == @page
+        # aria-current is the only thing that tells a screen reader which page
+        # it is on: the visual cue is a class, and the link text is just a
+        # number either way.
+        span(class: ITEM_CURRENT, aria_current: "page") { n.to_s }
+      else
+        step(n.to_s, n, label: "Page #{n}")
+      end
+    end
+
+    @page == @page_count ? inert("»") : step("»", @page + 1, rel: "next", label: "Next page")
+  end
+
+  def inert(glyph)
+    span(class: ITEM_INERT, aria_disabled: "true") { glyph }
+  end
+
+  # `on` returns a { data: } hash, so an element needing its OWN data
+  # attributes has to MERGE rather than splat, or the anchor stops scrolling.
+  def step(text, n, label:, rel: nil)
+    link_to text, "#<%= list_dom_id %>", class: ITEM_LINK, rel:, "aria-label": label,
+            data: { turbo: "false" }.merge(on(:go_to_page, with: { page: n })[:data])
+  end
+end

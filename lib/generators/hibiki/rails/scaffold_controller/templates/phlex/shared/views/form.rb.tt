@@ -1,0 +1,70 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+# frozen_string_literal: true
+
+# The full-page form — the non-JS path, and what new/edit render. The inline
+# form on the index is a different component built on ReactiveForm.
+#
+# Built on the phlex-rails form_with BUILDER rather than hand-rolled elements.
+# Less idiomatic Phlex, paid knowingly: it keeps form.label / form.<field> and
+# therefore for/id pairing and the html_bounds injection, and it keeps this
+# tree structurally comparable with its ERB twin — which is what the phase's
+# DOM-equivalence check rests on.
+<% if schema.belongs_tos.any? -%>
+#
+# Each belongs_to collection arrives as a KEYWORD, never an ivar this component
+# reaches for. It is only rendered from a controller today, but the rule is
+# what matters: a channel renders through ApplicationController.render, where
+# instance variables set by a controller action simply do not exist.
+<% end -%>
+class <%= view_class_name(:form) %> < Views::Base
+<%= phlex_includes(:form_with, :pluralize) %>
+
+<%= initializer_source([[singular_name, nil], *schema.belongs_tos.map { [it.association_name.to_s.pluralize, "[]"] }]) %>
+
+  def view_template
+    form_with<%= arg_list("model: @#{singular_name}", *css_args(:form)) %> do |form|
+      errors
+      fields(form)
+
+      div { form.submit<%= css? ? %( class: "#{css(:btn_primary)}") : "" %> }
+    end
+  end
+
+  private
+
+  def errors
+    return if @<%= singular_name %>.errors.empty?
+
+    div(style: "color: red") do
+      h2 { "#{pluralize(@<%= singular_name %>.errors.count, 'error')} prohibited this <%= human_name.downcase %> from being saved:" }
+
+      ul do
+        @<%= singular_name %>.errors.each { |error| li { error.full_message } }
+      end
+    end
+  end
+
+  def fields(form)
+    div<%= arg_list(*css_args(:fieldset)) %> do
+<% schema.columns.each_with_index do |column, index| -%>
+<% if column.type == :boolean -%>
+      div<%= arg_list(*css_args(:checkbox_wrap)) %> do
+        form.label <%= wrapped_list([":#{column.name}", *css_args(:label)], indent: 19).lstrip %> do
+          form.<%= column.attr.field_type %> <%= wrapped_list([":#{column.name}", *css_args(:toggle)], indent: 12 + column.attr.field_type.to_s.length).lstrip %>
+          plain "<%= column.human_name %>"
+        end
+      end
+<% elsif column.belongs_to? -%>
+      form.label <%= wrapped_list([":#{column.name}", *css_args(:label)], indent: 17).lstrip %>
+      form.collection_select <%= wrapped_list([":#{column.name}", "@#{column.association_name.to_s.pluralize}", ":id", ":#{column.label_column}", %({ include_blank: "Select #{column.human_name.downcase}" }), *css_args(:select)], indent: 28).lstrip %>
+<% else -%>
+      form.label <%= wrapped_list([":#{column.name}", *css_args(:label)], indent: 17).lstrip %>
+      form.<%= column.attr.field_type %> <%= wrapped_list([":#{column.name}", *(html_bounds_source(column).split(", ") if html_bounds_source(column).present?), *css_args(field_token(column))], indent: 12 + column.attr.field_type.to_s.length).lstrip %>
+<% end -%>
+<% unless index == schema.columns.size - 1 -%>
+
+<% end -%>
+<% end -%>
+    end
+  end
+end

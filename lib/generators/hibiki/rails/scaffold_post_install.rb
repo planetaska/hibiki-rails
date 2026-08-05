@@ -14,18 +14,30 @@ module Hibiki
         private
 
         def post_install_notices
+          app_notices
+          schema_notices
+          wiring_hint
+        end
+
+        # What this app needs doing before the output works: a restart, a
+        # stylesheet, a leftover file. None of them is about the resource.
+        def app_notices
           restart_notice
-          # Lives with the code that chose the branch, like parent_notices —
-          # the outcomes are that module's vocabulary.
+          # These two live with the code that chose their branch, like
+          # parent_notices — the outcomes are those modules' vocabulary.
           stylesheet_notice
+          stale_erb_views_notice
           rebuild_css_notice
+        end
+
+        # What the generator could and could not read, and what it guessed.
+        def schema_notices
           association_notices
           field_order_notice
           unmatched_fields_notice
           live_errors_notice
           uniqueness_notice
           skipped_notice
-          wiring_hint
         end
 
         def restart_notice

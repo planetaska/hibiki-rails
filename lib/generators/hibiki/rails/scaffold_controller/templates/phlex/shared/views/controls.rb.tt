@@ -1,0 +1,125 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. Most of this
+     file is generation time anyway: the option lists are built from the schema
+     and baked in. -%>
+# frozen_string_literal: true
+
+# Search / filter / sort: pure signal state, no database write, no page reload.
+#
+# Deliberately NEVER re-rendered — it lives inside the island (so its events
+# reach the delegated listener) but outside the replaced fragment, so a list
+# repaint cannot clobber what the user is typing.
+class <%= view_class_name(:controls) %> < Views::Base
+<%= phlex_includes(*(:search_field_tag if searchable?), :select_tag, :options_for_select, hibiki: true) %>
+
+<%= initializer_source([%w[sort :id], %w[direction :asc]]) %>
+
+  def view_template
+    div<%= arg_list(*css_args(:controls)) %> do
+<% if searchable? -%>
+      search_field
+<% end -%>
+<% schema.booleans.each do |column| -%>
+      <%= column.name %>_filter
+<% end -%>
+      sort_select
+      direction_button
+      counts
+    end
+  end
+
+  private
+<% if searchable? -%>
+
+  def search_field
+    label<%= arg_list(*css_args(:form_control)) %> do
+      span<%= arg_list(*css_args(:label_text)) %> { "Search" }
+      # `input`, so the list follows the keystrokes instead of waiting for a
+      # blur. `on` debounces :input at 250ms unless told otherwise, which is
+      # what stops a word costing one round trip per letter; the number is
+      # stamped into the attribute, so the markup says what it does.
+      search_field_tag <%= wrapped_list(search_field_args, indent: 23).lstrip %>
+    end
+  end
+<% end -%>
+<% schema.booleans.each do |column| -%>
+
+  def <%= column.name %>_filter
+    label<%= arg_list(*css_args(:form_control)) %> do
+      span<%= arg_list(*css_args(:label_text)) %> { "<%= column.human_name %>" }
+      select_tag<%= arg_list(*filter_select_head_args(column), indent: 17) %> do
+        <%= filter_select_options_source %>
+      end
+    end
+  end
+<% end -%>
+
+  def sort_select
+    label<%= arg_list(*css_args(:form_control)) %> do
+      span<%= arg_list(*css_args(:label_text)) %> { "Sort by" }
+      # The view offers, the query object's SORTABLE decides. Duplicated on
+      # purpose: a view reaching into that allowlist would make a security
+      # boundary look like presentation.
+      select_tag<%= arg_list(":sort", *sort_select_tail_args, indent: 17) %> do
+        options_for_select([<%= sort_option_pairs(indent: 28).lstrip %>], @sort.to_s)
+      end
+    end
+  end
+
+  # The label reports the CURRENT order, which means it has to change when the
+  # order does — and this component is deliberately never re-rendered. So it is
+  # a reactive value: textContent-only updates to a placeholder that lives
+  # outside the replaced fragment.
+  #
+  # The visible text is a STATE reading, so the accessible name carries the
+  # ACTION instead — a button called "▼ Descending" tells a screen-reader user
+  # what they are looking at, not what activating it does. aria-label is static
+  # because it stays true in both directions; a reactive value updates text,
+  # never attributes.
+  def direction_button
+    button<%= arg_list(*direction_button_args, indent: 12) %> do
+      span(**reactive_attrs(:<%= value_name("direction") %>)) { <%= query_class_name %>.direction_label(@direction) }
+    end
+  end
+
+  # The window half of the sentence, then counts scoped to what the query
+  # MATCHES rather than to what is shown — so the sentence stays true as the
+  # window moves.
+  #
+  # All of these sit here rather than inside the replaced fragment on purpose:
+  # transmit_value is equality-gated, and a placeholder inside a
+  # broadcast-replaced fragment would have its text reset by the swap while the
+  # gate suppressed the re-send that used to heal it. Out here, nothing ever
+  # swaps them.
+  def counts
+    p<%= arg_list(*css_args(:counts)) %> do
+      plain "Showing "
+      span(**reactive_attrs(:<%= value_name("range") %>))
+      plain " of "
+      span(**reactive_attrs(:<%= value_name("matched") %>))
+      plain " matching"
+<% if schema.primary_boolean -%>
+      plain " · "
+      span(**reactive_attrs(:<%= value_name(schema.primary_boolean.name) %>))
+      plain " <%= schema.primary_boolean.name %>"
+<% end -%>
+
+      # The island-level indicator, and the safest home for one: this component
+      # is never re-rendered, so a list swap cannot destroy the indicator
+      # mid-flight the way it would inside the fragment.
+      #
+      # aria-hidden, because the client puts aria-busy on the island root and
+      # that is how assistive tech expects to hear this. Duplicating it as
+      # visible text would announce the same fact twice, in the wrong idiom.
+      span(<%= hbk_args("hbk-island-busy", "hbk-spinner", token: :spinner).first %>, aria_hidden: "true")
+
+      # Connection state, which is a different thing from busy: the numbers
+      # above are real, they have simply stopped moving. A live region so the
+      # news is announced rather than merely displayed — the text inside it
+      # changes, which is what makes that work.
+      span<%= arg_list(%(role: "status"), *css_args(:warning_text)) %> do
+        span(class: "hbk-offline") { "offline — reconnecting…" }
+        span(class: "hbk-stalled") { "no response" }
+      end
+    end
+  end
+end

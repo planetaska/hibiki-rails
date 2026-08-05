@@ -1,0 +1,59 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+# frozen_string_literal: true
+
+class <%= view_class_name(:index) %> < Views::Base
+<%= phlex_includes(:content_for, :link_to, :turbo_stream_from, hibiki: true) %>
+
+<%= initializer_source([["#{singular_table_name}_query", nil]]) %>
+
+  def view_template
+    content_for(:title) { "<%= human_name.pluralize %>" }
+
+    div<%= arg_list(*css_args(:page)) %> do
+      h1<%= arg_list(*css_args(:heading)) %> { "<%= human_name.pluralize %>" }
+
+      div<%= arg_list(*css_args(:actions_bar)) %> do
+        link_to <%= wrapped_list([%("New #{human_name.downcase}"), new_helper(type: :path), *css_args(:btn_primary)], indent: 16).lstrip %>
+      end
+
+      island
+    end
+  end
+
+  private
+
+  # Stamped through Hibiki::Rails::Helpers. The attributes it emits are a
+  # private Ruby<->JS contract — always go through the helpers, never write
+  # them by hand. ONE island per page, and record ids travel in action payloads
+  # rather than in the subscription; `params:` exists for the case where a
+  # channel must know its record BEFORE the graph is built, which the show page
+  # needs and a collection does not.
+  def island
+    cid = SecureRandom.uuid
+
+    div(**hibiki_island(<%= collection_channel_class_name %>, cid:)) do
+      # The client waits for this source to confirm before subscribing, so the
+      # graph's first broadcast can't be lost.
+      turbo_stream_from "<%= collection_stream_name %>", cid
+
+<%= render_call(:controls, [], indent: 6) %>
+
+      # A non-blocking progress bar, and the site that needs one most: the page
+      # links are real anchors that jump to the list, so by the time a reply
+      # lands the user is already staring at this spot — at the OLD list,
+      # scrolled to the top of it.
+      #
+      # Outside the replaced fragment on purpose, like the controls: a swap
+      # must not be able to destroy the very indicator that says the swap is
+      # coming. It reserves its own 3px, so appearing never reflows the list.
+      # Styling comes from app/assets/stylesheets/hibiki_busy.css.
+      div(<%= hbk_args("hbk-island-busy", "hbk-bar").first %>, aria_hidden: "true")
+
+      # Paint-avoidance placeholder: the graph's first broadcast replaces it
+      # using the SAME component, so first paint and every repaint are one code
+      # path — which means the same keywords, from the same query object the
+      # channel's rows derived builds.
+<%= render_call(:list, index_render_args, indent: 6) %>
+    end
+  end
+end

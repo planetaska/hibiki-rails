@@ -1,0 +1,42 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+# frozen_string_literal: true
+
+class <%= view_class_name(:show) %> < Views::Base
+<%= phlex_includes(:link_to, :button_to, :turbo_stream_from, hibiki: true) %>
+
+<%= initializer_source([[singular_name, nil]]) %>
+
+  def view_template
+    div<%= arg_list(*css_args(:page)) %> do
+      h1<%= arg_list(*css_args(:heading)) %> { "<%= human_name.pluralize %>" }
+
+      div<%= arg_list(*css_args(:actions_bar_spaced)) %> do
+        link_to <%= wrapped_list([%("Edit this #{human_name.downcase}"), edit_helper(type: :path).sub("@#{singular_table_name}", "@#{singular_name}"), *css_args(:btn_default)], indent: 16).lstrip %>
+        link_to <%= wrapped_list([%("Back to #{human_name.downcase.pluralize}"), index_helper(type: :path), *css_args(:btn_default)], indent: 16).lstrip %>
+
+        button_to <%= wrapped_list([%("Destroy this #{human_name.downcase}"), "@#{singular_name}", "method: :delete", %(form: { data: { turbo_confirm: "Are you sure?" } }), *css_args(:btn_warning)], indent: 18).lstrip %>
+      end
+
+      island
+    end
+  end
+
+  private
+
+  # A one-record island. `params:` is the only way a channel can learn WHICH
+  # record its page is about — the subscription is the only hook that runs
+  # before the graph is built — and the channel validates that id through a
+  # scope IT chooses before streaming from anything.
+  #
+  # The island root WRAPS the row rather than being it: the broadcast target is
+  # the row's own root id, and replacing the element that carries the stream
+  # source would tear down the subscription delivering the replacement.
+  def island
+    cid = SecureRandom.uuid
+
+    div(**hibiki_island(<%= member_channel_class_name %>, cid:, params: { record_id: @<%= singular_name %>.id })) do
+      turbo_stream_from "<%= member_stream_name %>", cid
+<%= render_call(:row, ["#{singular_name}: @#{singular_name}", "actions: false"], indent: 6) %>
+    end
+  end
+end

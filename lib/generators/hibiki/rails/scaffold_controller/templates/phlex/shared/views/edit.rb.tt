@@ -1,0 +1,23 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+# frozen_string_literal: true
+
+class <%= view_class_name(:edit) %> < Views::Base
+<%= phlex_includes(:content_for, :link_to) %>
+
+<%= initializer_source([[singular_name, nil], *schema.belongs_tos.map { [it.association_name.to_s.pluralize, "[]"] }]) %>
+
+  def view_template
+    content_for(:title) { "Editing <%= human_name.downcase %>" }
+
+    div<%= arg_list(*css_args(:page)) %> do
+      h1<%= arg_list(*css_args(:heading)) %> { "Editing <%= human_name.downcase %>" }
+
+      div<%= arg_list(*css_args(:actions_bar_spaced)) %> do
+        link_to <%= wrapped_list([%("Show this #{human_name.downcase}"), "@#{singular_name}", *css_args(:btn_default)], indent: 16).lstrip %>
+        link_to <%= wrapped_list([%("Back to #{human_name.downcase.pluralize}"), index_helper(type: :path), *css_args(:btn_default)], indent: 16).lstrip %>
+      end
+
+<%= render_call(:form, [[singular_name, "@#{singular_name}"].join(": "), *schema.belongs_tos.map { "#{it.association_name.to_s.pluralize}: @#{it.association_name.to_s.pluralize}" }], indent: 6) %>
+    end
+  end
+end

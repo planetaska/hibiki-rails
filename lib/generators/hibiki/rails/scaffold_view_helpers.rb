@@ -73,37 +73,70 @@ module Hibiki
         def row_field_args(column)
           bounds = html_bounds_source(column)
 
-          [%("#{column.name}"), "form.#{column.name}",
+          [%("#{column.name}"), "#{form_ref}.#{column.name}",
            *(bounds unless bounds.empty?),
            %(id: "\#{dom}_#{column.name}"),
            *css_args(row_field_token(column)),
            %(**on(:set_field, event: :#{column.tag_event}, with: { field: "#{column.name}" }))]
         end
 
+        # Split around the options positional, because the two view layers put
+        # it in different places. phlex-rails' options_for_select OUTPUTS
+        # directly and returns a Phlex::Rails::Never that RAISES if passed on,
+        # so a Phlex select_tag takes its options from a block instead. Head and
+        # tail rather than two lists: the ERB form is composed from the same
+        # pieces, so the two cannot drift apart.
         def row_select_args(column)
+          head, *tail = row_select_head_args(column)
+
+          [head, row_select_options_source(column), *tail]
+        end
+
+        def row_select_head_args(column)
           [%("#{column.name}"),
-           "options_for_select(#{column.options_local}, form.#{column.name})",
            %(include_blank: "Select #{column.human_name.downcase}"),
            %(id: "\#{dom}_#{column.name}"),
            *css_args(row_field_token(column)),
            %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))]
         end
 
+        def row_select_options_source(column)
+          "options_for_select(#{options_ref(column)}, #{form_ref}.#{column.name})"
+        end
+
         # ---- the row's own controls ------------------------------------------
+
+        # How a template refers to the record it was handed: a partial gets a
+        # local, a component gets a keyword argument it stored on an ivar. The
+        # two layers differ by a sigil here, not by an argument list, so every
+        # builder below stays single.
+        def record_ref = phlex? ? "@#{singular_name}" : singular_name
+
+        # The same sigil question for the other two things a row-level template
+        # is handed: the ReactiveForm, and a belongs_to's option pairs.
+        def form_ref = phlex? ? "@form" : "form"
+        def options_ref(column) = phlex? ? "@#{column.options_local}" : column.options_local.to_s
 
         # Talks to the channel directly rather than through a form submit, so
         # it needs no hidden-field pair.
         def row_toggle_args(column)
-          [%("#{column.name}"), %("1"), "#{singular_name}.#{column.name}",
-           %(id: "#{row_dom_id_prefix}_\#{#{singular_name}.id}_#{column.name}"),
+          [%("#{column.name}"), %("1"), "#{record_ref}.#{column.name}",
+           %(id: "#{row_dom_id_prefix}_\#{#{record_ref}.id}_#{column.name}"),
            *css_args(:toggle_sm),
-           %(**on(:set_#{column.name}, event: :change, with: { id: #{singular_name}.id }))]
+           %(**on(:set_#{column.name}, event: :change, with: { id: #{record_ref}.id }))]
         end
 
+        # Split around the label for the same reason the selects split around
+        # their options: `tag.button("Edit", ...)` takes it as an argument and
+        # Phlex's `button(...) { "Edit" }` takes it as content.
         def row_button_args(label, action, token, confirm: nil)
-          [%("#{label}"), %(type: "button"),
+          [%("#{label}"), *row_button_attr_args(action, token, confirm:)]
+        end
+
+        def row_button_attr_args(action, token, confirm: nil)
+          [%(type: "button"),
            *css_args(token),
-           %(**on(:#{action}, #{%(confirm: "#{confirm}", ) if confirm}with: { id: #{singular_name}.id }))]
+           %(**on(:#{action}, #{%(confirm: "#{confirm}", ) if confirm}with: { id: #{record_ref}.id }))]
         end
 
         # ---- the controls partial --------------------------------------------
@@ -115,11 +148,22 @@ module Hibiki
            "**on(:search, event: :input)"]
         end
 
+        # The same head/tail split, and the second of exactly two sites where
+        # options_for_select is an argument rather than a call.
         def filter_select_args(column)
+          head, *tail = filter_select_head_args(column)
+
+          [head, filter_select_options_source, *tail]
+        end
+
+        def filter_select_head_args(column)
           [":#{column.name}",
-           %(options_for_select([["Any", ""], ["Yes", "true"], ["No", "false"]])),
            *css_args(:select),
            %(**on(:set_filter, event: :change, with: { column: "#{column.name}" }))]
+        end
+
+        def filter_select_options_source
+          %(options_for_select([["Any", ""], ["Yes", "true"], ["No", "false"]]))
         end
 
         def sort_select_tail_args

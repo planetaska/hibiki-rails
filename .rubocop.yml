@@ -42,9 +42,18 @@ Metrics/ClassLength:
 # transcribed from three hand-built, browser-verified variants. Splitting it to
 # satisfy a line count would separate the tokens from the accessor that
 # validates them and buy nothing.
+#
+# The two view-helper modules are the same shape: flat collections of small
+# emitters, one per thing a template needs to say, each a few lines and none
+# calling another except through the head/tail pairs that exist precisely so
+# the two view layers cannot drift. Their length tracks how much the templates
+# emit; splitting them by count would put a builder in one file and its twin in
+# another, which is the one thing this design is trying to prevent.
 Metrics/ModuleLength:
   Exclude:
     - lib/generators/hibiki/rails/css_variant.rb
+    - lib/generators/hibiki/rails/scaffold_view_helpers.rb
+    - lib/generators/hibiki/rails/scaffold_phlex_helpers.rb
 
 # Keyword arguments don't have the readability problem this cop targets —
 # they name themselves at the call site. Helpers#on is the case in point:
