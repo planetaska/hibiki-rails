@@ -15,6 +15,9 @@ module Hibiki
 
         def post_install_notices
           restart_notice
+          # Lives with the code that chose the branch, like parent_notices —
+          # the outcomes are that module's vocabulary.
+          stylesheet_notice
           rebuild_css_notice
           association_notices
           field_order_notice

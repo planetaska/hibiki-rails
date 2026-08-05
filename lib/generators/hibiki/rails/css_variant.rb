@@ -121,10 +121,13 @@ module Hibiki
           badge_warning: "inline-flex items-center rounded-full bg-amber-100 px-2 py-1 " \
                          "text-xs font-medium text-amber-800",
           # `inline-block` is load-bearing, not decoration: a bare span is
-          # inline, where h-3/w-3 do nothing. It is safe against the
-          # visibility rules because this stylesheet is linked in <head> and
-          # the transport <style> is in the body, so equal specificity goes
-          # hibiki's way.
+          # inline, where h-3/w-3 do nothing. It also collides with
+          # .hbk-control-busy's `display: none` at equal specificity — the
+          # transport stylesheet wins because it is UNLAYERED and Tailwind's
+          # utilities are in @layer utilities, which beats them whatever the
+          # link order. (Before 0.5.0 the rules were a <style> in the body and
+          # won on document order instead; that is why the stylesheet's header
+          # now says not to wrap it in a layer.)
           spinner: "inline-block h-3 w-3 animate-spin rounded-full border-2 " \
                    "border-current border-r-transparent align-[-0.15em]",
           warning_text: "text-amber-600",

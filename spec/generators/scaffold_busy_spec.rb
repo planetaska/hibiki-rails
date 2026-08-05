@@ -32,17 +32,34 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
   end
 
   describe "the transport stylesheet" do
-    it "ships with every variant and is rendered once, outside the island" do
+    let(:stylesheet) { Hibiki::Rails::Generators::ScaffoldTransportStylesheet::STYLESHEET }
+
+    # An asset, not a view. It carries no model knowledge — every rule keys on
+    # an attribute the client stamps — so it is one file per APP, which is also
+    # what keeps a two-resource app from carrying two identical copies of it.
+    it "ships with every variant, as one asset and no view" do
       Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
         FileUtils.rm_rf(Dir[File.join(@destination, "app")])
         generate(["--css=#{variant}"])
 
-        expect(exists?("app/views/books/_busy.html.erb")).to be(true)
-        index = generated("app/views/books/index.html.erb")
-        expect(index).to include(%(render "books/busy"))
-        # After the island's `end`, so a channel re-render can never touch it.
-        expect(index.index(%(render "books/busy"))).to be > index.rindex("<% end %>")
+        expect(exists?(stylesheet)).to be(true)
+        expect(Dir[File.join(@destination, "app/views/**/*busy*")]).to be_empty
+        expect(generated("app/views/books/index.html.erb")).not_to include("busy\"")
       end
+    end
+
+    # The deduplication claim, and the whole reason this stopped being a view:
+    # two resources, one stylesheet. A second scaffold writes byte-identical
+    # content, so Thor reports `identical` and never prompts — and a variant
+    # change, which is the one case the content really differs, gets Thor's
+    # conflict prompt, the same granularity every other file here gets.
+    it "is one file for the whole app, however many resources are scaffolded" do
+      generate
+      run_generator(described_class, %w[Item], destination: @destination)
+
+      expect(Dir[File.join(@destination, "app/assets/stylesheets/*.css")].map { File.basename(it) })
+        .to contain_exactly("hibiki_busy.css")
+      expect(Dir[File.join(@destination, "app/views/**/*busy*")]).to be_empty
     end
 
     # A rule, not a class string. The token map names the spinner's LOOK; it
@@ -53,7 +70,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
       rules = Hibiki::Rails::Generators::CssVariant::NAMES.to_h do |variant|
         FileUtils.rm_rf(Dir[File.join(@destination, "app")])
         generate(["--css=#{variant}"])
-        [variant, generated("app/views/books/_busy.html.erb")]
+        [variant, generated(stylesheet)]
       end
 
       rules.each_value do |css|
@@ -74,8 +91,108 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
     it "never re-declares display on the bare spinner class" do
       generate(["--css=none"])
 
-      expect(generated("app/views/books/_busy.html.erb"))
-        .not_to match(/^\s*\.hbk-spinner\s*\{[^}]*display/m)
+      expect(generated(stylesheet)).not_to match(/^\s*\.hbk-spinner\s*\{[^}]*display/m)
+    end
+
+    # These rules set `display` on elements that also carry utility classes, and
+    # Tailwind 4 layers its utilities. Unlayered wins over layered whatever the
+    # link order — wrap this file in a layer and every control spinner is
+    # permanently visible, in the styled variants only.
+    it "declares no cascade layer" do
+      generate
+
+      expect(generated(stylesheet)).not_to match(/^\s*@layer\b/)
+    end
+  end
+
+  # "The main stylesheet" is not one thing, and the wrong guess fails silently:
+  # the file is on disk, nothing links it, and every indicator is invisible.
+  describe "getting it onto the page" do
+    def write(path, body)
+      full = File.join(@destination, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, body)
+    end
+
+    def layout(link) = write("app/views/layouts/application.html.erb", <<~ERB)
+      <html><head>
+        <%= stylesheet_link_tag #{link}, "data-turbo-track": "reload" %>
+      </head><body><%= yield %></body></html>
+    ERB
+
+    it "imports from a cssbundling entry stylesheet" do
+      write("app/assets/stylesheets/application.tailwind.css", %(@import "tailwindcss";\n))
+      layout(%("application"))
+
+      expect(generate).to include("imported from your entry stylesheet")
+      # The leading ./ is load-bearing: Tailwind 4's CLI resolves imports like
+      # a bundler, so a bare specifier is looked up as a package and the build
+      # fails even though the file is right there.
+      expect(generated("app/assets/stylesheets/application.tailwind.css"))
+        .to include(%(@import "./hibiki_busy.css";))
+    end
+
+    # tailwindcss-rails keeps its entry in a directory of its own, so the
+    # import has to climb out of it to reach app/assets/stylesheets.
+    it "imports from a tailwindcss-rails entry stylesheet, path adjusted" do
+      write("app/assets/tailwind/application.css", %(@import "tailwindcss";\n))
+      layout(%("application"))
+
+      generate
+
+      expect(generated("app/assets/tailwind/application.css"))
+        .to include(%(@import "../stylesheets/hibiki_busy.css";))
+    end
+
+    # Propshaft's bulk helper already links every css file under app/assets, so
+    # dropping the file in is the whole of the wiring.
+    it "leaves a layout alone when it links stylesheets in bulk" do
+      layout(":app")
+
+      generate
+
+      expect(generated("app/views/layouts/application.html.erb")).not_to include("hibiki_busy")
+    end
+
+    # The stock propshaft shape, and the one that needs the layout edit:
+    # propshaft's only css compiler rewrites url(...), never @import, so an
+    # import appended to application.css resolves to an undigested path.
+    it "links from the layout when nothing else will carry it" do
+      layout(%("application"))
+
+      expect(generate).to include("linked from app/views/layouts/application.html.erb")
+      expect(generated("app/views/layouts/application.html.erb"))
+        .to include(%(stylesheet_link_tag "hibiki_busy"))
+    end
+
+    it "links the layout at most once across two resources" do
+      layout(%("application"))
+      generate
+      run_generator(described_class, %w[Item], destination: @destination)
+
+      expect(generated("app/views/layouts/application.html.erb").scan("hibiki_busy").size).to eq(1)
+    end
+
+    # A generator never deletes, so an app scaffolded before 0.5.0 keeps the
+    # old partial on disk. Inert rather than broken, which is exactly why
+    # nothing else would ever mention it.
+    it "names the stale _busy partial an older scaffold left behind" do
+      write("app/views/books/_busy.html.erb", "<style></style>\n")
+
+      expect(generate).to include("app/views/books/_busy.html.erb is left over")
+    end
+
+    it "says nothing about a partial that was never there" do
+      expect(generate).not_to include("left over")
+    end
+
+    # Nothing to edit is not nothing to say: the file is inert until linked.
+    it "prints the exact line to paste when it cannot wire anything" do
+      output = generate
+
+      expect(output).to include("nothing links it")
+      expect(output).to include(%(stylesheet_link_tag "hibiki_busy"))
+      expect(output).to include(%(@import "hibiki_busy.css";))
     end
   end
 

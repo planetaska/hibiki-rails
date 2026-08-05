@@ -1,0 +1,106 @@
+<%#- ESCAPING: all of this is literal CSS. There is no runtime ERB here at all —
+     a .css file is never rendered — so a bare <% is generation time and there
+     is nothing to double-escape. The one branch is at the bottom. -%>
+/* The app's half of the transport contract.
+
+   Every reactivity in this stack is server-side, so every gesture is a round
+   trip. The hibiki client stamps what it knows about that trip on the island
+   root and on the control that fired — data-hibiki-busy, aria-busy and
+   data-hibiki-state — and these rules are the only thing that turns those
+   attributes into something a user can see. They are the one part of the
+   data-hibiki protocol app code may touch, and only by READING it: no helper
+   emits these attributes, and nothing here should ever write one.
+
+   Nothing below hides or replaces content, and no view has an `if loading`
+   branch. During a round trip the list on screen is STALE, not absent — the
+   server-rendered first paint is real content, and every later update swaps
+   valid content for newer valid content. So the idiom is to annotate the stale
+   thing, not to swap it for a skeleton.
+
+   One file per app, not per resource: the rules key on the client's attributes
+   and know nothing about any model, so scaffolding a second resource finds this
+   already here and leaves it alone.
+
+   DELIBERATELY UNLAYERED. Two rules below set `display` on an element that also
+   carries utility classes (the spinner's look comes from a class token), and
+   Tailwind 4 puts its utilities in `@layer utilities`. Unlayered declarations
+   beat layered ones whatever the link order, which is what keeps a control
+   spinner hidden until its control is busy. Do not wrap this file in a layer. */
+
+@keyframes hbk-slide { from { transform: translateX(-100%) } to { transform: translateX(340%) } }
+
+/* THE ISLAND is busy. The island root is the only element that ever carries
+   data-hibiki-state, so requiring both attributes is how a rule says "this
+   island" rather than "some control inside it" — which matters, because the
+   firing control carries data-hibiki-busy too.
+
+   visibility, not display: an indicator that appears must not reflow the
+   sentence or the list it sits above. It reserves its own space. */
+.hbk-island-busy { visibility: hidden }
+[data-hibiki-state][data-hibiki-busy] .hbk-island-busy { visibility: visible }
+
+/* The bar above the list. Non-blocking on purpose: the list underneath it is
+   still the real list, still scrollable, still clickable.
+
+   A faint track under the moving segment, so the bar reads as present even at
+   the moments the segment is off at one end — and both tinted from currentColor
+   with color-mix rather than `opacity`, which would stack and leave the segment
+   at 4% of what it should be. */
+.hbk-bar {
+  height: 3px; overflow: hidden; border-radius: 3px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.hbk-bar::after {
+  content: ""; display: block; height: 100%; width: 30%;
+  background: color-mix(in srgb, currentColor 55%, transparent);
+  transform: translateX(-100%);
+}
+[data-hibiki-state][data-hibiki-busy] .hbk-bar::after {
+  animation: hbk-slide 1.1s ease-in-out infinite;
+}
+
+/* THIS CONTROL is busy. :not([data-hibiki-state]) excludes the island root, so
+   one row's Save spins that row's button and no other. A descendant selector
+   rather than a child one because the control that fires a submit is the FORM,
+   and the spinner lives inside its button. */
+.hbk-control-busy { display: none }
+[data-hibiki-busy]:not([data-hibiki-state]) .hbk-control-busy { display: inline-block }
+
+/* Buttons and links dim while their own trip is in flight — the answer to "did
+   my click register?", free at every site because the client stamps the control
+   it fired from. Dimmed, never disabled: toggling `disabled` mid-gesture drops
+   keyboard focus, and the label stays put so nothing reflows under the pointer.
+
+   Text inputs are deliberately NOT in this list. A debounced search fires while
+   the user is still typing, and dimming the field they are typing into reads as
+   a fault. The island-level indicator covers that case. */
+button[data-hibiki-busy], a[data-hibiki-busy] { opacity: .55; cursor: progress }
+
+/* Connection state is not busy-ness: the content is real and frozen, and the
+   honest thing is to say so rather than to spin. `connecting` gets no rule at
+   all — the client queues actions until the subscription confirms, so that
+   window is just a slow round trip now, and the busy machine already covers
+   it. */
+.hbk-offline, .hbk-stalled { display: none }
+[data-hibiki-state="offline"] .hbk-offline,
+[data-hibiki-state="stalled"] .hbk-stalled { display: inline-block }
+<% unless css? -%>
+
+/* --css=none, so the spinner's LOOK has nowhere else to come from. The styled
+   variants get theirs from a class token instead.
+
+   Note what is NOT here: `display`. The rules above own that — a control
+   spinner is display:none until its control is busy — and declaring it again at
+   equal specificity, further down the file, would win and leave every spinner
+   permanently visible. The island's own dot needs it, since a bare span is
+   inline and would ignore the width, so it gets it from a two-class selector
+   that nothing else matches. */
+@keyframes hbk-rotate { to { transform: rotate(360deg) } }
+.hbk-spinner {
+  box-sizing: border-box; width: .8em; height: .8em;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; vertical-align: -.1em;
+}
+.hbk-island-busy.hbk-spinner { display: inline-block }
+[data-hibiki-busy] .hbk-spinner { animation: hbk-rotate .7s linear infinite }
+<% end -%>

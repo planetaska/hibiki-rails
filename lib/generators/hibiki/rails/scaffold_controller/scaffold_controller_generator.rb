@@ -9,6 +9,7 @@ require_relative "../scaffold_model_injection"
 require_relative "../scaffold_parent_injection"
 require_relative "../scaffold_parent_notices"
 require_relative "../scaffold_post_install"
+require_relative "../scaffold_transport_stylesheet"
 require_relative "../scaffold_schema"
 require_relative "../css_variant"
 
@@ -33,6 +34,7 @@ module Hibiki
         include ScaffoldParentInjection
         include ScaffoldParentNotices
         include ScaffoldPostInstall
+        include ScaffoldTransportStylesheet
 
         TEMPLATE_ROOT = File.expand_path("templates", __dir__)
 
@@ -72,6 +74,14 @@ module Hibiki
           @new_app_dirs = %w[app/forms app/channels app/models app/views].reject { exists?(it) }
         end
 
+        # One file per app, not per resource, and the only thing this generator
+        # writes outside app/{channels,models,forms,views,controllers}. It
+        # carries no model knowledge at all — the rules key on the client's
+        # attributes — so a second resource finds it already there.
+        def create_stylesheet
+          create_transport_stylesheet
+        end
+
         def create_channels
           template "channel.rb.tt", collection_channel_path
           template "member_channel.rb.tt", member_channel_path
@@ -91,7 +101,7 @@ module Hibiki
         end
 
         def create_views
-          %w[index show new edit _form _list _controls _field_error _busy].each do |view|
+          %w[index show new edit _form _list _controls _field_error].each do |view|
             template "views/#{view}.html.erb.tt", view_path("#{view}.html.erb")
           end
 
