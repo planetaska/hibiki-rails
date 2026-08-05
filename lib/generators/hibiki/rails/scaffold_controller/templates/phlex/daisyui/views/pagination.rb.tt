@@ -52,6 +52,7 @@ class <%= view_class_name(:pagination) %> < Views::Base
     # repainted. A span, not a disabled link: there is no page to name, so
     # there is no action to stamp.
     @page == 1 ? inert("«") : step("«", @page - 1, rel: "prev", label: "Previous page")
+    whitespace
 
     <%= query_class_name %>.page_numbers(page: @page, page_count: @page_count).each do |n|
       if n.nil?
@@ -64,6 +65,10 @@ class <%= view_class_name(:pagination) %> < Views::Base
       else
         step(n.to_s, n, label: "Page #{n}")
       end
+
+      # Phlex emits nothing between siblings; without this the page numbers run
+      # together, which under --css=none is all there is to separate them.
+      whitespace
     end
 
     @page == @page_count ? inert("»") : step("»", @page + 1, rel: "next", label: "Next page")

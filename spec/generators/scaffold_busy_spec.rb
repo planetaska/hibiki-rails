@@ -250,12 +250,15 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
 
   # Exit criterion 5: if pending state had needed a Ruby option, the primitive
   # would have been the wrong one.
-  it "leaves the Ruby helper surface untouched" do
-    generate
+  it "leaves the Ruby helper surface untouched, in either view layer" do
+    [[], %w[--phlex]].each do |flags|
+      FileUtils.rm_rf(Dir[File.join(@destination, "app")])
+      generate(flags)
 
-    Dir[File.join(@destination, "app/views/**/*.erb")].each do |view|
-      expect(File.read(view)).not_to match(/\bon\(.*busy:/)
-      expect(File.read(view)).not_to match(/hibiki_island\(.*busy:/)
+      generated_views(@destination).each do |view|
+        expect(File.read(view)).not_to match(/\bon\(.*busy:/)
+        expect(File.read(view)).not_to match(/hibiki_island\(.*busy:/)
+      end
     end
   end
 

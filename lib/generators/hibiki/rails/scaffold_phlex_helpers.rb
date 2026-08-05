@@ -132,17 +132,26 @@ module Hibiki
         # declares, which is the point of keeping both sides on #list_locals:
         # Ruby raises at the call site if they ever drift, where a partial with
         # a missing local raised inside the template or, worse, rendered blank.
+        #
+        # LAYOUT: FALSE is not optional. turbo-rails renders a broadcast with
+        # ApplicationController.render, and a partial: never takes a layout
+        # while a renderable: does — so without this every broadcast ships the
+        # whole page shell wrapped around the fragment. Measured on a generated
+        # app: 885 bytes against 138. It does not raise and the round trip
+        # still appears to work, because the extra wrapper is parsed away
+        # inside Turbo's <template> and idiomorph still finds the id it wants.
         def list_broadcast_source(indent:)
           return %(partial: "#{partial_path('list')}",\n#{' ' * indent}locals: list_locals) unless phlex?
 
-          "renderable: #{view_class_name(:list)}.new(**list_locals)"
+          "renderable: #{view_class_name(:list)}.new(**list_locals), layout: false"
         end
 
         def row_broadcast_source(indent:)
           locals = "#{singular_name}: row, actions: false"
-          return "renderable: #{view_class_name(:row)}.new(#{locals})" if phlex?
+          pad = " " * indent
+          return "renderable: #{view_class_name(:row)}.new(#{locals}),\n#{pad}layout: false" if phlex?
 
-          %(partial: "#{partial_path(row_partial)}",\n#{' ' * indent}locals: { #{locals} })
+          %(partial: "#{partial_path(row_partial)}",\n#{pad}locals: { #{locals} })
         end
 
         # An action's render call, or nothing at all.

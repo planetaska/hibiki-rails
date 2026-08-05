@@ -50,6 +50,7 @@ class <%= view_class_name(:row_form) %> < Views::Base
     div<%= arg_list(*css_args(:checkbox_wrap)) %> do
       label_tag<%= arg_list(%("\#{dom}_#{column.name}"), *css_args(:label)) %> do
         check_box_tag <%= wrapped_list([%("#{column.name}"), %("1"), "#{form_ref}.#{column.name}", %(id: "\#{dom}_#{column.name}"), *css_args(:toggle), %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))], indent: 22).lstrip %>
+        whitespace
         plain "<%= column.human_name %>"
       end
     end

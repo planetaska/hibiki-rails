@@ -51,6 +51,7 @@ class <%= view_class_name(:form) %> < Views::Base
       div<%= arg_list(*css_args(:checkbox_wrap)) %> do
         form.label <%= wrapped_list([":#{column.name}", *css_args(:label)], indent: 19).lstrip %> do
           form.<%= column.attr.field_type %> <%= wrapped_list([":#{column.name}", *css_args(:toggle)], indent: 12 + column.attr.field_type.to_s.length).lstrip %>
+          whitespace
           plain "<%= column.human_name %>"
         end
       end

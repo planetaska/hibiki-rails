@@ -17,12 +17,16 @@ class <%= view_class_name(:controls) %> < Views::Base
     div<%= arg_list(*css_args(:controls)) %> do
 <% if searchable? -%>
       search_field
+      whitespace
 <% end -%>
 <% schema.booleans.each do |column| -%>
       <%= column.name %>_filter
+      whitespace
 <% end -%>
       sort_select
+      whitespace
       direction_button
+      whitespace
       counts
     end
   end
@@ -110,7 +114,9 @@ class <%= view_class_name(:controls) %> < Views::Base
       # aria-hidden, because the client puts aria-busy on the island root and
       # that is how assistive tech expects to hear this. Duplicating it as
       # visible text would announce the same fact twice, in the wrong idiom.
+      whitespace
       span(<%= hbk_args("hbk-island-busy", "hbk-spinner", token: :spinner).first %>, aria_hidden: "true")
+      whitespace
 
       # Connection state, which is a different thing from busy: the numbers
       # above are real, they have simply stopped moving. A live region so the
@@ -118,6 +124,7 @@ class <%= view_class_name(:controls) %> < Views::Base
       # changes, which is what makes that work.
       span<%= arg_list(%(role: "status"), *css_args(:warning_text)) %> do
         span(class: "hbk-offline") { "offline — reconnecting…" }
+        whitespace
         span(class: "hbk-stalled") { "no response" }
       end
     end

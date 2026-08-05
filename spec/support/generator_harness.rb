@@ -38,6 +38,41 @@ module GeneratorHarness
     $stderr = original_err
   end
 
+  # Every emitted view, whichever view layer produced it.
+  #
+  # The raise is the whole point. Three guards used to glob app/views/**/*.erb,
+  # which passes VACUOUSLY against --phlex output — a guard that silently
+  # inspects nothing is worse than no guard, because it reads as covered.
+  def generated_views(destination)
+    paths = Dir[File.join(destination, "app/views/**/*.{erb,rb}")]
+    raise "no views were emitted under #{destination}" if paths.empty?
+
+    paths
+  end
+
+  # A view's markup with its comments removed — `<%# … %>` on the ERB side and
+  # `#` on the Phlex side. Both layers may NAME a data-hibiki attribute in
+  # prose; neither may write one.
+  def view_markup_without_comments(path)
+    source = File.read(path)
+    return source.gsub(/<%#.*?%>/m, "") if path.end_with?(".erb")
+
+    source.gsub(/^\s*#.*$/, "")
+  end
+
+  # Zeitwerk resolves app/views/admin/books/row_form.rb to
+  # Views::Admin::Books::RowForm and raises Zeitwerk::NameError at EAGER LOAD
+  # if the file defines anything else — in production, on deploy, not here.
+  def expect_zeitwerk_resolvable_views(destination)
+    Dir[File.join(destination, "app/views/**/*.rb")].each do |path|
+      relative = path.delete_prefix(File.join(destination, "app/views/")).delete_suffix(".rb")
+      expected = "Views::#{relative.split('/').map(&:camelize).join('::')}"
+
+      expect(File.read(path)).to include("class #{expected} <"),
+                                 "#{path} should define #{expected}"
+    end
+  end
+
   # Syntax smoke over everything a generator emitted: compile (never run)
   # each Ruby file directly and each ERB view through ActionView's erubi
   # subclass (plain Erubi::Engine can't parse Rails' `<%= tag.div do %>`

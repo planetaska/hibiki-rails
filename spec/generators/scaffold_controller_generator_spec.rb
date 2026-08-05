@@ -96,12 +96,18 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     # selector may read one, and a comment may name one, where markup still
     # may not write one — which is the whole of what the guard was ever about.
     it "never hand-writes a hibiki data attribute, and only reads them in CSS" do
-      Dir[File.join(@destination, "app/views/**/*.erb")].each do |view|
-        markup = File.read(view)
-                     .gsub(/<%#.*?%>/m, "")                            # a comment may NAME one
-                     .gsub(%r{/\*.*?\*/}m, "")                         # so may a CSS comment
-                     .gsub(/\[data-hibiki-[a-z-]+(?:="[^"]*")?\]/, "") # a selector may READ one
-        expect(markup).not_to include("data-hibiki")
+      # Both view layers, in one example: a guard that globs one extension
+      # passes vacuously against the other layer's output.
+      [[], %w[--phlex]].each do |flags|
+        FileUtils.rm_rf(Dir[File.join(@destination, "app")])
+        generate(["Book", *book_fields, *flags])
+
+        generated_views(@destination).each do |view|
+          markup = view_markup_without_comments(view)
+                   .gsub(%r{/\*.*?\*/}m, "")                         # so may a CSS comment
+                   .gsub(/\[data-hibiki-[a-z-]+(?:="[^"]*")?\]/, "") # a selector may READ one
+          expect(markup).not_to include("data-hibiki")
+        end
       end
     end
   end
@@ -187,12 +193,17 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     # stylesheet selects on, they are identical in all three variants, and
     # under this one they are the only classes in the generated views.
     it "--css=none emits no styling class — only the transport state hooks" do
-      generate(["Book", *book_fields, "--css=none"])
+      # The regex already carried the `:` alternative, so it reads `class:
+      # "card"` in a Phlex component unchanged; only the glob had to move.
+      [[], %w[--phlex]].each do |flags|
+        FileUtils.rm_rf(Dir[File.join(@destination, "app")])
+        generate(["Book", *book_fields, "--css=none", *flags])
 
-      Dir[File.join(@destination, "app/views/**/*.erb")].each do |view|
-        File.read(view).scan(/class[=:]\s*["']([^"']*)["']/) do |(value)|
-          expect(value.split).not_to be_empty
-          expect(value.split).to all(start_with("hbk-"))
+        generated_views(@destination).each do |view|
+          File.read(view).scan(/class[=:]\s*["']([^"']*)["']/) do |(value)|
+            expect(value.split).not_to be_empty
+            expect(value.split).to all(start_with("hbk-"))
+          end
         end
       end
     end

@@ -14,6 +14,7 @@ class <%= view_class_name(:edit) %> < Views::Base
 
       div<%= arg_list(*css_args(:actions_bar_spaced)) %> do
         link_to <%= wrapped_list([%("Show this #{human_name.downcase}"), "@#{singular_name}", *css_args(:btn_default)], indent: 16).lstrip %>
+        whitespace
         link_to <%= wrapped_list([%("Back to #{human_name.downcase.pluralize}"), index_helper(type: :path), *css_args(:btn_default)], indent: 16).lstrip %>
       end
 

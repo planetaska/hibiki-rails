@@ -12,7 +12,9 @@ class <%= view_class_name(:show) %> < Views::Base
 
       div<%= arg_list(*css_args(:actions_bar_spaced)) %> do
         link_to <%= wrapped_list([%("Edit this #{human_name.downcase}"), edit_helper(type: :path).sub("@#{singular_table_name}", "@#{singular_name}"), *css_args(:btn_default)], indent: 16).lstrip %>
+        whitespace
         link_to <%= wrapped_list([%("Back to #{human_name.downcase.pluralize}"), index_helper(type: :path), *css_args(:btn_default)], indent: 16).lstrip %>
+        whitespace
 
         button_to <%= wrapped_list([%("Destroy this #{human_name.downcase}"), "@#{singular_name}", "method: :delete", %(form: { data: { turbo_confirm: "Are you sure?" } }), *css_args(:btn_warning)], indent: 18).lstrip %>
       end

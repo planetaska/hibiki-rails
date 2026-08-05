@@ -44,6 +44,9 @@ class <%= view_class_name(:row) %> < Views::Base
 <% schema.columns.each do |column| -%>
     div do
       strong { "<%= column.human_name %>:" }
+      # Phlex emits NO whitespace between siblings, where ERB's newlines
+      # collapsed to one. Without this the label runs into its value.
+      whitespace
 <% if column.type == :boolean -%>
       if @actions
         # A checkbox, because a changed control reports its CHECKED state
@@ -70,7 +73,9 @@ class <%= view_class_name(:row) %> < Views::Base
   def row_actions
     div<%= arg_list(*css_args(:card_actions)) %> do
       link_to <%= wrapped_list([%("Show this #{human_name.downcase}"), "#{singular_route_name}_path(#{record_ref}.id)", *css_args(:btn_outline)], indent: 14).lstrip %>
+      whitespace
       button<%= arg_list(*row_button_attr_args(:edit, :btn_outline), indent: 13) %> { "Edit" }
+      whitespace
 
       # Per-row pending feedback costs nothing at this site and there is
       # nothing here to see: the client stamps data-hibiki-busy on the control

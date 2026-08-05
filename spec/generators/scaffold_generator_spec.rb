@@ -47,6 +47,29 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldGenerator do
     end
   end
 
+  # Thor replays the parent's raw option set against the child's declarations,
+  # so the hand-off needs no code — only the same name and type on both
+  # classes. That makes this a test of the DECLARATION, which is the part a
+  # future option can forget.
+  it "forwards --phlex to the controller generator" do
+    run_generator(described_class, %w[Widget title:string --phlex --css=none], destination: @destination)
+
+    expect(File.exist?(File.join(@destination, "app/views/widgets/row.rb"))).to be(true)
+    expect(Dir[File.join(@destination, "app/views/**/*.erb")]).to be_empty
+  end
+
+  # 14 new .tt files is exactly when a spec.files glob miss bites: the gem
+  # builds, installs, and then fails at `bin/rails g` on a template nobody
+  # noticed was left out of the package.
+  it "ships every scaffold template in the gem" do
+    spec = Gem::Specification.load(File.expand_path("../../hibiki_rails.gemspec", __dir__))
+    on_disk = Dir[File.expand_path("../../lib/generators/**/templates/**/*.tt", __dir__)]
+              .map { it.delete_prefix("#{File.expand_path('../..', __dir__)}/") }
+
+    expect(on_disk).not_to be_empty
+    expect(spec.files).to include(*on_disk)
+  end
+
   # THE to_argv regression, and it is 8.x-only because the bang suffix is.
   # GeneratedAttribute#to_s renders `title:string!` as "title:string{null}",
   # which .parse then rejects — so handing attributes down through to_s would
