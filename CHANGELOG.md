@@ -6,6 +6,27 @@ so importmap and bundler apps always resolve identical client code.
 
 ## Unreleased
 
+### Fixed
+
+**The npm package no longer drags in a second copy of `@rails/actioncable`.**
+It moves from `dependencies` to `peerDependencies` at `>= 7.0`, matching
+turbo-rails' own range.
+
+Why there were two: `@rails/actioncable`'s npm `latest` dist-tag is 7.2.302 even
+though 8.x is published, and resolvers prefer `latest` when it satisfies the
+range. So turbo-rails' `>=7.0` took 7.2.302 while this package's `>= 8.0` was
+forced up to 8.1.301, and both ended up in the bundle — about 16 KB of duplicate
+client, and two separate module instances that could never share a consumer.
+A fresh install happened to hoist a single copy; the duplicate appeared when
+adding hibiki-rails to an app whose lockfile already pinned 7.2.302, which is
+every existing app.
+
+If your bundler warns about an unmet peer, install `@rails/actioncable`
+explicitly — but a stock Rails app already has it via turbo-rails, and both bun
+and npm 7+ auto-install a missing peer. The client uses only `createConsumer`,
+`subscriptions.create` and `subscription.perform`, all stable since Action
+Cable 6, so the lower floor changes nothing at runtime.
+
 ### Changed — BREAKING
 
 **The Rails floor is now 8.0.** `actioncable` and `railties` move from

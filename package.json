@@ -1,7 +1,7 @@
 {
   "name": "hibiki-rails",
   "version": "0.4.0",
-  "description": "The packaged client for hibiki_rails — Svelte-5-style signals for Ruby, over Action Cable",
+  "description": "The packaged client for hibiki_rails \u2014 Svelte-5-style signals for Ruby, over Action Cable",
   "type": "module",
   "main": "app/assets/javascripts/hibiki.js",
   "module": "app/assets/javascripts/hibiki.js",
@@ -20,10 +20,8 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@hotwired/stimulus": ">= 3.2"
-  },
-  "dependencies": {
-    "@rails/actioncable": ">= 8.0"
+    "@hotwired/stimulus": ">= 3.2",
+    "@rails/actioncable": ">= 7.0"
   },
   "devDependencies": {
     "happy-dom": "^20.0.0",
