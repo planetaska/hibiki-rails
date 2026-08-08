@@ -4,6 +4,26 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.5.1 — 2026-08-08
+
+### Changed
+
+**Generator output and messages slimmed down.** The scaffold templates used to
+carry long design-rationale comments into every generated file; they are now
+one-to-three-line hints, with the docs holding the prose. The safety notes a
+user editing the file actually needs stayed: public channel methods are
+client-invocable actions, ActionCable's exact-arity rule, the untrusted
+subscribe param, Phlex omitting `false`-valued attributes, and the busy
+stylesheet's do-not-wrap-in-a-layer rule.
+
+The generators' status notices were shortened the same way — they still say
+what to do, just not why at essay length.
+
+No behavior change anywhere: no code inside any template moved, and neither
+the runtime nor the packaged client changed (the npm 0.5.1 exists only to keep
+the lockstep rule). Re-running a scaffold with `--force` rewrites the views
+with the shorter comments; that diff is the whole upgrade.
+
 ## 0.5.0 — 2026-08-05
 
 ### Added
