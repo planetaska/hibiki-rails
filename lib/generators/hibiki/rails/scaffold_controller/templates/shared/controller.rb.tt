@@ -6,10 +6,8 @@ class <%= scaffold_controller_class_name %> < ApplicationController
 
   # GET /<%= controller_file_path %>
   def index
-    # The same object the channel's rows derived builds, with the same
-    # defaults — first paint and every repaint share one query and one row
-    # projection, so the two cannot drift. Page 1 needs no clamping: it is the
-    # one page that always exists.
+    # The same query object the channel builds, so first paint and every
+    # repaint share one code path.
     @<%= singular_table_name %>_query = <%= query_class_name %>.new
 <%= phlex_render(:index, indent: 4) -%>
   end

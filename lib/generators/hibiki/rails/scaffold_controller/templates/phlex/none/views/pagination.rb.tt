@@ -1,48 +1,19 @@
 <%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
 # frozen_string_literal: true
 
-# The numbered page control. It lives INSIDE the replaced fragment, like every
-# other control in there: page_count is a server number, so a single-page list
-# simply stops rendering this element. Placed outside the fragment it would
-# never be re-rendered and could only ever change its TEXT (reactive values are
-# textContent-only), leaving a control whose links point at pages that no
-# longer exist.
+# The numbered page control, inside the replaced fragment so it re-renders
+# with the list. The links are anchors to the list, so a click also does the
+# browser's own fragment jump; data-turbo="false" keeps Turbo Drive out.
 #
-# SCROLL. The links are anchors to the list, not buttons, and that IS the
-# scroll answer — the client only preventDefaults `submit`, so the click both
-# performs the action and does the browser's own fragment jump, which puts the
-# top of the list back in view exactly as a full page load would. No client
-# capability needed. data-turbo="false" keeps Turbo Drive out of it: a
-# same-page hash with Turbo off is a plain scroll, not a navigation.
-#
-# THE STRING "false", not the boolean. Phlex OMITS a false-valued attribute
-# entirely, so `turbo: false` would emit no data-turbo at all and Turbo Drive
-# would take the click back. The ERB twin's boolean is right there and wrong
-# here.
-#
-# No generation token — a page number is idempotent, so a double fire is one
-# write and one render.
-#
-# PENDING. Nothing here asks for it: the client stamps data-hibiki-busy on the
-# control that fired, so the clicked page link dims itself while the trip is
-# out, and the swap that answers it destroys the attribute along with the link.
-# The bar above the list is the other half — the anchor jump has already put it
-# in view by then.
-#
-# The sharpest of the three forks, and the one Phlex does NOT dissolve. Both
-# styled variants mark the current page with a CLASS. With no stylesheet there
-# is nothing to carry that signal, so the current page has to change ELEMENT —
-# strong rather than a styled span — and the inert prev/next markers become
-# plain text. aria-current still does the work for a screen reader either way;
-# what changes is that sighted users need the element.
+# Unstyled, so the current page changes ELEMENT (strong) — there is no class
+# to carry the signal.
 class <%= view_class_name(:pagination) %> < Views::Base
 <%= phlex_includes(:link_to, hibiki: true) %>
 
 <%= initializer_source([%w[page 1], %w[page_count 1]]) %>
 
   def view_template
-    # The id-carrying wrapper always renders, so idiomorph always has a node to
-    # pair with.
+    # The wrapper always renders, so idiomorph always has a node to pair with.
     div(id: "<%= pagination_dom_id %>") do
       nav(aria_label: "Pagination") { items } if @page_count > 1
     end
@@ -51,10 +22,8 @@ class <%= view_class_name(:pagination) %> < Views::Base
   private
 
   def items
-    # Prev/next stay rendered and go inert at the ends rather than
-    # disappearing, so the control keeps its position across a page change. A
-    # span, not a disabled link: there is no page to name, so there is no
-    # action to stamp.
+    # Prev/next go inert at the ends rather than disappearing, so the control
+    # keeps its position across a page change.
     @page == 1 ? inert("«") : step("«", @page - 1, rel: "prev", label: "Previous page")
     whitespace
 
@@ -67,8 +36,7 @@ class <%= view_class_name(:pagination) %> < Views::Base
         step(n.to_s, n, label: "Page #{n}")
       end
 
-      # Phlex emits nothing between siblings; without this the page numbers run
-      # together, which under --css=none is all there is to separate them.
+      # Phlex emits nothing between siblings.
       whitespace
     end
 
@@ -79,8 +47,8 @@ class <%= view_class_name(:pagination) %> < Views::Base
     span(aria_disabled: "true") { glyph }
   end
 
-  # `on` returns a { data: } hash, so an element needing its OWN data
-  # attributes has to MERGE rather than splat, or the anchor stops scrolling.
+  # The STRING "false", not the boolean — Phlex omits false-valued attributes.
+  # And merge, don't splat: the anchor needs its own data attribute too.
   def step(text, n, label:, rel: nil)
     link_to text, "#<%= list_dom_id %>", rel:, "aria-label": label,
             data: { turbo: "false" }.merge(on(:go_to_page, with: { page: n })[:data])

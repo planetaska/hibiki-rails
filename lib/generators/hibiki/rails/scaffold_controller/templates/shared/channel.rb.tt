@@ -2,60 +2,34 @@
     Every tag here is <% and nothing needs escaping. -%>
 # The <%= controller_file_name %> island.
 #
-# NOTE: every PUBLIC instance method here is a client-invocable action —
-# ActionCable's action_methods is "public methods this class adds". Everything
-# that is not meant to be called from the wire lives under private.
+# NOTE: every PUBLIC instance method here is a client-invocable action.
+# Anything not meant to be called from the wire lives under private.
 class <%= collection_channel_class_name %> < ApplicationCable::Channel
   include Hibiki::Rails::Channel
 
-  # The query itself lives in the query object, which the controller's first
-  # paint builds too — one code path, so the two can't drift. The allowlists it
-  # exposes are what the actions below validate against: the view offers, the
-  # channel decides.
-  #
-  # The streamable the model's after_commit pings. Global because a generated
-  # query is unscoped; the rule is "scope the streamable to whatever scopes the
-  # query", derived from connection identity and never from a client param.
+  # The streamable the model's after_commit pings.
   CHANGED = "<%= changed_streamable %>"
 
   def build_graph
-    # A version token, not the rows themselves: the database stays the single
-    # source of truth and every writer only has to bump an integer.
+    # A version token — writers bump it, dependent queries re-run.
     @db_version = Hibiki::State.new(0)
 
 <% if searchable? -%>
-    # Pure signal state — no database write, no page reload. A keystroke
-    # re-queries and re-renders (debounced at 250ms), and nothing else has to
-    # know.
     @query = Hibiki::State.new("")
 <% end -%>
     @filters = Hibiki::State.new({})
     @sort = Hibiki::State.new(<%= query_class_name %>::DEFAULT_SORT)
     @direction = Hibiki::State.new(:asc)
 
-    # The window, as a PAGE NUMBER — deliberately the same state in both
-    # pagination modes. The query object's .window turns it into either
-    # OFFSET+LIMIT or a growing LIMIT, so nothing else in this channel knows
-    # which mode it is in.
-    #
-    # NOT an append cursor: the render effect below renders @rows, so append
-    # semantics would re-append the newest page on every after_commit ping.
-    #
-    # A page number is also IDEMPOTENT, which is why there is no generation
-    # token: "go to page 3" twice is one write and one render, because
-    # State#value= returns early on ==.
+    # The window, as a page number — shared by both pagination modes.
     @page = Hibiki::State.new(1)
 
     # Which row renders the form instead of its display markup.
     @editing_id = Hibiki::State.new(nil)
-    # Built here, inside Hibiki.root, so anything it owns is owned by the graph
-    # root. #hydrate is the reset path; one form serves every row.
+    # One form serves every row; #hydrate is the reset path.
     @form = <%= form_class_name %>.new
 
-    # Deliberately does NOT read @sort, @direction or the window: how many rows
-    # match is independent of how they are ordered and how many are shown, so
-    # re-sorting and paging cost zero COUNTs. This split is the difference
-    # between one value frame per page step and four.
+    # Reads neither sort nor window, so re-sorting and paging cost no COUNTs.
     @counts = Hibiki::Derived.new do
       @db_version.value
       <%= query_class_name %>.new(<%= "query: @query.value, " if searchable? %>filters: @filters.value).counts
@@ -63,84 +37,54 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
 
     @page_count = Hibiki::Derived.new { <%= query_class_name %>.page_count(@counts.value[:matched]) }
 
-    # The window a query may actually run with, as opposed to the page the user
-    # last asked for. A page number can OVERSHOOT: destroy the last row of the
-    # last page and @page still names a page that no longer exists — while the
-    # reset rule (correctly) does not reset the window on a destroy.
-    #
-    # Clamping in a DERIVED rather than writing back inside the action is the
-    # same choice as the @editing_id guard in #list_locals: the query and the
-    # highlighted page number both read this, so they self-heal together, and a
-    # transient overshoot never becomes persistent state.
+    # @page can overshoot (destroy the last row of the last page); the clamp
+    # self-heals it.
     @window = Hibiki::Derived.new { @page.value.clamp(1, @page_count.value) }
 
-    # Lazy: recomputes on read, so N invalidations inside one action still mean
-    # one query and one render.
+    # Lazy: N invalidations inside one action still mean one query.
     @rows = Hibiki::Derived.new do
       @db_version.value # the tracked dependency
-      # @window.value is read HERE, inside the block — that is what makes the
-      # window a tracked dependency. A window applied outside would change the
-      # query and never repaint.
       <%= query_class_name %>.new(<%= "query: @query.value, " if searchable? %>filters: @filters.value,
 <%= " " * (query_class_name.length + 11) %>sort: @sort.value, direction: @direction.value,
 <%= " " * (query_class_name.length + 11) %>page: @window.value).rows
     end
 
-    # Matching rows not yet shown. Only the infinite-scroll control reads it;
-    # numbered pages render from @page_count. 0 is also what an unpaginated
-    # query reports — which is what lets PAGE_SIZE = nil degrade with no
-    # branching.
+    # Matching rows not yet shown — read by the infinite-scroll control.
     @remaining = Hibiki::Derived.new { @counts.value[:matched] - @rows.value.size }
 <% schema.belongs_tos.each do |column| -%>
 
-    # One collection per belongs_to. Only read while a row is being edited (see
-    # #list_locals), so the effect doesn't depend on it otherwise.
+    # One collection per belongs_to, only read while a row is being edited.
     @<%= column.options_local %> = Hibiki::Derived.new do
       @db_version.value
       <%= column.association_class_name %>.order(:<%= column.label_column %>).pluck(:<%= column.label_column %>, :id)
     end
 <% end -%>
 
-    # One render effect for the whole list fragment. broadcast_morph, not
-    # _replace: with an inline form open, a plain replace moves focus to <body>
-    # and drops the caret, while morph preserves both — idiomorph pairs
-    # subtrees by id (which is why every row id is stable across display/edit)
-    # and Turbo passes ignoreActiveValue.
+    # One render effect for the whole list fragment. Morph, not replace:
+    # it keeps focus and caret in an open inline form.
     Hibiki::Effect.new do
       broadcast_morph target: "<%= list_dom_id %>", <%= list_broadcast_source(indent: 22) %>
     end
 
-    # Reactive values: text only, matched document-wide, so a placeholder can
-    # sit outside the island that computes it.
+    # Reactive values: text placeholders matched document-wide.
     transmit_value(:<%= value_name("total") %>) do
       @db_version.value
       <%= class_name %>.count
     end
     transmit_value(:<%= value_name("matched") %>) { @counts.value[:matched] }
-    # The window half of the sentence. The ONLY reactive value that reads the
-    # window, which is what keeps a page click at one value frame instead of
-    # four.
     transmit_value(:<%= value_name("range") %>) do
       <%= query_class_name %>.range_label(page: @window.value, shown: @rows.value.size)
     end
-    # The sort control's own label. It lives in the controls partial, which is
-    # never re-rendered, so a reactive value is the only way its text can follow
-    # the state it reports — and the equality gate means it costs a frame only
-    # when the direction actually flips.
     transmit_value(:<%= value_name("direction") %>) { <%= query_class_name %>.direction_label(@direction.value) }
 <% if schema.primary_boolean -%>
-    # Matching-scoped, not window-scoped. Pairing the range with a count of
-    # only the WINDOWED rows would read "13 of 20" while 200 rows match — a
-    # true sentence about nothing the user asked about. The grouped COUNT that
-    # <%= value_name("matched") %> already needs returns this for free.
+    # Matching-scoped, not window-scoped.
     transmit_value(:<%= value_name(schema.primary_boolean.name) %>) { @counts.value[:<%= schema.primary_boolean.name %>] }
 <% end -%>
   end
 
   # ---- actions -------------------------------------------------------------
-  # ActionCable hands the payload over only when arity == 1 EXACTLY. Always
-  # `def foo(data)` — `def foo(data = {})` is arity -1 and is called with no
-  # arguments, so the payload vanishes silently. The hash has STRING keys.
+  # ActionCable hands the payload over only when arity == 1 EXACTLY — always
+  # `def foo(data)`, never a default argument. The hash has STRING keys.
 
 <% if searchable? -%>
   def search(data)
@@ -149,27 +93,17 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
   end
 
 <% end -%>
-  # Moves the window. ONE action for both pagination modes: numbered links send
-  # the page they name, and the infinite-scroll sentinel sends the page after
-  # the one it was rendered under.
-  #
-  # The upper bound is NOT enforced here: @window clamps, so asking for page 99
-  # of 10 shows page 10 and the control repaints saying so. The lower bound IS,
-  # because clamp(1, n) would silently read a hand-crafted 0 or -3 as "page 1",
-  # and an out-of-range request should do nothing rather than something
-  # arbitrary.
+  # One action for both pagination modes; overshoot heals through @window's
+  # clamp, but a non-positive page is rejected outright.
   def go_to_page(data)
     return unless <%= query_class_name %>::PAGE_SIZE   # --skip-pagination
-
     page = data["page"].to_i
     return unless page.positive?
 
     @page.value = page
   end
 
-  # The column travels in `with:` because the client's change payload is
-  # { control.name => value } and nothing else. Validated against the allowlist
-  # before it reaches a signal: the view offers, the channel decides.
+  # The view offers, the channel decides: validate against the allowlist.
   def set_filter(data)
     column = data["column"].to_s.to_sym
     return unless <%= query_class_name %>::FILTERABLE.include?(column)
@@ -190,9 +124,6 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     return unless <%= query_class_name %>::SORTABLE.include?(column)
 
     @sort.value = column
-    # Sorting changes WHICH rows are in the window, so staying on page 7 would
-    # land the reader on a page 7 that has nothing to do with what they were
-    # reading.
     reset_window
   end
 
@@ -202,21 +133,13 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
   end
 <% schema.booleans.each do |column| -%>
 
-  # One per boolean column. A SET, not a toggle: the client reports a
-  # checkbox's checked state, so the control says what it wants rather than
-  # asking the server to invert whatever it happens to find. That also makes
-  # two tabs clicking the same row converge instead of cancelling out.
+  # A SET, not a toggle, so two tabs clicking the same row converge.
   def set_<%= column.name %>(data)
     record = <%= class_name %>.find_by(id: data["id"])
     return unless record
 
     record.update!(<%= column.name %>: <%= class_name %>.type_for_attribute(:<%= column.name %>).cast(data["<%= column.name %>"]))
-    # Kept even though the after_commit ping would also invalidate: the ping is
-    # a safety net for OTHER writers, this is the local guarantee. Under the
-    # effect equality gate (hibiki 0.2.0) the pair is FREE on the wire — the
-    # ping's re-query produces an equal value and broadcasts nothing — so this
-    # costs one extra query and no bytes. Dropping it would couple correctness
-    # to the callback, which update_all / update_column / raw SQL bypass.
+    # Kept alongside the after_commit ping: update_all / raw SQL bypass callbacks.
     invalidate
   end
 <% end -%>
@@ -240,8 +163,6 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
 
   def cancel(_data) = @editing_id.value = nil
 
-  # The field name travels in `with:` for the same reason the filter column
-  # does.
   def set_field(data)
     name = data["field"].to_s.to_sym
     return unless <%= form_class_name %>.hibiki_attributes.include?(name)
@@ -253,9 +174,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     return unless @editing_id.peek
 
     assign(data)
-    # A false commit mirrors the record's errors onto the form, which the
-    # effect is already reading — so the repaint carries the messages and the
-    # user's values, no round trip lost.
+    # A false commit mirrors the record's errors onto the form, so the repaint
+    # carries the messages.
     return unless @form.commit
 
     @editing_id.value = nil
@@ -264,17 +184,14 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
 
   private
 
-  # PRIVATE deliberately. ActionCable's #subscribed is private on the base
-  # class, so it is never subtracted from action_methods — a PUBLIC override
-  # here would be added back by public_instance_methods(false) and a client
-  # could `perform("subscribed")` to build a second graph on this connection.
+  # PRIVATE deliberately — a public override would become a client-invocable
+  # action (see the NOTE at the top).
   def subscribed
     super
     return if subscription_rejected?
 
     # Delivered on a cable thread — hop to the graph thread before touching a
-    # signal. `&.` because the actor can be gone if the client just left, and a
-    # cable thread must never blow up.
+    # signal.
     stream_from CHANGED do |_message|
       graph_actor&.post { Hibiki.batch { @db_version.value += 1 } }
     end
@@ -282,27 +199,14 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
 
   def invalidate = @db_version.value += 1
 
-  # The rule, in one sentence: anything that changes the matched SET or its
-  # ORDER resets the window; anything that changes a single row's contents does
-  # not. So search / set_filter / set_sort / toggle_direction reset, and
-  # destroy / save / set_* / edit / cancel deliberately don't — yanking a reader
-  # back to page 1 because they deleted something is punishment, and an
-  # overshooting page heals through @window's clamp instead. The after_commit
-  # ping never resets either: another writer's commit must not move THIS
-  # reader's window.
-  #
-  # Free when already on page 1 — State#value= returns early on ==.
+  # Anything that changes the matched set or its order resets the window;
+  # single-row edits deliberately don't.
   def reset_window = @page.value = 1
 
   def list_locals
     rows = @rows.value
     editing_id = @editing_id.value
-    # An open form for a row outside the window is markup the user cannot see
-    # attached to state the graph still holds. The window decides: a row that
-    # isn't rendered isn't being edited. Deliberately a render-time guard rather
-    # than a write inside reset_window — blurring the search box without typing
-    # fires #search, where both signals no-op on ==, and clearing @editing_id
-    # there would close an open form for no reason.
+    # A row outside the window isn't being edited.
     editing_id = nil unless rows.any? { it.id == editing_id }
 
     {
@@ -318,8 +222,7 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     }
   end
 
-  # Assign only declared attributes: #to_h is the permitted-params analogue,
-  # and this is the edge where it gets enforced.
+  # Assign only declared attributes — the permitted-params analogue.
   def assign(data)
     <%= form_class_name %>.hibiki_attributes.each do |name|
       key = name.to_s

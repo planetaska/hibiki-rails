@@ -1,17 +1,9 @@
 <%# GENERATION-time ERB only — this template emits plain Ruby, so every tag
     here is <% and there is nothing to escape. -%>
 # The index projection: one plain value per row, so the graph never holds a
-# live record. ActiveRecord#== compares class and id only, which makes a
-# reloaded record == a stale one — re-assigning a signal from a fresh query
-# would be a silent no-op. Data's structural == is what lets the rows derived
-# notice a change at all, and what the effect equality gate compares.
-#
-# Members: every attribute except the timestamps, plus one label per
-# belongs_to — the association's first string column — so the row partial
-# never walks an association off the graph thread.
-#
-# The model delegates the same readers, which is what lets the show page keep
-# rendering that partial with a live record instead of a projection.
+# live record. Members: every attribute except the timestamps, plus one label
+# per belongs_to. The model delegates the same readers, so the show page can
+# render the same partial with a live record.
 <%= row_class_name %> = Data.define(
 <%= wrapped_symbols(schema.row_members) %>
 ) do

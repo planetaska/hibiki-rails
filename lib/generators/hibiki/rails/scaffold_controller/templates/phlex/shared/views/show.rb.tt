@@ -25,14 +25,9 @@ class <%= view_class_name(:show) %> < Views::Base
 
   private
 
-  # A one-record island. `params:` is the only way a channel can learn WHICH
-  # record its page is about — the subscription is the only hook that runs
-  # before the graph is built — and the channel validates that id through a
-  # scope IT chooses before streaming from anything.
-  #
-  # The island root WRAPS the row rather than being it: the broadcast target is
-  # the row's own root id, and replacing the element that carries the stream
-  # source would tear down the subscription delivering the replacement.
+  # A one-record island. `params:` tells the channel which record — the
+  # channel validates the id itself. The island root WRAPS the row: the
+  # broadcast target is the row's own root id.
   def island
     cid = SecureRandom.uuid
 

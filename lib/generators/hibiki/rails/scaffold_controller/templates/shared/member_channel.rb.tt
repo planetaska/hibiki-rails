@@ -1,24 +1,19 @@
 <%# GENERATION-time ERB only. -%>
-# One record, live — the singular sibling of the collection channel: no query,
-# no window, no actions, just a row that repaints when THIS record changes.
+# One record, live — the singular sibling of the collection channel.
 #
 # NOTE: every PUBLIC instance method here is a client-invocable action.
-# Everything that is not meant to be called from the wire lives under private.
+# Anything not meant to be called from the wire lives under private.
 class <%= member_channel_class_name %> < ApplicationCable::Channel
   include Hibiki::Rails::Channel
 
-  # Scoped, unlike the collection channel's CHANGED. An unscoped ping would
-  # repaint every open show page on every write to any record — a query and a
-  # render per open tab, for a record the reader is not looking at.
+  # Scoped to one record, unlike the collection channel's CHANGED.
   def self.changed(id) = "<%= member_stream_name %>:#{id}:changed"
 
   def build_graph
     @db_version = Hibiki::State.new(0)
 
-    # The same projection the index uses, so the row partial renders
-    # identically from either channel. find_by, not find: the record can be
-    # destroyed while this page is open, and a raise on the graph thread would
-    # only freeze the fragment.
+    # The same projection the index uses. find_by, not find: the record can be
+    # destroyed while this page is open.
     @row = Hibiki::Derived.new do
       @db_version.value
       record = <%= class_name %>.find_by(id: record_id)
@@ -35,17 +30,12 @@ class <%= member_channel_class_name %> < ApplicationCable::Channel
 
   private
 
-  # THE TRUST RULE. record_id arrives as a subscribe param, which is
-  # client-supplied and untrusted — exactly like a query param. It is used only
-  # to look up a record inside a scope THIS channel chooses — the whole table
-  # here, current_user's association in an app with owners — and the streamable
-  # below is built from the id that lookup RETURNED, never from the raw param.
-  # A client naming its own streamable would be reading other people's
-  # broadcasts.
+  # record_id is a client-supplied subscribe param — untrusted. Look it up
+  # inside a scope this channel chooses, and build the streamable from what the
+  # lookup returned, never from the raw param.
   def record_id = @record_id ||= <%= class_name %>.where(id: params[:record_id]).pick(:id)
 
-  # Reject BEFORE super: super builds the graph actor and posts build_graph, so
-  # a missing or unknown id should never get that far.
+  # Reject BEFORE super, so an unknown id never builds a graph.
   def subscribed
     return reject unless record_id
 
@@ -53,7 +43,7 @@ class <%= member_channel_class_name %> < ApplicationCable::Channel
     return if subscription_rejected?
 
     # Delivered on a cable thread — hop to the graph thread before touching a
-    # signal. `&.` because the actor can be gone if the client just left.
+    # signal.
     stream_from self.class.changed(record_id) do |_message|
       graph_actor&.post { Hibiki.batch { @db_version.value += 1 } }
     end

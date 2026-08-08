@@ -4,11 +4,6 @@
 # frozen_string_literal: true
 
 # One field's live validation message, or nothing at all.
-#
-# The smallest component in the set, and the one that shows the shape: keyword
-# arguments where the ERB twin had a strict-locals header. Ruby enforces these,
-# so handing it the wrong name raises at the call site instead of rendering
-# blank.
 class <%= view_class_name(:field_error) %> < Views::Base
 <%= initializer_source([%w[message nil]]) %>
 

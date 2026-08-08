@@ -4,17 +4,9 @@
 # The full-page form — the non-JS path, and what new/edit render. The inline
 # form on the index is a different component built on ReactiveForm.
 #
-# Built on the phlex-rails form_with BUILDER rather than hand-rolled elements.
-# Less idiomatic Phlex, paid knowingly: it keeps form.label / form.<field> and
-# therefore for/id pairing and the html_bounds injection, and it keeps this
-# tree structurally comparable with its ERB twin — which is what the phase's
-# DOM-equivalence check rests on.
+# Built on the phlex-rails form_with builder, which keeps for/id pairing.
 <% if schema.belongs_tos.any? -%>
-#
-# Each belongs_to collection arrives as a KEYWORD, never an ivar this component
-# reaches for. It is only rendered from a controller today, but the rule is
-# what matters: a channel renders through ApplicationController.render, where
-# instance variables set by a controller action simply do not exist.
+# Each belongs_to collection arrives as a keyword, never an ivar.
 <% end -%>
 class <%= view_class_name(:form) %> < Views::Base
 <%= phlex_includes(:form_with, :pluralize) %>

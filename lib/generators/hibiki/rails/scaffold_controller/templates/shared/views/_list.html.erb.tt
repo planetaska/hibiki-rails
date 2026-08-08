@@ -1,12 +1,8 @@
 <%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
      consumed here at generation time. -%>
 <%%# locals: (<%= list_locals_signature %>) -%>
-<%%# The island's re-rendered fragment, rendered by BOTH the controller's first
-    paint and the channel's render effect — one code path, so the two can't
-    drift. Its root id is the broadcast target: page-unique, stable, and
-    deliberately NOT the island root, which carries the stream source;
-    replacing that would tear down the very subscription that delivers the
-    replacement. %>
+<%%# The island's re-rendered fragment. Its root id is the broadcast target —
+    deliberately not the island root, which carries the stream source. %>
 <div id="<%= list_dom_id %>"<%= css_attr(:list) %>>
   <%% <%= controller_file_name %>.each do |<%= singular_name %>| %>
     <%%= render "<%= partial_path(row_partial) %>", <%= wrapped_list(row_render_locals, indent: render_indent(partial_path(row_partial)), width: 0).lstrip %> %>
@@ -17,23 +13,9 @@
   <%% end %>
 
 <% if infinite? -%>
-  <%%# TWO events, one element: `visible` is a pseudo-event backed by an
-      IntersectionObserver, so this same button is also the infinite-scroll
-      sentinel — scrolling it into view pages the list, clicking it still
-      works, and there is nothing extra to render or wire up. The observer
-      re-scans after each swap, so the fresh element's initial callback keeps
-      paging when a page didn't fill the viewport.
-
-      It sends the page AFTER the one it was rendered under, and needs no
-      generation token: a page number is idempotent, so an observer firing
-      again before the swap lands writes the same value and State#value=
-      returns early.
-
-      It is also its own loading indicator, with nothing added: the client
-      stamps data-hibiki-busy on the control that fired, so this button dims
-      while the next page is on its way. The bar above the list is the wrong
-      answer here — when this fires you are at the BOTTOM of the page and
-      would never see it. %>
+  <%%# `visible` is a pseudo-event backed by an IntersectionObserver, so this
+      button doubles as the infinite-scroll sentinel. The client stamps
+      data-hibiki-busy on it while the next page is in flight. %>
   <%% if remaining.positive? %>
     <div id="<%= load_more_dom_id %>"<%= css_attr(:load_more_wrap) %>>
       <%%= tag.button(type: "button",
@@ -47,16 +29,8 @@
     </div>
   <%% end %>
 <% else -%>
-  <%%# The page control lives INSIDE the replaced fragment on purpose. It
-      renders from server numbers, so a list with nothing more to show simply
-      stops rendering it; placed outside it would never be re-rendered and
-      could only ever change its TEXT (reactive values are textContent-only),
-      leaving a control pointing at pages that no longer exist.
-
-      Every child of this container carries a stable id for the same reason
-      the rows do: idiomorph pairs subtrees by id, and an id-less trailing
-      node can be matched positionally against the last row and rebuilt
-      instead of kept. %>
+  <%%# Inside the replaced fragment on purpose, so it re-renders with the list.
+      Stable child ids keep idiomorph from rebuilding it. %>
   <%%= render "<%= view_dir.delete_prefix('app/views/') %>/pagination", page: page, page_count: page_count %>
 <% end -%>
 </div>

@@ -2,28 +2,19 @@
      here at generation time; #{...} inside an escaped tag is runtime Ruby and
      passes through untouched. -%>
 <%%# locals: (<%= singular_name %>:, form:<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>) -%>
-<%%# Plain *_tag helpers with UNPREFIXED names, deliberately not form_with:
-    this payload goes to a channel action, and the client builds it with
-    Object.fromEntries(new FormData(form)) — so the keys must be exactly the
-    attribute names the ReactiveForm declares. A `model[field]` name would not
-    match.
-
-    Field ids are prefixed per row so nothing collides while idiomorph pairs
-    subtrees by id. %>
+<%%# Plain *_tag helpers with UNPREFIXED names, not form_with: the client
+    builds the payload with FormData, so the keys must be exactly the
+    ReactiveForm's attribute names. Field ids are prefixed per row so nothing
+    collides. %>
 <%% dom = "<%= row_dom_id_prefix %>_#{<%= singular_name %>.id}" %>
-<%%# reset: false. The default resets a submitted form synchronously, before
-    the server has replied — right for an "add" form, wrong here: a failed
-    commit would blank every field. %>
+<%%# reset: false — a failed commit must not blank the fields. %>
 <%%= tag.form(**on(:save, event: :submit, reset: false)<%= css? ? %(, class: "#{css(:row_form)}") : "" %>) do %>
   <div<%= css_attr(:fieldset) %>>
 <% schema.columns.each_with_index do |column, index| -%>
 <% if column.type == :boolean -%>
     <div<%= css_attr(:checkbox_wrap) %>>
-      <%%# The checkbox reports itself like every other field — a changed
-          checkbox sends its CHECKED state as a JSON boolean, so it needs no
-          hidden-field pair. An unchecked box then contributes nothing to the
-          submit payload, which is harmless: #save only assigns keys the
-          payload carries, and this field's signal is already current. %>
+      <%%# A changed checkbox sends its checked state as a JSON boolean — no
+          hidden-field pair needed. %>
       <%%= label_tag "#{dom}_<%= column.name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> do %>
         <%%= check_box_tag "<%= column.name %>", "1", form.<%= column.name %>,
                           id: "#{dom}_<%= column.name %>",
@@ -50,34 +41,20 @@
   </div>
 
   <div<%= css_attr(:form_actions) %>>
-    <%%# tag.button defaults to type="submit" — which is exactly why Cancel has
-        to say type: "button", or clicking it would submit the form too. Not
-        submit_tag: that would add a stray `commit` key to the payload. %>
 <% if css? -%>
     <%%= tag.button(class: "<%= css(:btn_primary) %>") do %>
 <% else -%>
     <%%= tag.button do %>
 <% end -%>
-      <%%# The one site that earns a spinner rather than the automatic dim.
-          Saving is the gesture with the longest tail — a commit, validation,
-          a re-render — and it is the visual answer the dirty badge below
-          could not give: the badge means "unsaved", the spinner means
-          "saving".
-
-          It shows while THIS form is in flight, not while the island is. The
-          control that fires a submit is the form, so the rule reaches down
-          into its button; a sibling row's Save is untouched. %>
+      <%%# Spins while THIS form's trip is in flight (hbk-control-busy). %>
       <span<%= hbk_attr("hbk-control-busy", "hbk-spinner", token: :spinner) %> aria-hidden="true"></span>
       Save
     <%% end %>
+    <%%# type: "button" — tag.button defaults to submit. %>
     <%%= tag.button("Cancel", type: "button"<%= css? ? %(, class: "#{css(:btn)}") : "" %>,
                    **on(:cancel, with: { id: <%= singular_name %>.id })) %>
-    <%%# A badge, not a disabled Save button. dirty? is server state delivered
-        over a websocket, so it can only move after a round trip — and a click
-        that both blurs a field and activates the button beats that round trip
-        every time. A disabled Save would swallow it. The submit carries the
-        full payload regardless, so the badge reports state without gating the
-        gesture. %>
+    <%%# A badge, not a disabled Save: dirty? only moves after a round trip
+        and must not gate the gesture. %>
     <%% if form.dirty? %>
       <span<%= css_attr(:badge_warning) %>>unsaved changes</span>
     <%% end %>

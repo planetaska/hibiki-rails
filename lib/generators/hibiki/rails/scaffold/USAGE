@@ -8,9 +8,9 @@ Description:
     Everything is derived from the field list you pass, exactly as Rails'
     scaffold derives its own output. Stock `rails g scaffold` is untouched.
 
-    The generated index is live: search, filter, sort and pagination are signal
-    state, edits happen in place, and a write from anywhere — another tab,
-    another user, the plain controller, a console — repaints every open list.
+    The generated index is live: search, filter, sort, and pagination are all
+    reactive, edits happen in place, and changes from anywhere update every open
+    list.
 
 Example:
     bin/rails generate hibiki:rails:scaffold Book title:string author:references
@@ -29,8 +29,7 @@ Example:
     And add to config/routes.rb:
         resources :books
 
-    Restart the server afterwards: Rails computes autoload paths from the
-    app/* glob at boot, and app/forms is new.
+    Restart the server afterwards if it is running — app/forms is new.
 
     Pass --phlex to emit Phlex components under app/views/books/*.rb instead of
     ERB templates. The view layer is the only thing it changes; it needs the

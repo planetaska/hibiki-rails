@@ -3,11 +3,7 @@
 <%%# The full-page form — the non-JS path, and what new/edit render. The inline
     form on the index is a different partial built on ReactiveForm.
 <% if schema.belongs_tos.any? -%>
-
-    Each belongs_to collection arrives as a LOCAL, never an ivar. This partial
-    is only rendered from a controller today, but the rule is what matters: a
-    channel renders through ApplicationController.render, where instance
-    variables set by a controller action simply do not exist.
+    Each belongs_to collection arrives as a local, never an ivar.
 <% end -%>
  %>
 <%%= form_with(model: <%= model_resource_name(singular_name) %><%= css? ? %(, class: "#{css(:form)}") : "" %>) do |form| %>
