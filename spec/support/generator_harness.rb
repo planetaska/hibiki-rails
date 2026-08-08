@@ -31,11 +31,22 @@ module GeneratorHarness
     original_err = $stderr
     $stdout = out
     $stderr = err
-    klass.start(args, destination_root: destination)
+    klass.start(args, destination_root: destination, shell: non_interactive_shell)
     out.string + err.string
   ensure
     $stdout = original_out
     $stderr = original_err
+  end
+
+  # An example that generates TWICE into one destination hits Thor's
+  # "Overwrite?" prompt, which reads $stdin — and since this harness has
+  # already swapped $stdout, the prompt lands in the StringIO and the suite
+  # just STOPS with nothing printed. It only stops on a TTY: piped or under
+  # CI, $stdin.gets returns nil at EOF and Thor reads that as "yes", so the
+  # suite is green everywhere except a developer's terminal. Answer before
+  # being asked.
+  def non_interactive_shell
+    Thor::Base.shell.new.tap { |shell| shell.instance_variable_set(:@always_force, true) }
   end
 
   # Every emitted view, whichever view layer produced it.
