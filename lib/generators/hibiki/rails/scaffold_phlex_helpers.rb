@@ -87,17 +87,15 @@ module Hibiki
         def warn_missing_phlex_gem
           require "phlex/rails"
         rescue LoadError
-          say_status :warn, "phlex-rails is not in this bundle — the generated views are Phlex " \
-                            'components. Add `gem "phlex-rails"`, then run ' \
+          say_status :warn, "phlex-rails is not in this bundle. " \
+                            'Add `gem "phlex-rails"`, then run ' \
                             "`bin/rails g phlex:install`", :yellow
         end
 
         def warn_missing_phlex_install
           return if exists?(PHLEX_BASE) && wired?(PHLEX_INITIALIZER, PHLEX_NAMESPACE)
 
-          say_status :warn, "phlex:install has not run here — without #{PHLEX_BASE} and the " \
-                            "initializer that autoloads app/views under Views, every generated " \
-                            "component raises NameError at its first request. Run: " \
+          say_status :warn, "phlex:install has not run. Run: " \
                             "bin/rails g phlex:install", :yellow
         end
 
@@ -113,8 +111,8 @@ module Hibiki
           return if stale.empty?
 
           say_status :views, "#{view_dir} still holds the ERB templates a previous run wrote " \
-                             "(#{stale.sort.join(', ')}) — nothing renders them now that the " \
-                             "controller names components, so delete them", :yellow
+                             "(#{stale.sort.join(', ')}). Nothing renders them now, " \
+                             "you can safely delete them.", :yellow
         end
 
         # phlex-rails' own convention, which its install generator already

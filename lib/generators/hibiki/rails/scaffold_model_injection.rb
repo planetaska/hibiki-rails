@@ -49,30 +49,20 @@ module Hibiki
           end
 
           <<~RUBY
-            # The label a belongs_to contributes to the row projection: the
-            # association's first string column. Giving the record the same
-            # reader the row carries is what lets ONE partial render both — the
-            # show page passes the record, the index and the channel's render
-            # effect pass projections.
+            # Delegates a belongs_to to the row projection.
+            # The name is decided by the association's first string column.
             #{lines.join("\n")}
           RUBY
         end
 
         def ping_callback
           <<~RUBY
-            # Every writer pings — this channel, another user's channel, the
-            # plain controller, a console, a job — and every subscribed graph
-            # re-queries. after_commit, not after_save, so subscribers only
-            # re-read once the data is actually visible. The message carries no
-            # payload on purpose: it says the table moved, not what changed.
+            # Two streamables:
+            # collection ping every index listens to, and a per-record ping
+            # the record's show page listens to.
             #
-            # Two streamables, one per grain the app subscribes at: the
-            # collection ping every index listens to, and a per-record ping only
-            # that record's show page listens to.
-            #
-            # Caveats worth knowing: update_all / insert_all / update_column and
-            # raw SQL never fire this, and the dev `async` cable adapter is
-            # in-process only, so a ping from `bin/rails console` reaches nobody.
+            # Caveats: update_all / insert_all / update_column and
+            # raw SQL never fire this.
             after_commit do
               ActionCable.server.broadcast(#{collection_channel_class_name}::CHANGED, {})
               ActionCable.server.broadcast(#{member_channel_class_name}.changed(id), {})
@@ -84,10 +74,7 @@ module Hibiki
           say_status :inject, "#{model_path} — #{model_change_summary}", :green
           say <<~NOTE
 
-            #{model_path} already existed and was MODIFIED. The after_commit ping is
-            what makes another tab, another user, the plain controller and a console
-            write all reach an open list — without it everything still works in one
-            tab, which is exactly what makes its absence hard to notice.
+            #{model_path} already existed and was MODIFIED.
           NOTE
         end
 

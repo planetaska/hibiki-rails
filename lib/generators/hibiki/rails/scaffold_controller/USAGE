@@ -1,21 +1,18 @@
 Description:
-    Generates a reactive CRUD resource for a model that ALREADY exists — the
-    overlay half of hibiki:rails:scaffold.
+    Generates a reactive CRUD resource for a model that already exists.
 
-    With no field list the model's own schema is read: columns and types,
-    belongs_to reflections, and the validators behind per-field live errors.
-    Pass fields explicitly to override that, or when the table has not been
-    migrated yet.
+    With no field list, the model's schema is used to determine columns, types,
+    associations, and validators. Pass fields explicitly to override this or
+    when the table hasn't been migrated yet.
 
-    The generated index is live: search, filter, sort and pagination are signal
-    state, edits happen in place, and a write from anywhere repaints every open
+    The generated index is live: search, filter, sort, and pagination are all
+    reactive, edits happen in place, and changes from anywhere update every open
     list.
 
-    Two models are MODIFIED. This one gets a delegate per belongs_to plus the
-    after_commit broadcast the whole thing hangs off; each model a belongs_to
-    POINTS AT gets the has_many half Rails' scaffold never writes, and a ping,
-    because a row prints the parent's label rather than its id. Both are
-    idempotent, both are announced, and anything already declared is left alone.
+    Two models are MODIFIED. This one gets a delegate for each belongs_to and
+    an after_commit broadcast. The related models get the missing has_many
+    association and a ping so changes are reflected here. Existing declarations
+    are left alone.
 
 Example:
     bin/rails generate hibiki:rails:scaffold_controller Book

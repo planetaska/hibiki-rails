@@ -71,8 +71,7 @@ module Hibiki
         def wiring_hint
           return if hibiki_registered? && helpers_included?
 
-          say_status :hint, "the packaged client is not fully wired " \
-                            "(register line and/or Helpers include) — run: " \
+          say_status :hint, "the packaged client is not fully wired. Run: " \
                             "bin/rails g hibiki:rails:install", :yellow
         end
       end

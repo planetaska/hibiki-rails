@@ -116,33 +116,16 @@ module Hibiki
         # and a name spliced mid-sentence makes every line after it ragged.
         def parent_has_many(column)
           <<~RUBY
-            # The other half of the belongs_to on #{class_name}.
-            # Rails' scaffold writes only the child's side, so without this the
-            # first destroy! here raises InvalidForeignKey — from the destroy
-            # action that scaffold emitted.
-            #
-            # dependent: follows the ASSOCIATION's requiredness, not the foreign
-            # key's null constraint. With belongs_to_required_by_default a
-            # nullable column routinely backs a required belongs_to, and
-            # :nullify there would leave behind rows that fail their own
-            # validations.
+            # Generated to match belongs_to on #{class_name}.
             #{inverse_line(column)}
           RUBY
         end
 
         def parent_ping_callback
           <<~RUBY
-            # A row carries the LABEL this record contributes, not just its id,
-            # so renaming one here changes what every open index prints — and
-            # nothing else would say so. after_commit, not after_save, so
-            # subscribers only re-read once the data is visible; no payload,
-            # because the message says the table moved, not what changed.
-            #
-            # The COLLECTION grain only. Reaching each record's own streamable
-            # would mean loading every child inside this callback, unbounded, on
-            # every write — so an open show page keeps the old label until it is
-            # reloaded. That is the documented edge of this ping, not an
-            # oversight.
+            # Minimal broadcast for dependency model change.
+            # Reaching each record's own streamable would mean loading
+            # every child inside this callback, unbounded, on every write.
             after_commit do
               ActionCable.server.broadcast(#{collection_channel_class_name}::CHANGED, {})
             end

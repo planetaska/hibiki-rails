@@ -140,7 +140,7 @@ RSpec.describe Hibiki::Rails::Generators::InstallGenerator do
   it "points bundler apps at the npm package instead of pinning" do
     output = run_generator(described_class, destination: @destination)
 
-    expect(output).to include("npm/yarn add hibiki-rails")
+    expect(output).to include("npm/yarn/bun add hibiki-rails")
     expect(File.exist?(importmap)).to be(false)
     expect(File.exist?(cable_channel)).to be(true)
   end

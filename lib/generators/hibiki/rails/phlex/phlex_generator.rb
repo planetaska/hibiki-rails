@@ -27,9 +27,8 @@ module Hibiki
         def warn_without_hibiki_phlex
           require "hibiki/phlex"
         rescue LoadError
-          say_status :warn, "hibiki_phlex is not in this bundle — the generated channel " \
-                            "calls Hibiki::Phlex.render_effect. Add `gem \"hibiki_phlex\"` " \
-                            "(and `gem \"phlex-rails\"` to render components from views).", :yellow
+          say_status :warn, "hibiki_phlex is not in this bundle. " \
+                            "Add `gem \"hibiki_phlex\"`.", :yellow
         end
 
         def create_channel
@@ -64,7 +63,7 @@ module Hibiki
         def register_hint
           return if hibiki_registered?
 
-          say_status :hint, "the packaged client is not registered — run: " \
+          say_status :hint, "the packaged client is not registered. Run: " \
                             "bin/rails g hibiki:rails:install", :yellow
         end
       end

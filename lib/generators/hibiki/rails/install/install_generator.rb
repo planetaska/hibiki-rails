@@ -103,8 +103,7 @@ module Hibiki
 
         def bundler_note
           say_status :skip, "#{IMPORTMAP} not found — with a JS bundler, " \
-                            "npm/yarn add hibiki-rails instead (it pulls in " \
-                            "@rails/actioncable)", :yellow
+                            "npm/yarn/bun add hibiki-rails instead", :yellow
         end
       end
     end

@@ -319,7 +319,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(author).to include("has_many :books, dependent: :destroy")
       expect(author).to include("ActionCable.server.broadcast(BooksChannel::CHANGED, {})")
-      expect(output).to include("app/models/author.rb already existed and was MODIFIED")
+      expect(output).to include("app/models/author.rb was MODIFIED")
     end
 
     # Reaching each book's own streamable would mean loading the children inside
@@ -363,12 +363,12 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(generated("app/models/author.rb")).to include("has_many :books, dependent: :destroy")
     end
 
-    it "prints what is owed when there is no parent file to edit" do
+    it "prints what the parent needs when there is no parent file to edit" do
       FileUtils.rm(File.join(@destination, "app/models/author.rb"))
       output = generate(["Book", *book_fields])
 
       expect(output).to include("app/models/author.rb")
-      expect(output).to include("InvalidForeignKey")
+      expect(output).to include("add the snippet above for Author by hand")
       expect(output).to include("has_many :books, dependent: :destroy")
     end
 
@@ -443,7 +443,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       output = generate(["Item"])
 
       expect(output).to include("restart")
-      expect(output).to include("autoload paths")
+      expect(output).to include("Please restart if the server is running")
       expect(output).to include("using Shelf#name as the display label")
       expect(output).to include("bin/rails g hibiki:rails:install")
     end
@@ -456,7 +456,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       output = generate(["Item"])
 
       expect(output).to include("app/models/shelf.rb")
-      expect(output).to include("InvalidForeignKey")
+      expect(output).to include("add the snippet above for Shelf by hand")
     end
 
     it "suggests a field list using association names, not foreign keys" do
@@ -499,7 +499,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       # Gauge exists and is migrated, and `label`'s validators are all
       # conditional — so its live_errors is thin for the third reason.
       expect(generate(["Gauge", "label:string"]))
-        .to include("Gauge declares no validators readable before a round trip")
+        .to include("Gauge declares no validators readable")
     end
 
     # §5.15. The generator cannot fix this — a DB constraint is not a
@@ -511,7 +511,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(output).to include("badges.slug has a unique index")
       expect(output).to include("validates :slug, uniqueness: true")
-      expect(output).to include("RecordNotUnique")
+      expect(output).to include("has no matching validator")
     end
 
     it "scopes the suggested validator for a composite index" do

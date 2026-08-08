@@ -55,7 +55,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     # present and proves nothing about this app — without base.rb and the
     # autoloader mapping, every page raises NameError at its first request.
     it "warns when phlex:install has not run" do
-      expect(generate(%w[--phlex])).to include("phlex:install has not run here")
+      expect(generate(%w[--phlex])).to include("phlex:install has not run")
     end
 
     it "says nothing about phlex:install once both artifacts are there" do
@@ -70,7 +70,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       phlex_installed
       File.write(File.join(@destination, "config/initializers/phlex.rb"), "# nothing\n")
 
-      expect(generate(%w[--phlex])).to include("phlex:install has not run here")
+      expect(generate(%w[--phlex])).to include("phlex:install has not run")
     end
 
     it "stays quiet about all of it without the flag" do

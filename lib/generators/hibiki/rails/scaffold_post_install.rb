@@ -43,17 +43,16 @@ module Hibiki
         def restart_notice
           return if @new_app_dirs.blank?
 
-          say_status :restart, "#{@new_app_dirs.join(', ')} #{@new_app_dirs.one? ? 'is' : 'are'} new — " \
-                               "Rails computes autoload paths from the app/* glob at BOOT, so restart " \
-                               "the server or the new constants raise NameError", :yellow
+          say_status :restart, "#{@new_app_dirs.join(', ')} #{@new_app_dirs.one? ? 'is' : 'are'} new. " \
+                               "Please restart if the server is running.", :yellow
         end
 
         def rebuild_css_notice
           return unless css?
 
           command = exists?("package.json") ? "bun run build:css" : "bin/rails tailwindcss:build"
-          say_status :css, "these views introduce classes your stylesheet has never seen; " \
-                           "Tailwind purges what it cannot find, so rebuild: #{command}", :yellow
+          say_status :css, "New style names are added. Tailwind purges what it cannot find. " \
+                           "If you have manual deployment steps, remember to rebuild: #{command}", :yellow
         end
 
         def association_notices
@@ -81,9 +80,7 @@ module Hibiki
 
           say_status :order, "fields follow the schema's column order — pass them explicitly to " \
                              "choose it: bin/rails g hibiki:rails:scaffold_controller " \
-                             "#{name} #{schema.columns.first(2).map { field_syntax(it) }.join(' ')} ... " \
-                             "(the validators still come from the model either way; " \
-                             "the generated views are yours to reorder by hand too)", :blue
+                             "#{name} #{schema.columns.first(2).map { field_syntax(it) }.join(' ')} ...", :blue
         end
 
         # An explicit field the model has no column for. Kept rather than
@@ -113,9 +110,10 @@ module Hibiki
           # commit-time failure still mirrors the model's own errors into the
           # same per-field slots with no change at all — it is the check BEFORE
           # the round trip that has to be re-derived.
-          say_status :form, "#{form_path}'s live_errors is thin — #{live_errors_reason}. Add validators to " \
-                            "the model, then re-run `#{rerun_command}` to derive the clauses from them " \
-                            "(or write them there by hand)", :blue
+          say_status :form, "#{form_path}'s live_errors is empty — #{live_errors_reason}. " \
+                            "Add validators to the model, then re-run " \
+                            "`#{rerun_command}` " \
+                            "to derive the clauses from them (or write them by hand)", :blue
         end
 
         # Three reachable situations, and two of them used to share one
@@ -126,7 +124,7 @@ module Hibiki
         # migrated app, where the validators WERE read and the model simply
         # declares none this generator can use.
         def live_errors_reason
-          return "#{class_name} declares no validators readable before a round trip" if schema.introspected?
+          return "#{class_name} declares no validators readable" if schema.introspected?
           return "there is no #{class_name} yet, so this command had no validators to read" unless model_present?
 
           "the migration has not run, so this command had no schema and no validators to read"
@@ -159,8 +157,7 @@ module Hibiki
         def uniqueness_notice
           schema.unmirrored_uniqueness.each do |columns|
             say_status :unique, "#{indexed_columns(columns)} #{columns.one? ? 'has' : 'have'} a unique " \
-                                "index and #{class_name} has no matching validator, so a duplicate raises " \
-                                "RecordNotUnique instead of showing a field error — add " \
+                                "index and #{class_name} has no matching validator, add " \
                                 "`#{uniqueness_validator(columns)}`", :yellow
           end
         end

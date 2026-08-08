@@ -19,10 +19,8 @@ module Hibiki
         # Each injected piece with its own reason attached, so a parent that
         # needed only one of them is never told about the other.
         PARENT_PIECES = {
-          has_many: "the has_many with a dependent: option — Rails' scaffold writes only the " \
-                    "belongs_to half, so destroying one raises InvalidForeignKey",
-          ping: "the cross-resource after_commit — a row prints this record's label, so a rename " \
-                "here repaints nothing without it"
+          has_many: "the has_many with a dependent: option",
+          ping: "the cross-resource after_commit"
         }.freeze
 
         private
@@ -44,7 +42,7 @@ module Hibiki
         end
 
         def injected_message(report)
-          "#{report[:path]} already existed and was MODIFIED — added #{parent_pieces(report)}#{kept_clause(report)}"
+          "#{report[:path]} was MODIFIED: added #{parent_pieces(report)}#{kept_clause(report)}"
         end
 
         def parent_pieces(report) = PARENT_PIECES.values_at(*report[:pieces]).join("; and ")
@@ -54,7 +52,7 @@ module Hibiki
         def kept_clause(report)
           return "" if report[:kept].empty?
 
-          ". Its own #{kept_names(report)} was left alone, including whatever dependent: option it chose"
+          ". Its own #{kept_names(report)} was left alone"
         end
 
         def kept_names(report)
@@ -62,12 +60,11 @@ module Hibiki
         end
 
         def already_wired_message(report)
-          "#{report[:columns].first.association_class_name} already declares #{kept_names(report)} — left " \
-            "alone, including whatever dependent: option it chose"
+          "#{report[:columns].first.association_class_name} already declares #{kept_names(report)}, left alone"
         end
 
         def no_file_message(report)
-          "there is no #{report[:path]} to edit, so the snippet above is owed to " \
+          "there is no #{report[:path]} to edit, add the snippet above for " \
             "#{report[:columns].first.association_class_name} by hand: #{parent_pieces(report)}"
         end
 

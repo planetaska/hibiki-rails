@@ -121,11 +121,11 @@ module Hibiki
           return unless exists?(stale)
 
           say_status :views, "#{stale} is left over from before the transport stylesheet became an " \
-                             "asset — nothing renders it now, so delete it", :yellow
+                             "asset — nothing renders it now, you can safely delete it", :yellow
         end
 
         def say_stylesheet_wired(how)
-          say_status :css, "#{STYLESHEET} was created and #{how} — it styles the client's loading and " \
+          say_status :css, "#{STYLESHEET} was created and #{how}. It styles the client's loading and " \
                            "connection state, and is shared by every generated resource", :blue
         end
 
@@ -133,7 +133,7 @@ module Hibiki
           say_status :css, "#{STYLESHEET} was created but nothing links it, so the loading and " \
                            "connection state will be invisible. Add it to your layout —\n    " \
                            "#{LINK_TAG.strip}\n  " \
-                           "— or import it from your entry stylesheet: #{IMPORT_LINE}", :yellow
+                           ", or import from your entry stylesheet: #{IMPORT_LINE}", :yellow
         end
       end
     end
