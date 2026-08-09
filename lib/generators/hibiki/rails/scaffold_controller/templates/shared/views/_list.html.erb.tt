@@ -4,6 +4,15 @@
 <%%# The island's re-rendered fragment. Its root id is the broadcast target —
     deliberately not the island root, which carries the stream source. %>
 <div id="<%= list_dom_id %>"<%= css_attr(:list) %>>
+<% unless infinite? -%>
+  <%%# Both page-control copies live inside the replaced fragment on purpose,
+      so they re-render with the list; their distinct ids keep idiomorph from
+      rebuilding them. %>
+  <%% pages = <%= query_class_name %>.page_numbers(page: page, page_count: page_count) %>
+  <%%= render "shared/pagination", page: page, page_count: page_count, pages: pages,
+             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>_top" %>
+
+<% end -%>
   <%% <%= controller_file_name %>.each do |<%= singular_name %>| %>
     <%%= render "<%= partial_path(row_partial) %>", <%= wrapped_list(row_render_locals, indent: render_indent(partial_path(row_partial)), width: 0).lstrip %> %>
   <%% end %>
@@ -29,8 +38,7 @@
     </div>
   <%% end %>
 <% else -%>
-  <%%# Inside the replaced fragment on purpose, so it re-renders with the list.
-      Stable child ids keep idiomorph from rebuilding it. %>
-  <%%= render "<%= view_dir.delete_prefix('app/views/') %>/pagination", page: page, page_count: page_count %>
+  <%%= render "shared/pagination", page: page, page_count: page_count, pages: pages,
+             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>" %>
 <% end -%>
 </div>

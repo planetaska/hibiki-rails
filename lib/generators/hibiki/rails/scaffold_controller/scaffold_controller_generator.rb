@@ -10,6 +10,7 @@ require_relative "../scaffold_parent_injection"
 require_relative "../scaffold_parent_notices"
 require_relative "../scaffold_phlex_helpers"
 require_relative "../scaffold_post_install"
+require_relative "../scaffold_shared_views"
 require_relative "../scaffold_transport_stylesheet"
 require_relative "../scaffold_schema"
 require_relative "../css_variant"
@@ -36,6 +37,7 @@ module Hibiki
         include ScaffoldParentInjection
         include ScaffoldParentNotices
         include ScaffoldPostInstall
+        include ScaffoldSharedViews
         include ScaffoldTransportStylesheet
 
         TEMPLATE_ROOT = File.expand_path("templates", __dir__)
@@ -112,18 +114,20 @@ module Hibiki
         end
 
         def create_views
-          return create_phlex_views if phlex?
+          if phlex?
+            create_phlex_views
+          else
+            %w[index show new edit _form _list _controls].each do |view|
+              template "views/#{view}.html.erb.tt", view_path("#{view}.html.erb")
+            end
 
-          %w[index show new edit _form _list _controls _field_error].each do |view|
-            template "views/#{view}.html.erb.tt", view_path("#{view}.html.erb")
+            template "views/_row.html.erb.tt", view_path("_#{row_partial}.html.erb")
+            template "views/_row_form.html.erb.tt", view_path("_#{row_form_partial}.html.erb")
           end
 
-          template "views/_row.html.erb.tt", view_path("_#{row_partial}.html.erb")
-          template "views/_row_form.html.erb.tt", view_path("_#{row_form_partial}.html.erb")
-
-          # Under --infinite-scroll the sentinel is inlined in _list and there
-          # is no page control at all — not an empty one.
-          template "views/_pagination.html.erb.tt", view_path("_pagination.html.erb") unless infinite?
+          # The page control and the field-error line, once per app — see
+          # ScaffoldSharedViews.
+          create_shared_views
         end
 
         # The model being scaffolded — one of two files this generator modifies
@@ -181,11 +185,9 @@ module Hibiki
         #
         # Private, because a public method on a Thor generator is a command.
         def create_phlex_views
-          %w[index show new edit form list row row_form controls field_error].each do |view|
+          %w[index show new edit form list row row_form controls].each do |view|
             template "views/#{view}.rb.tt", view_path("#{view}.rb")
           end
-
-          template "views/pagination.rb.tt", view_path("pagination.rb") unless infinite?
         end
 
         # Ordered so an app's own lib/templates/... override wins first, then

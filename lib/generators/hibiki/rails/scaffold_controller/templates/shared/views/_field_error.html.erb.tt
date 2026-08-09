@@ -1,8 +1,13 @@
 <%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
      consumed here at generation time. Never quote a closing ERB tag inside a
      comment — a literal one terminates the comment early and leaks the rest
-     of this prose into the generated file. -%>
+     of this prose into the generated file.
+
+     Emitted ONCE per app into app/views/shared/. The `--css=` marker below is
+     how a later scaffold run detects a variant mismatch — keep it. -%>
 <%%# locals: (message: nil) -%>
+<%%# Shared field-error line (--css=<%= css_variant %>), rendered by every
+    scaffolded form. %>
 <%% if message.present? %>
   <p<%= css_attr(:error_text) %>><%%= message %></p>
 <%% end %>

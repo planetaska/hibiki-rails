@@ -1,0 +1,24 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. Never quote a closing ERB tag inside a
+     comment — a literal one terminates the comment early and leaks the rest
+     of this prose into the generated file.
+
+     Emitted ONCE per app into app/views/shared/. The `--css=` marker below is
+     how a later scaffold run detects a variant mismatch — keep it. Under
+     --css=none the body is the scaffold-stock red block; the styled variants
+     dress the same structure. -%>
+<%%# locals: (record:) -%>
+<%%# Shared error summary (--css=<%= css_variant %>), rendered by every
+    scaffolded full-page form. The resource name comes off the record, so one
+    file serves every scaffold. %>
+<%% if record.errors.any? %>
+  <div<%= css? ? %( class="#{css(:error_summary)}") : %( style="color: red") %>>
+    <h2<%= css_attr(:error_summary_title) %>><%%= pluralize(record.errors.count, "error") %> prohibited this <%%= record.model_name.human.downcase %> from being saved:</h2>
+
+    <ul<%= css_attr(:error_summary_list) %>>
+      <%% record.errors.each do |error| %>
+        <li><%%= error.full_message %></li>
+      <%% end %>
+    </ul>
+  </div>
+<%% end %>

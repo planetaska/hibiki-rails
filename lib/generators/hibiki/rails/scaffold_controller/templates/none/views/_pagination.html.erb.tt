@@ -3,16 +3,22 @@
      no stylesheet there is nothing to carry that signal, so the current page
      has to change ELEMENT — <strong> rather than a styled <span> — and the
      inert prev/next markers become plain text. A class-token map cannot
-     express a change of tag name. -%>
-<%%# locals: (page: 1, page_count: 1) -%>
-<%%# The numbered page control, inside the replaced fragment so it re-renders
-    with the list. The links are anchors to the list, so a click also does the
-    browser's own fragment jump; data-turbo="false" keeps Turbo Drive out.
-    `on` returns a { data: } hash — merge, don't splat, or the anchor stops
-    scrolling. %>
+     express a change of tag name.
+
+     Emitted ONCE per app into app/views/shared/, so nothing here may name the
+     resource: everything resource-shaped (the wrapper id, the anchor target,
+     the page-number window) arrives as a local from the list partial. The
+     `--css=` marker below is how a later scaffold run detects a variant
+     mismatch — keep it. -%>
+<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>
+<%%# Shared page control (--css=<%= css_variant %>), rendered above and below
+    every scaffolded list. The links are anchors to the list, so a click also
+    does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
+    out. `on` returns a { data: } hash — merge, don't splat, or the anchor
+    stops scrolling. %>
 <%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
 <%%# The wrapper always renders, so idiomorph always has a node to pair with. %>
-<div id="<%= pagination_dom_id %>">
+<div id="<%%= id %>">
   <%% if page_count > 1 %>
     <nav aria-label="Pagination">
       <%%# Prev/next go inert at the ends rather than disappearing, so the
@@ -20,24 +26,24 @@
       <%% if page == 1 %>
         <span aria-disabled="true">«</span>
       <%% else %>
-        <%%= link_to "«", "#<%= list_dom_id %>", rel: "prev",
+        <%%= link_to "«", anchor, rel: "prev",
                     "aria-label": "Previous page", data: page_data.(page - 1) %>
       <%% end %>
 
-      <%% <%= query_class_name %>.page_numbers(page: page, page_count: page_count).each do |n| %>
+      <%% pages.each do |n| %>
         <%% if n.nil? %>
           <span aria-hidden="true">…</span>
         <%% elsif n == page %>
           <strong aria-current="page"><%%= n %></strong>
         <%% else %>
-          <%%= link_to n, "#<%= list_dom_id %>", "aria-label": "Page #{n}", data: page_data.(n) %>
+          <%%= link_to n, anchor, "aria-label": "Page #{n}", data: page_data.(n) %>
         <%% end %>
       <%% end %>
 
       <%% if page == page_count %>
         <span aria-disabled="true">»</span>
       <%% else %>
-        <%%= link_to "»", "#<%= list_dom_id %>", rel: "next",
+        <%%= link_to "»", anchor, rel: "next",
                     "aria-label": "Next page", data: page_data.(page + 1) %>
       <%% end %>
     </nav>

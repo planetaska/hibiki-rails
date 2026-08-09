@@ -57,7 +57,7 @@ class <%= view_class_name(:row_form) %> < Views::Base
 <% else -%>
     <%= column.tag_field_helper %> <%= wrapped_list(row_field_args(column), indent: column.tag_field_helper.length + 5).lstrip %>
 <% end -%>
-<%= render_call(:field_error, [%(message: #{form_ref}.error_for(:#{column.name}))], indent: 4) %>
+<%= render_call(:field_error, [%(message: #{form_ref}.error_for(:#{column.name}))], indent: 4, shared: true) %>
 <% end -%>
   end
 

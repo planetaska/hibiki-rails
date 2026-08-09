@@ -87,10 +87,19 @@ module Hibiki
           spinner: "loading loading-spinner loading-xs",
           warning_text: "text-warning",
           error_text: "text-error text-sm mt-1",
+          # The full-form error summary. Plain Tailwind on purpose, so both
+          # styled variants share it via the merge — an addition (2026-08-09),
+          # not a transcription: the reference apps carried the scaffold-stock
+          # `style="color: red"` block, which --css=none still emits.
+          error_summary: "rounded-md border border-red-200 bg-red-50 p-4 mb-6",
+          error_summary_title: "text-sm font-semibold text-red-800",
+          error_summary_list: "mt-2 list-disc list-inside text-sm text-red-700",
           muted: "opacity-60 italic",
           muted_inline: "opacity-60",
           counts: "ml-auto text-sm opacity-70",
-          pagination_nav: "join mt-2 mx-auto flex justify-center w-fit"
+          # my-, not mt-: the control renders above the list as well as below,
+          # and the top copy needs the gap on its other side.
+          pagination_nav: "join my-2 mx-auto flex justify-center w-fit"
         }.freeze
 
         # DaisyUI is a plugin over Tailwind, and the merge says so literally:
@@ -135,7 +144,7 @@ module Hibiki
           muted: "text-gray-500 italic",
           muted_inline: "text-gray-400",
           counts: "ml-auto text-sm text-gray-500",
-          pagination_nav: "mt-2 mx-auto flex justify-center w-fit -space-x-px rounded-md shadow-sm"
+          pagination_nav: "my-2 mx-auto flex justify-center w-fit -space-x-px rounded-md shadow-sm"
         ).freeze
 
         # Every lookup misses, so every class argument is omitted entirely.

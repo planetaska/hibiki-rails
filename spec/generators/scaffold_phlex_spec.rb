@@ -102,13 +102,24 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     it "writes one component per view, at the path Zeitwerk resolves" do
       expect(Dir[File.join(@destination, "app/views/items/*")].map { File.basename(it) })
         .to contain_exactly("index.rb", "show.rb", "new.rb", "edit.rb", "form.rb", "list.rb",
-                            "row.rb", "row_form.rb", "controls.rb", "field_error.rb",
-                            "pagination.rb")
+                            "row.rb", "row_form.rb", "controls.rb")
+      # The app-wide components live under shared/, once per app.
+      expect(Dir[File.join(@destination, "app/views/shared/*")].map { File.basename(it) })
+        .to contain_exactly("field_error.rb", "form_errors.rb", "pagination.rb")
       expect_zeitwerk_resolvable_views(@destination)
     end
 
     it "writes no ERB at all" do
       expect(Dir[File.join(@destination, "app/views/**/*.erb")]).to be_empty
+    end
+
+    # The summary derives the resource name from the record at render time, so
+    # one shared component serves every scaffold.
+    it "renders the form's error summary from the shared component" do
+      expect(generated("app/views/items/form.rb"))
+        .to include("render Views::Shared::FormErrors.new(record: @item)")
+      expect(generated("app/views/shared/form_errors.rb"))
+        .to include("@record.model_name.human.downcase")
     end
 
     # A Phlex component cannot see a controller's ivars, so every site has to
@@ -170,7 +181,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     # controls run into each other.
     it "spaces text and inline controls that would otherwise touch" do
       expect(generated("app/views/items/row.rb")).to include("whitespace")
-      expect(generated("app/views/items/pagination.rb")).to include("whitespace")
+      expect(generated("app/views/shared/pagination.rb")).to include("whitespace")
     end
 
     # Every fact still comes from the model; only the markup changed.
@@ -191,8 +202,11 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     it "--css=none omits the class keyword rather than emitting class: nil" do
       generate(%w[--phlex --css=none])
 
-      expect(generated("app/views/items/field_error.rb")).to include("p { @message }")
-      expect(generated("app/views/items/field_error.rb")).not_to include("class:")
+      expect(generated("app/views/shared/field_error.rb")).to include("p { @message }")
+      expect(generated("app/views/shared/field_error.rb")).not_to include("class:")
+      # The error summary keeps the scaffold-stock block under none.
+      expect(generated("app/views/shared/form_errors.rb")).to include(%(div(style: "color: red")))
+      expect(generated("app/views/shared/form_errors.rb")).not_to include("class:")
     end
 
     # The page control is the one component with a per-variant template. Under
@@ -205,7 +219,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       %w[daisyui tailwind none].each do |variant|
         FileUtils.rm_rf(Dir[File.join(@destination, "app")])
         generate(["--phlex", "--css=#{variant}"])
-        forks[variant] = generated("app/views/items/pagination.rb")
+        forks[variant] = generated("app/views/shared/pagination.rb")
       end
 
       # A tag name, which no class map can express — the fork that survives.
@@ -219,12 +233,12 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     it "--infinite-scroll inlines the sentinel and writes no page control" do
       generate(%w[--phlex --infinite-scroll])
 
-      expect(exists?("app/views/items/pagination.rb")).to be(false)
+      expect(exists?("app/views/shared/pagination.rb")).to be(false)
       expect(generated("app/views/items/list.rb")).to include("%i[click visible]")
     end
 
-    it "emits sources that compile, in every variant and both pagination modes" do
-      [%w[--phlex], %w[--phlex --infinite-scroll]].each do |mode|
+    it "emits sources that compile, in every variant and every pagination mode" do
+      [%w[--phlex], %w[--phlex --infinite-scroll], %w[--phlex --skip-pagination]].each do |mode|
         Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
           FileUtils.rm_rf(Dir[File.join(@destination, "app")])
           generate([*mode, "--css=#{variant}"])

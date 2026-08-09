@@ -1,10 +1,15 @@
-<%#- ESCAPING: none — plain Ruby out, every <% is generation time. -%>
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. Emitted ONCE
+     per app into app/views/shared/, so nothing here may name the resource:
+     everything resource-shaped arrives as a keyword from the list component.
+     The `--css=` marker in the class comment is how a later scaffold run
+     detects a variant mismatch — keep it. -%>
 # frozen_string_literal: true
 
-# The numbered page control, inside the replaced fragment so it re-renders
-# with the list. The links are anchors to the list, so a click also does the
-# browser's own fragment jump; data-turbo="false" keeps Turbo Drive out.
-class <%= view_class_name(:pagination) %> < Views::Base
+# Shared page control (--css=<%= css_variant %>), rendered above and below
+# every scaffolded list. The links are anchors to the list, so a click also
+# does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
+# out.
+class Views::Shared::Pagination < Views::Base
 <%= phlex_includes(:link_to, hibiki: true) %>
 
   ITEM = "relative inline-flex items-center border border-gray-300 px-4 py-2 " \
@@ -13,12 +18,12 @@ class <%= view_class_name(:pagination) %> < Views::Base
   ITEM_CURRENT = "#{ITEM} z-10 bg-indigo-600 border-indigo-600 text-white"
   ITEM_INERT = "#{ITEM} bg-white text-gray-300 cursor-not-allowed"
 
-<%= initializer_source([%w[page 1], %w[page_count 1]]) %>
+<%= initializer_source([%w[page 1], %w[page_count 1], %w[pages []], ["anchor"], ["id"]]) %>
 
   def view_template
     # The wrapper always renders (so idiomorph has a node to pair with) and
     # stays bare — layout classes here would leave dead space when empty.
-    div(id: "<%= pagination_dom_id %>") do
+    div(id: @id) do
       nav<%= arg_list(*css_args(:pagination_nav), %(aria_label: "Pagination")) %> { items } if @page_count > 1
     end
   end
@@ -31,7 +36,7 @@ class <%= view_class_name(:pagination) %> < Views::Base
     @page == 1 ? inert("«") : step("«", @page - 1, rel: "prev", label: "Previous page")
     whitespace
 
-    <%= query_class_name %>.page_numbers(page: @page, page_count: @page_count).each do |n|
+    @pages.each do |n|
       if n.nil?
         span(class: ITEM_INERT, aria_hidden: "true") { "…" }
       elsif n == @page
@@ -54,7 +59,7 @@ class <%= view_class_name(:pagination) %> < Views::Base
   # The STRING "false", not the boolean — Phlex omits false-valued attributes.
   # And merge, don't splat: the anchor needs its own data attribute too.
   def step(text, n, label:, rel: nil)
-    link_to text, "#<%= list_dom_id %>", class: ITEM_LINK, rel:, "aria-label": label,
+    link_to text, @anchor, class: ITEM_LINK, rel:, "aria-label": label,
             data: { turbo: "false" }.merge(on(:go_to_page, with: { page: n })[:data])
   end
 end

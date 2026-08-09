@@ -238,9 +238,11 @@ module Hibiki
 
         # A whole `render Views::Books::Row.new(...)` call. The emitter owns the
         # line, so no template computes a continuation column by hand the way
-        # render_indent had to for `<%= render "path", `.
-        def render_call(view, args, indent:)
-          call = "#{' ' * indent}render #{view_class_name(view)}.new"
+        # render_indent had to for `<%= render "path", `. `shared:` targets the
+        # app-wide Views::Shared components instead of the resource's own.
+        def render_call(view, args, indent:, shared: false)
+          klass = shared ? "Views::Shared::#{view.to_s.camelize}" : view_class_name(view)
+          call = "#{' ' * indent}render #{klass}.new"
           return call if args.empty?
 
           "#{call}(#{wrapped_list(args, indent: call.length + 1, width: 96).lstrip})"

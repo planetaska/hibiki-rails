@@ -9,13 +9,13 @@
 # Each belongs_to collection arrives as a keyword, never an ivar.
 <% end -%>
 class <%= view_class_name(:form) %> < Views::Base
-<%= phlex_includes(:form_with, :pluralize) %>
+<%= phlex_includes(:form_with) %>
 
 <%= initializer_source([[singular_name, nil], *schema.belongs_tos.map { [it.association_name.to_s.pluralize, "[]"] }]) %>
 
   def view_template
     form_with<%= arg_list("model: @#{singular_name}", *css_args(:form)) %> do |form|
-      errors
+<%= render_call(:form_errors, ["record: @#{singular_name}"], indent: 6, shared: true) %>
       fields(form)
 
       div { form.submit<%= css? ? %( class: "#{css(:btn_primary)}") : "" %> }
@@ -23,18 +23,6 @@ class <%= view_class_name(:form) %> < Views::Base
   end
 
   private
-
-  def errors
-    return if @<%= singular_name %>.errors.empty?
-
-    div(style: "color: red") do
-      h2 { "#{pluralize(@<%= singular_name %>.errors.count, 'error')} prohibited this <%= human_name.downcase %> from being saved:" }
-
-      ul do
-        @<%= singular_name %>.errors.each { |error| li { error.full_message } }
-      end
-    end
-  end
 
   def fields(form)
     div<%= arg_list(*css_args(:fieldset)) %> do

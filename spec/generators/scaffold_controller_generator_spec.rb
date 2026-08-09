@@ -213,7 +213,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       # DaisyUI's `join-item btn` is a component class plain Tailwind lacks, so
       # the item styling has to become a template local.
-      expect(generated("app/views/books/_pagination.html.erb")).to include("<% item = ")
+      expect(generated("app/views/shared/_pagination.html.erb")).to include("<% item = ")
       expect(generated("app/views/books/_book.html.erb")).to include("rounded-lg border border-gray-200")
     end
 
@@ -223,7 +223,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(generated("app/models/book_query.rb")).to include("PAGE_SIZE = nil")
       # .limit(nil) and .offset(nil) are relation no-ops, so the page control
       # simply never renders and go_to_page short-circuits.
-      expect(exists?("app/views/books/_pagination.html.erb")).to be(true)
+      expect(exists?("app/views/shared/_pagination.html.erb")).to be(true)
     end
 
     it "--infinite-scroll swaps the window function and drops the page control" do
@@ -231,7 +231,9 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(generated("app/models/book_query.rb")).to include("relation.limit(PAGE_SIZE && page * PAGE_SIZE)")
       expect(generated("app/views/books/_list.html.erb")).to include("%i[click visible]")
-      expect(exists?("app/views/books/_pagination.html.erb")).to be(false)
+      expect(exists?("app/views/shared/_pagination.html.erb")).to be(false)
+      # The field-error line is not pagination-shaped and stays.
+      expect(exists?("app/views/shared/_field_error.html.erb")).to be(true)
     end
 
     it "--skip-search removes the box, the action and the LIKE terms together" do
@@ -246,6 +248,88 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       generate(["Book", *book_fields, "--page-size=5"])
 
       expect(generated("app/models/book_query.rb")).to include("PAGE_SIZE = 5")
+    end
+  end
+
+  describe "the shared partials" do
+    it "renders the page control above and below the list, with distinct ids" do
+      generate(["Book", *book_fields, "--css=daisyui"])
+
+      list = generated("app/views/books/_list.html.erb")
+      expect(list.scan('render "shared/pagination"').length).to eq(2)
+      expect(list).to include('id: "books_pagination_top"')
+      expect(list).to include('id: "books_pagination"')
+      # Top copy before the rows, so a long page starts with a control in reach.
+      expect(list.index("books_pagination_top")).to be < list.index("books.each")
+    end
+
+    it "hands the page control its resource facts as locals" do
+      generate(["Book", *book_fields, "--css=daisyui"])
+
+      # The shared body must carry no resource name at all — everything
+      # book-shaped arrives from the list partial.
+      pagination = generated("app/views/shared/_pagination.html.erb")
+      expect(pagination).not_to include("book")
+      expect(pagination).not_to include("Book")
+      expect(generated("app/views/books/_list.html.erb"))
+        .to include("BookQuery.page_numbers(page: page, page_count: page_count)")
+    end
+
+    it "renders the field-error line from the shared path" do
+      generate(["Book", *book_fields, "--css=daisyui"])
+
+      expect(generated("app/views/books/_book_form.html.erb")).to include('render "shared/field_error"')
+      expect(exists?("app/views/books/_field_error.html.erb")).to be(false)
+    end
+
+    it "renders the form's error summary from the shared path, resource-free" do
+      generate(["Book", *book_fields, "--css=tailwind"])
+
+      expect(generated("app/views/books/_form.html.erb"))
+        .to include('render "shared/form_errors", record: book')
+      # The resource name comes off the record at render time, so the shared
+      # body carries none — and the styled variants dress the block.
+      summary = generated("app/views/shared/_form_errors.html.erb")
+      expect(summary).not_to include("book")
+      expect(summary).to include("record.model_name.human.downcase")
+      expect(summary).to include("bg-red-50")
+      expect(summary).not_to include("color: red")
+    end
+
+    it "keeps the scaffold-stock error block under --css=none" do
+      generate(["Book", *book_fields, "--css=none"])
+
+      summary = generated("app/views/shared/_form_errors.html.erb")
+      expect(summary).to include('style="color: red"')
+      expect(summary).not_to include("class=")
+    end
+
+    it "leaves the shared files alone on a second scaffold, silently" do
+      generate(["Book", *book_fields, "--css=daisyui"])
+      pagination = generated("app/views/shared/_pagination.html.erb")
+
+      output = generate(["Gauge", "label:string", "--css=daisyui"])
+
+      expect(generated("app/views/shared/_pagination.html.erb")).to eq(pagination)
+      expect(output).not_to include("different --css style")
+    end
+
+    it "keeps a shared file written under another --css style, and says so" do
+      generate(["Book", *book_fields, "--css=daisyui"])
+      output = generate(["Gauge", "label:string", "--css=tailwind"])
+
+      expect(generated("app/views/shared/_pagination.html.erb")).to include("--css=daisyui")
+      expect(output).to include("different --css style")
+    end
+
+    it "names per-resource copies left over from before the partials were shared" do
+      write("app/views/books/_pagination.html.erb", "<div></div>\n")
+      output = generate(["Book", *book_fields, "--css=daisyui"])
+
+      # A generator never deletes — the file stays, the notice names it.
+      expect(exists?("app/views/books/_pagination.html.erb")).to be(true)
+      expect(output).to include("app/views/books/_pagination.html.erb")
+      expect(output).to include("you can safely delete")
     end
   end
 
@@ -550,6 +634,9 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     expect(generated("app/channels/admin/books_channel.rb")).to include('CHANGED = "admin:books:changed"')
     expect(generated("app/channels/admin/book_channel.rb")).to include("class Admin::BookChannel")
     expect(generated("app/views/admin/books/_list.html.erb")).to include('<div id="admin_books"')
+    # The shared partials are app-wide, so the namespace stays out of the path.
+    expect(exists?("app/views/shared/_pagination.html.erb")).to be(true)
+    expect(exists?("app/views/admin/shared/_pagination.html.erb")).to be(false)
 
     expect_valid_generated_sources(@destination)
   end

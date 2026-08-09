@@ -1,0 +1,29 @@
+<%#- ESCAPING: a Phlex component is plain Ruby, so there is no runtime ERB here
+     and nothing to double-escape.
+
+     Emitted ONCE per app into app/views/shared/. The `--css=` marker in the
+     class comment is how a later scaffold run detects a variant mismatch —
+     keep it. Under --css=none the body is the scaffold-stock red block; the
+     styled variants dress the same structure. -%>
+# frozen_string_literal: true
+
+# Shared error summary (--css=<%= css_variant %>): every message that stopped
+# the record from saving, or nothing at all. The resource name comes off the
+# record, so one component serves every scaffold.
+class Views::Shared::FormErrors < Views::Base
+<%= phlex_includes(:pluralize) %>
+
+<%= initializer_source([%w[record]]) %>
+
+  def view_template
+    return if @record.errors.empty?
+
+    div<%= css? ? arg_list(*css_args(:error_summary)) : %[(style: "color: red")] %> do
+      h2<%= arg_list(*css_args(:error_summary_title)) %> { "#{pluralize(@record.errors.count, 'error')} prohibited this #{@record.model_name.human.downcase} from being saved:" }
+
+      ul<%= arg_list(*css_args(:error_summary_list)) %> do
+        @record.errors.each { |error| li { error.full_message } }
+      end
+    end
+  end
+end

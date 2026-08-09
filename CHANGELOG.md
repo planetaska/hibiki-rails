@@ -4,6 +4,46 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Changed
+
+**The page control and the field-error line are shared partials now.** Each
+scaffold used to write its own copy per resource; both are presentation-only,
+so they are emitted once per app instead — `app/views/shared/_pagination.html.erb`
+and `_field_error.html.erb` (under `--phlex`: `Views::Shared::Pagination` and
+`Views::Shared::FieldError` in `app/views/shared/`). Everything resource-shaped
+reaches the page control as locals from the list partial. A second scaffold
+finds the files present and leaves them; if they were generated under a
+different `--css` style, a notice says so instead of silently restyling every
+other resource's control.
+
+**Pagination renders above the list as well as below**, so a long page starts
+with a control in reach. Both copies live inside the re-rendered fragment and
+carry distinct ids (`books_pagination_top` / `books_pagination`), so idiomorph
+updates them in place.
+
+Re-running a scaffold with `--force` moves the list over to the shared
+partials and prints a notice naming the now-dead per-resource copies — the
+generator never deletes them itself.
+
+**The form's error summary is a shared partial too** —
+`app/views/shared/_form_errors.html.erb` (under `--phlex`:
+`Views::Shared::FormErrors`), rendered by every scaffolded full-page form. The
+resource name comes off the record at render time, so one file serves every
+scaffold. Under `--css=tailwind` and `--css=daisyui` the block is styled as a
+red alert panel instead of the scaffold-stock `style="color: red"`, which
+`--css=none` keeps.
+
+### Fixed
+
+**The `hibiki_busy.css` import lands directly below `@import "tailwindcss";`**
+instead of at the end of the entry stylesheet — appending placed it after
+`@plugin` lines, and CSS requires every `@import` before any other statement.
+Also fixed: re-running a scaffold in a tailwindcss-rails app
+(`app/assets/tailwind/application.css`) duplicated the import on every run,
+because the idempotence probe checked the wrong path spelling.
+
 ## 0.5.1 — 2026-08-08
 
 ### Changed

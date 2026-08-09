@@ -1,10 +1,15 @@
 <%#- ESCAPING: a Phlex component is plain Ruby, so there is no runtime ERB here
      and nothing to double-escape. Every <% in this tree is generation time,
-     which is the one genuine simplification the port buys. -%>
+     which is the one genuine simplification the port buys.
+
+     Emitted ONCE per app into app/views/shared/. The `--css=` marker in the
+     class comment is how a later scaffold run detects a variant mismatch —
+     keep it. -%>
 # frozen_string_literal: true
 
-# One field's live validation message, or nothing at all.
-class <%= view_class_name(:field_error) %> < Views::Base
+# Shared field-error line (--css=<%= css_variant %>): one field's live
+# validation message, or nothing at all.
+class Views::Shared::FieldError < Views::Base
 <%= initializer_source([%w[message nil]]) %>
 
   def view_template

@@ -15,6 +15,13 @@ class <%= view_class_name(:list) %> < Views::Base
 
   def view_template
     div<%= arg_list(%(id: "#{list_dom_id}"), *css_args(:list)) %> do
+<% unless infinite? -%>
+      # Both page-control copies live inside the replaced fragment on purpose,
+      # so they re-render with the list; their distinct ids keep idiomorph
+      # from rebuilding them.
+      pagination("<%= pagination_dom_id %>_top")
+
+<% end -%>
       @<%= controller_file_name %>.each do |<%= singular_name %>|
 <%= render_call(:row, row_render_args(singular_name), indent: 8) %>
       end
@@ -26,12 +33,19 @@ class <%= view_class_name(:list) %> < Views::Base
 <% if infinite? -%>
       load_more if @remaining.positive?
 <% else -%>
-      # Inside the replaced fragment on purpose, so it re-renders with the
-      # list. Stable child ids keep idiomorph from rebuilding it.
-<%= render_call(:pagination, ["page: @page", "page_count: @page_count"], indent: 6) %>
+      pagination("<%= pagination_dom_id %>")
 <% end -%>
     end
   end
+<% unless infinite? -%>
+
+  private
+
+  def pagination(id)
+    pages = <%= query_class_name %>.page_numbers(page: @page, page_count: @page_count)
+<%= render_call(:pagination, ["page: @page", "page_count: @page_count", "pages: pages", %(anchor: "##{list_dom_id}"), "id: id"], indent: 4, shared: true) %>
+  end
+<% end -%>
 <% if infinite? -%>
 
   private

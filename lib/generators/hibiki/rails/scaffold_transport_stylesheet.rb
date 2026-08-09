@@ -48,6 +48,16 @@ module Hibiki
 
         LINK_TAG = %(    <%= stylesheet_link_tag "hibiki_busy", "data-turbo-track": "reload" %>\n)
 
+        # Where the import lands: directly below Tailwind's own. CSS wants
+        # every @import before any other statement, so appending after a
+        # `@plugin "daisyui"` line emits invalid CSS — and Tailwind's entry
+        # always opens with its own import, which ours must follow anyway. An
+        # entry someone rewrote without that line just gets the import
+        # appended; assume they will place it themselves. (Order never protects
+        # the rules from the utilities — being unlayered does, see the
+        # stylesheet's own header.)
+        TAILWIND_IMPORT = %(@import "tailwindcss";\n)
+
         private
 
         def create_transport_stylesheet
@@ -68,16 +78,18 @@ module Hibiki
             end
         end
 
-        # After the existing @import/@plugin block rather than at the top: a
-        # Tailwind entry's own imports have to come first, and appending our
-        # rules last also keeps them last in the built file. Order is not what
-        # protects them from the utilities — being unlayered is, see the
-        # stylesheet's own header — but a build that resolved our import before
-        # Tailwind's would be confusing to read.
+        # The :already probe uses the entry's OWN line, not IMPORT_LINE — the
+        # tailwindcss-rails entry imports "../stylesheets/hibiki_busy.css", and
+        # probing for the "./" spelling there re-appended on every re-run.
         def import_into_entry(entry)
-          return :already if wired?(entry, IMPORT_LINE)
+          line = ENTRIES.fetch(entry)
+          return :already if wired?(entry, line)
 
-          append_to_file entry, "#{ENTRIES.fetch(entry)}\n"
+          if wired?(entry, TAILWIND_IMPORT)
+            inject_into_file entry, "#{line}\n", after: TAILWIND_IMPORT
+          else
+            append_to_file entry, "#{line}\n"
+          end
           :import
         end
 

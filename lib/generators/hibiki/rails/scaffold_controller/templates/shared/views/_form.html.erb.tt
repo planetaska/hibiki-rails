@@ -7,17 +7,7 @@
 <% end -%>
  %>
 <%%= form_with(model: <%= model_resource_name(singular_name) %><%= css? ? %(, class: "#{css(:form)}") : "" %>) do |form| %>
-  <%% if <%= singular_name %>.errors.any? %>
-    <div style="color: red">
-      <h2><%%= pluralize(<%= singular_name %>.errors.count, "error") %> prohibited this <%= human_name.downcase %> from being saved:</h2>
-
-      <ul>
-        <%% <%= singular_name %>.errors.each do |error| %>
-          <li><%%= error.full_message %></li>
-        <%% end %>
-      </ul>
-    </div>
-  <%% end %>
+  <%%= render "shared/form_errors", record: <%= singular_name %> %>
 
   <div<%= css_attr(:fieldset) %>>
 <% schema.columns.each_with_index do |column, index| -%>

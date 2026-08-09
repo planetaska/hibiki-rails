@@ -23,10 +23,12 @@ module Hibiki
         # stylesheet, a leftover file. None of them is about the resource.
         def app_notices
           restart_notice
-          # These two live with the code that chose their branch, like
+          # These live with the code that chose their branch, like
           # parent_notices — the outcomes are those modules' vocabulary.
           stylesheet_notice
           stale_erb_views_notice
+          shared_views_notice
+          stale_shared_views_notice
           rebuild_css_notice
         end
 

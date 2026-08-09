@@ -2,13 +2,19 @@
      abstraction, so its six item variants can repeat two tokens inline. Plain
      Tailwind has no component class, so the shared item styling has to become a
      template LOCAL — otherwise fourteen utilities appear six times and a tweak
-     has to be made six times. A class-token map cannot express that. -%>
-<%%# locals: (page: 1, page_count: 1) -%>
-<%%# The numbered page control, inside the replaced fragment so it re-renders
-    with the list. The links are anchors to the list, so a click also does the
-    browser's own fragment jump; data-turbo="false" keeps Turbo Drive out.
-    `on` returns a { data: } hash — merge, don't splat, or the anchor stops
-    scrolling. %>
+     has to be made six times. A class-token map cannot express that.
+
+     Emitted ONCE per app into app/views/shared/, so nothing here may name the
+     resource: everything resource-shaped (the wrapper id, the anchor target,
+     the page-number window) arrives as a local from the list partial. The
+     `--css=` marker below is how a later scaffold run detects a variant
+     mismatch — keep it. -%>
+<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>
+<%%# Shared page control (--css=<%= css_variant %>), rendered above and below
+    every scaffolded list. The links are anchors to the list, so a click also
+    does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
+    out. `on` returns a { data: } hash — merge, don't splat, or the anchor
+    stops scrolling. %>
 <%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
 <%% item = "relative inline-flex items-center border border-gray-300 px-4 py-2 text-sm font-medium first:rounded-l-md last:rounded-r-md" %>
 <%% item_link = "#{item} bg-white text-gray-700 hover:bg-gray-50" %>
@@ -16,7 +22,7 @@
 <%% item_inert = "#{item} bg-white text-gray-300 cursor-not-allowed" %>
 <%%# The wrapper always renders (so idiomorph has a node to pair with) and
     stays bare — layout classes here would leave dead space when empty. %>
-<div id="<%= pagination_dom_id %>">
+<div id="<%%= id %>">
   <%% if page_count > 1 %>
     <nav<%= css_attr(:pagination_nav) %> aria-label="Pagination">
       <%%# Prev/next go inert at the ends rather than disappearing, so the
@@ -24,17 +30,17 @@
       <%% if page == 1 %>
         <span class="<%%= item_inert %>" aria-disabled="true">«</span>
       <%% else %>
-        <%%= link_to "«", "#<%= list_dom_id %>", class: item_link, rel: "prev",
+        <%%= link_to "«", anchor, class: item_link, rel: "prev",
                     "aria-label": "Previous page", data: page_data.(page - 1) %>
       <%% end %>
 
-      <%% <%= query_class_name %>.page_numbers(page: page, page_count: page_count).each do |n| %>
+      <%% pages.each do |n| %>
         <%% if n.nil? %>
           <span class="<%%= item_inert %>" aria-hidden="true">…</span>
         <%% elsif n == page %>
           <span class="<%%= item_current %>" aria-current="page"><%%= n %></span>
         <%% else %>
-          <%%= link_to n, "#<%= list_dom_id %>", class: item_link,
+          <%%= link_to n, anchor, class: item_link,
                       "aria-label": "Page #{n}", data: page_data.(n) %>
         <%% end %>
       <%% end %>
@@ -42,7 +48,7 @@
       <%% if page == page_count %>
         <span class="<%%= item_inert %>" aria-disabled="true">»</span>
       <%% else %>
-        <%%= link_to "»", "#<%= list_dom_id %>", class: item_link, rel: "next",
+        <%%= link_to "»", anchor, class: item_link, rel: "next",
                     "aria-label": "Next page", data: page_data.(page + 1) %>
       <%% end %>
     </nav>

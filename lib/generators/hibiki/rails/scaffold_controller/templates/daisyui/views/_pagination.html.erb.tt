@@ -1,16 +1,22 @@
 <%#- The ONE component with a per-variant template. DaisyUI expresses a page
      item as two tokens (`join-item btn`), so each of the six variants below can
-     repeat them inline — which is exactly what plain Tailwind cannot do. -%>
-<%%# locals: (page: 1, page_count: 1) -%>
-<%%# The numbered page control, inside the replaced fragment so it re-renders
-    with the list. The links are anchors to the list, so a click also does the
-    browser's own fragment jump; data-turbo="false" keeps Turbo Drive out.
-    `on` returns a { data: } hash — merge, don't splat, or the anchor stops
-    scrolling. %>
+     repeat them inline — which is exactly what plain Tailwind cannot do.
+
+     Emitted ONCE per app into app/views/shared/, so nothing here may name the
+     resource: everything resource-shaped (the wrapper id, the anchor target,
+     the page-number window) arrives as a local from the list partial. The
+     `--css=` marker below is how a later scaffold run detects a variant
+     mismatch — keep it. -%>
+<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>
+<%%# Shared page control (--css=<%= css_variant %>), rendered above and below
+    every scaffolded list. The links are anchors to the list, so a click also
+    does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
+    out. `on` returns a { data: } hash — merge, don't splat, or the anchor
+    stops scrolling. %>
 <%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
 <%%# The wrapper always renders (so idiomorph has a node to pair with) and
     stays bare — layout classes here would leave dead space when empty. %>
-<div id="<%= pagination_dom_id %>">
+<div id="<%%= id %>">
   <%% if page_count > 1 %>
     <nav<%= css_attr(:pagination_nav) %> aria-label="Pagination">
       <%%# Prev/next go inert at the ends rather than disappearing, so the
@@ -18,17 +24,17 @@
       <%% if page == 1 %>
         <span class="join-item btn btn-disabled" aria-disabled="true">«</span>
       <%% else %>
-        <%%= link_to "«", "#<%= list_dom_id %>", class: "join-item btn", rel: "prev",
+        <%%= link_to "«", anchor, class: "join-item btn", rel: "prev",
                     "aria-label": "Previous page", data: page_data.(page - 1) %>
       <%% end %>
 
-      <%% <%= query_class_name %>.page_numbers(page: page, page_count: page_count).each do |n| %>
+      <%% pages.each do |n| %>
         <%% if n.nil? %>
           <span class="join-item btn btn-disabled" aria-hidden="true">…</span>
         <%% elsif n == page %>
           <span class="join-item btn btn-active" aria-current="page"><%%= n %></span>
         <%% else %>
-          <%%= link_to n, "#<%= list_dom_id %>", class: "join-item btn",
+          <%%= link_to n, anchor, class: "join-item btn",
                       "aria-label": "Page #{n}", data: page_data.(n) %>
         <%% end %>
       <%% end %>
@@ -36,7 +42,7 @@
       <%% if page == page_count %>
         <span class="join-item btn btn-disabled" aria-disabled="true">»</span>
       <%% else %>
-        <%%= link_to "»", "#<%= list_dom_id %>", class: "join-item btn", rel: "next",
+        <%%= link_to "»", anchor, class: "join-item btn", rel: "next",
                     "aria-label": "Next page", data: page_data.(page + 1) %>
       <%% end %>
     </nav>

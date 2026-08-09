@@ -132,6 +132,20 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
         .to include(%(@import "./hibiki_busy.css";))
     end
 
+    # CSS wants every @import above any other statement, so landing below a
+    # @plugin line would emit an invalid entry. Directly under Tailwind's own
+    # import, and any hand-added lines below are the user's to order.
+    it "lands directly below Tailwind's import, above any @plugin line" do
+      write("app/assets/stylesheets/application.tailwind.css",
+            %(@import "tailwindcss";\n@plugin "daisyui";\n))
+      layout(%("application"))
+
+      generate
+
+      expect(generated("app/assets/stylesheets/application.tailwind.css"))
+        .to eq(%(@import "tailwindcss";\n@import "./hibiki_busy.css";\n@plugin "daisyui";\n))
+    end
+
     # tailwindcss-rails keeps its entry in a directory of its own, so the
     # import has to climb out of it to reach app/assets/stylesheets.
     it "imports from a tailwindcss-rails entry stylesheet, path adjusted" do
@@ -163,6 +177,18 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
       expect(generate).to include("linked from app/views/layouts/application.html.erb")
       expect(generated("app/views/layouts/application.html.erb"))
         .to include(%(stylesheet_link_tag "hibiki_busy"))
+    end
+
+    # The idempotence probe must use the entry's OWN import line: this entry's
+    # spelling climbs out of the directory, and probing for the "./" one
+    # re-appended the import on every re-run.
+    it "imports into the path-adjusted entry at most once across two resources" do
+      write("app/assets/tailwind/application.css", %(@import "tailwindcss";\n))
+      layout(%("application"))
+      generate
+      run_generator(described_class, %w[Item], destination: @destination)
+
+      expect(generated("app/assets/tailwind/application.css").scan("hibiki_busy").size).to eq(1)
     end
 
     it "links the layout at most once across two resources" do
@@ -243,7 +269,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
         FileUtils.rm_rf(Dir[File.join(@destination, "app")])
         generate(["--css=#{variant}"])
 
-        expect(generated("app/views/books/_pagination.html.erb")).not_to include("hbk-")
+        expect(generated("app/views/shared/_pagination.html.erb")).not_to include("hbk-")
       end
     end
   end

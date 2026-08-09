@@ -32,7 +32,7 @@
 <% else -%>
     <%%= <%= column.tag_field_helper %> <%= wrapped_list(row_field_args(column), indent: column.tag_field_helper.length + 9).lstrip %> %>
 <% end -%>
-    <%%= render "<%= view_dir.delete_prefix('app/views/') %>/field_error", message: form.error_for(:<%= column.name %>) %>
+    <%%= render "shared/field_error", message: form.error_for(:<%= column.name %>) %>
 <% end -%>
 <% unless index == schema.columns.size - 1 -%>
 
