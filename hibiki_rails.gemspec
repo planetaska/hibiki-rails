@@ -35,10 +35,12 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actioncable", ">= 8.0"
-  # 0.2 floor: generated code relies on the effect equality gate, which is what
-  # lets an ordinary action produce zero bytes — and the post-batch ack exists
-  # because of it.
-  spec.add_dependency "hibiki", "~> 0.2"
+  # 0.3 floor: generated channels pass a per-signal comparator
+  # (equals: Hibiki::Rails.record_equals), which core honors at BOTH equality
+  # gates — State's write gate and the flush gate (changed_from?). The 0.2
+  # reasons still apply: the effect equality gate is what lets an ordinary
+  # action produce zero bytes, and the post-batch ack exists because of it.
+  spec.add_dependency "hibiki", "~> 0.3"
   spec.add_dependency "railties", ">= 8.0"
   spec.add_dependency "turbo-rails", ">= 2.0"
 end
