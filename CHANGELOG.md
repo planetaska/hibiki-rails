@@ -4,9 +4,66 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
-## Unreleased
+## 0.6.0 — 2026-08-10
+
+### Added
+
+**`Hibiki::Rails.record_equals` — a per-signal comparator for ActiveRecord
+records.** `ActiveRecord#==` compares class and id only, so a stale record is
+`==` to its edited reload and a signal write carrying the fresh one is silently
+dropped. Pass the comparator per signal and the write goes through:
+
+```ruby
+state(:items, equals: Hibiki::Rails.record_equals) { fetch }
+```
+
+It compares class + `attributes`, recurses through arrays, and falls back to
+`==` for everything else. It needs hibiki 0.3.0's `equals:` (see the dependency
+change below), which is honored at both of the graph's equality gates — the
+write gate and the flush-time check — so a change that passes the comparator
+actually reaches the page. This is opt-in sugar that makes the snapshot pattern
+forgiving; "records stop at the boundary" stays the documented default, and a
+comparator still cannot see an in-place mutation that never enters the write
+path.
+
+**A development-mode warning for the write that pattern swallows.** When a
+`State` write is dropped by the default `==` but the old and new values'
+`attributes` differ — the classic silent-stale-UI debugging session — the log
+now says so and points at the docs. Development only (never test or
+production), zero semantic change: the write is still dropped.
 
 ### Changed
+
+**The scaffold's row projection is gone — records now cross the boundary as
+frozen snapshots.** `app/models/book_row.rb` is no longer generated. The query
+object's `rows` returns real records, hardened at the boundary —
+
+```ruby
+def rows
+  @rows ||= window_scope.strict_loading.map { it.readonly!; it.freeze }
+end
+```
+
+— and the channels' `rows`/`row` deriveds compare them with
+`equals: Hibiki::Rails.record_equals`. What the `Data` projection's structural
+`==` used to provide, the comparator provides; what it could never provide, the
+freeze triple does: an attribute write raises `FrozenError`, `save` raises
+`ActiveRecord::ReadOnlyRecord`, and an unpreloaded association walk raises
+`ActiveRecord::StrictLoadingViolationError` instead of firing a lazy query off
+the graph thread. Views print a `belongs_to` label as `book.author&.name`
+directly, so **the scaffold no longer injects a `delegate` per `belongs_to`
+into the model** — the model injection is the `after_commit` ping alone. The
+member channel's fetch preloads its associations (`includes(...) +
+strict_loading`) for the same reason.
+
+Existing scaffolded apps keep working untouched: their `book_row.rb` and
+delegates are app code, and the runtime reads none of it. Re-running a scaffold
+with `--force` moves the resource over; the generator never deletes, so the
+orphaned `*_row.rb` stays on disk for you to remove.
+
+**The hibiki dependency floor is `~> 0.3`** (per-signal `equals:`, shipped in
+hibiki 0.3.0). Everything 0.2 provided still holds; generated channels now rely
+on the comparator being consulted at both equality gates.
 
 **The page control and the field-error line are shared partials now.** Each
 scaffold used to write its own copy per resource; both are presentation-only,
