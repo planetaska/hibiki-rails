@@ -51,9 +51,24 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(query).to include("includes(:author)")
     end
 
-    it "gives the row projection a label member per belongs_to" do
-      expect(generated("app/models/book_row.rb"))
-        .to include(":id, :author_id, :author_name, :title")
+    it "emits no row projection — the records themselves cross the boundary" do
+      expect(exists?("app/models/book_row.rb")).to be(false)
+      expect(generated("app/views/books/_book.html.erb")).to include("book.author&.name")
+    end
+
+    it "freezes the window's records at the query boundary" do
+      expect(generated("app/models/book_query.rb"))
+        .to include("window_scope.strict_loading.map { it.readonly!; it.freeze }")
+    end
+
+    it "compares rows by attributes at both equality gates" do
+      expect(generated("app/channels/books_channel.rb"))
+        .to include("Hibiki::Derived.new(equals: Hibiki::Rails.record_equals)")
+
+      member = generated("app/channels/book_channel.rb")
+      expect(member).to include("equals: Hibiki::Rails.record_equals")
+      expect(member).to include("Book.includes(:author).strict_loading.find_by(id: record_id)")
+      expect(member).not_to include("BookRow")
     end
 
     it "declares every attribute on the form" do
@@ -125,7 +140,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     end
 
     it "resolves the association's label column through the association" do
-      expect(generated("app/models/item_row.rb")).to include(":shelf_id, :shelf_name")
+      expect(generated("app/views/items/_item.html.erb")).to include("item.shelf&.name")
       expect(generated("app/channels/items_channel.rb")).to include("Shelf.order(:name).pluck(:name, :id)")
     end
 
@@ -152,7 +167,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     before { generate(["Item", "title:string", "shelf:references", "count:integer"]) }
 
     it "emits the columns in the order the arguments asked for" do
-      expect(generated("app/models/item_row.rb")).to include(":id, :title, :shelf_id, :shelf_name, :count")
+      expect(generated("app/forms/item_form.rb")).to include("reactive_attributes Item, :title, :shelf_id, :count")
       expect(generated("app/models/item_query.rb")).to include("SORTABLE = %i[id title count created_at].freeze")
     end
 
@@ -172,7 +187,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       # An explicit list is a subset filter as well as an ordering — that is
       # the point of the lever, so nothing may quietly put `notes` back.
       expect(generated("app/models/item_query.rb")).to include("SEARCHABLE = %i[title].freeze")
-      expect(generated("app/models/item_row.rb")).not_to include(":notes")
+      expect(generated("app/views/items/_item.html.erb")).not_to include("notes")
       expect(generated("app/forms/item_form.rb")).not_to include("notes")
     end
   end
@@ -338,11 +353,11 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       write("app/models/book.rb", "class Book < ApplicationRecord\n  belongs_to :author\nend\n")
     end
 
-    it "adds the delegate and the ping, and says that it modified the file" do
+    it "adds the ping, and says that it modified the file" do
       output = generate(["Book", *book_fields])
       model = generated("app/models/book.rb")
 
-      expect(model).to include("delegate :name, to: :author, prefix: true, allow_nil: true")
+      expect(model).not_to include("delegate")
       expect(model).to include("ActionCable.server.broadcast(BooksChannel::CHANGED, {})")
       expect(model).to include("ActionCable.server.broadcast(BookChannel.changed(id), {})")
       expect(output).to include("was MODIFIED")
@@ -374,7 +389,6 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       write("app/models/admin/book.rb", "class Admin::Book < ApplicationRecord\n  belongs_to :author\nend\n")
       generate(["admin/book", *book_fields])
 
-      expect(generated("app/models/admin/book.rb")).to include("delegate :name, to: :author")
       expect(generated("app/models/admin/book.rb")).to include("Admin::BooksChannel::CHANGED")
     end
 
@@ -383,7 +397,6 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
             "module Admin\n  class Book < ApplicationRecord\n    belongs_to :author\n  end\nend\n")
       generate(["admin/book", *book_fields])
 
-      expect(generated("app/models/admin/book.rb")).to include("delegate :name, to: :author")
       expect(generated("app/models/admin/book.rb")).to include("Admin::BooksChannel::CHANGED")
     end
   end

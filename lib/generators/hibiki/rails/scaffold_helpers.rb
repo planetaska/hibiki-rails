@@ -45,23 +45,21 @@ module Hibiki
         # ---- emitted class names ---------------------------------------------
 
         def query_class_name = "#{class_name}Query"
-        def row_class_name = "#{class_name}Row"
         def form_class_name = "#{class_name}Form"
         def scaffold_controller_class_name = "#{controller_class_name}Controller"
 
         # ---- destinations ----------------------------------------------------
         #
-        # The query object and the row projection go in app/models, NOT a new
-        # app/queries: Rails computes autoload paths from the app/* glob at
-        # boot, so a new top-level directory is not autoloadable until a server
-        # restart. app/forms already costs one restart; two would be gratuitous.
+        # The query object goes in app/models, NOT a new app/queries: Rails
+        # computes autoload paths from the app/* glob at boot, so a new
+        # top-level directory is not autoloadable until a server restart.
+        # app/forms already costs one restart; two would be gratuitous.
 
         def view_dir = File.join("app/views", controller_file_path)
         def collection_channel_path = File.join("app/channels", "#{controller_file_path}_channel.rb")
         def member_channel_path = File.join("app/channels", *class_path, "#{file_name}_channel.rb")
         def model_path = File.join("app/models", *class_path, "#{file_name}.rb")
         def query_path = File.join("app/models", *class_path, "#{file_name}_query.rb")
-        def row_path = File.join("app/models", *class_path, "#{file_name}_row.rb")
         def form_path = File.join("app/forms", *class_path, "#{file_name}_form.rb")
 
         def scaffold_controller_path
@@ -91,6 +89,15 @@ module Hibiki
         # ---- emitting Ruby ---------------------------------------------------
 
         def symbol_array(names) = "%i[#{names.join(' ')}]"
+
+        # ".includes(:author)" — or nothing at all. Any fetch that renders a
+        # belongs_to label needs it: generated records are strict_loading, so
+        # an unpreloaded association walk raises instead of querying.
+        def belongs_to_includes
+          return "" if schema.belongs_tos.empty?
+
+          ".includes(#{schema.belongs_tos.map { ":#{it.association_name}" }.join(', ')})"
+        end
 
         # Wrap a comma-separated list so generated code is readable without a
         # formatter pass. A resource with twenty columns would otherwise emit a

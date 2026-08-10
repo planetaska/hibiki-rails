@@ -1,5 +1,5 @@
 <%# GENERATION-time ERB only. -%>
-# One record, live — the singular sibling of the collection channel.
+# One record — the singular sibling of the collection channel.
 #
 # NOTE: every PUBLIC instance method here is a client-invocable action.
 # Anything not meant to be called from the wire lives under private.
@@ -12,12 +12,14 @@ class <%= member_channel_class_name %> < ApplicationCable::Channel
   def build_graph
     @db_version = Hibiki::State.new(0)
 
-    # The same projection the index uses. find_by, not find: the record can be
+    # One record, frozen at the boundary like the index rows (see
+    # <%= query_class_name %>#rows). find_by, not find: the record can be
     # destroyed while this page is open.
-    @row = Hibiki::Derived.new do
+    @row = Hibiki::Derived.new(equals: Hibiki::Rails.record_equals) do
       @db_version.value
-      record = <%= class_name %>.find_by(id: record_id)
-      record && <%= row_class_name %>.from(record)
+      record = <%= class_name %><%= belongs_to_includes %>.strict_loading.find_by(id: record_id)
+      record&.readonly!
+      record&.freeze
     end
 
     Hibiki::Effect.new do

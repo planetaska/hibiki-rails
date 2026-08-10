@@ -97,12 +97,11 @@ module Hibiki
         # each call site — a nil leaking into a template emits `order(:)`.
         def label_column = @label_column || :name
 
-        # What the row partial prints. A belongs_to contributes the
-        # association's label rather than its id, which is why the model gets a
-        # `delegate :name, to: :author, prefix: true` — the record and the row
-        # projection then answer the same reader, so one partial serves both.
+        # What the row template prints, as source text: a belongs_to prints the
+        # association's label (&. mirrors a missing parent, like the old
+        # allow_nil delegate did), a scalar its own reader.
         def display_reader
-          belongs_to? ? :"#{association_name}_#{label_column}" : name
+          belongs_to? ? "#{association_name}&.#{label_column}" : name.to_s
         end
 
         def options_local = :"#{association_name}_options"
@@ -517,12 +516,6 @@ module Hibiki
         # boolean breakdown for free. With no boolean column there is nothing
         # to group by and the sentence loses its trailing clause.
         def primary_boolean = booleans.first
-
-        # A belongs_to contributes two members: the foreign key the form binds
-        # to, and the label the row partial prints.
-        def row_members
-          [:id, *columns.flat_map { it.belongs_to? ? [it.name, it.display_reader] : [it.name] }]
-        end
 
         def live_errors
           columns.filter_map { |column| [column.name, column.live_error_clause] if column.live_error_clause }

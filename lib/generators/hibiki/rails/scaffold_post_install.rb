@@ -60,7 +60,7 @@ module Hibiki
         def association_notices
           schema.belongs_tos.each do |column|
             say_status :assoc, "using #{column.association_class_name}##{column.label_column} as the " \
-                               "display label — edit #{row_path} and the form views if that's wrong", :blue
+                               "display label — edit the generated views if that's wrong", :blue
           end
 
           # The parent's own notices live with the code that decided them, in

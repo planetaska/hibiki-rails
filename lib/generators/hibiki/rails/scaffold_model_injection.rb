@@ -3,15 +3,11 @@
 module Hibiki
   module Rails
     module Generators
-      # What the scaffold writes INTO a model the app already owned.
+      # What the scaffold writes INTO a model the app already owned: the
+      # after_commit ping, which is what makes another tab, another user, the
+      # plain controller and a console write all reach an open list.
       #
-      # Two things, and neither is optional. The delegate, because the row
-      # partial prints an association's label and the show page hands that
-      # partial a live record — without it the show page raises on arrival. And
-      # the after_commit ping, because it is what makes another tab, another
-      # user, the plain controller and a console write all reach an open list.
-      #
-      # Printing them instead and hoping fails silently: everything works in
+      # Printing it instead and hoping fails silently: everything works in
       # one tab, which is exactly what makes the absence hard to notice.
       module ScaffoldModelInjection
         private
@@ -37,22 +33,7 @@ module Hibiki
         # after the class line, so without it the injection butts straight up
         # against whatever the model already declared.
         def model_support
-          "#{[association_delegates, ping_callback].compact.join("\n").indent(2)}\n"
-        end
-
-        def association_delegates
-          return if schema.belongs_tos.empty?
-
-          lines = schema.belongs_tos.map do |column|
-            "delegate :#{column.label_column}, to: :#{column.association_name}, " \
-              "prefix: true, allow_nil: true"
-          end
-
-          <<~RUBY
-            # Delegates a belongs_to to the row projection.
-            # The name is decided by the association's first string column.
-            #{lines.join("\n")}
-          RUBY
+          "#{ping_callback.indent(2)}\n"
         end
 
         def ping_callback
@@ -71,17 +52,11 @@ module Hibiki
         end
 
         def announce_model_change
-          say_status :inject, "#{model_path} — #{model_change_summary}", :green
+          say_status :inject, "#{model_path} — the after_commit broadcast", :green
           say <<~NOTE
 
             #{model_path} already existed and was MODIFIED.
           NOTE
-        end
-
-        def model_change_summary
-          parts = ["the after_commit broadcast"]
-          parts.unshift("#{schema.belongs_tos.size} delegate(s)") if schema.belongs_tos.any?
-          parts.join(" + ")
         end
       end
     end

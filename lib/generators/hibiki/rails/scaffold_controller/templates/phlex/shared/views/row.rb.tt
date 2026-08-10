@@ -6,8 +6,8 @@
 
 # One row, in either of its two modes.
 #
-# `@<%= singular_name %>` is duck-typed: the row projection from the index,
-# the model from the show page. Rendered by the channel through
+# `@<%= singular_name %>` is a record either way: a frozen read-only snapshot
+# from the channel, live from the show page. Rendered by the channel through
 # ApplicationController.render, which has no controller context — everything
 # this component branches on is a keyword argument instead.
 class <%= view_class_name(:row) %> < Views::Base

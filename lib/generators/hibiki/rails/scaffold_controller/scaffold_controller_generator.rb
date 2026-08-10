@@ -102,7 +102,6 @@ module Hibiki
 
         def create_models
           template "query.rb.tt", query_path
-          template "row.rb.tt", row_path
         end
 
         def create_form
@@ -131,12 +130,9 @@ module Hibiki
         end
 
         # The model being scaffolded — one of two files this generator modifies
-        # that the app already owned.
-        #
-        # It is not optional, and not only about the ping: the row partial
-        # prints an association's LABEL, and the show page hands that partial a
-        # live record — so without the delegate the show page raises on arrival.
-        # Once we are editing the model anyway, the ping belongs here too.
+        # that the app already owned. It gets the after_commit ping, which is
+        # what makes another tab, another user, the plain controller and a
+        # console write all reach an open list.
         #
         # The alternative — printing it and hoping — fails SILENTLY: everything
         # works in one tab, and cross-tab plus out-of-band writes simply never

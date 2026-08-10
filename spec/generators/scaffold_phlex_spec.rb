@@ -174,6 +174,8 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       expect(row).to include("plain @item.due_on.to_s")
       expect(row).to include("plain @item.title")
       expect(row).not_to include("plain @item.title.to_s")
+      # A belongs_to prints the association's label — a string, so no to_s.
+      expect(row).to include("plain @item.shelf&.name")
     end
 
     # Phlex emits NO whitespace between siblings, where ERB's newlines collapse
@@ -185,12 +187,12 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     end
 
     # Every fact still comes from the model; only the markup changed.
-    it "leaves the query, the row projection and the form untouched by the flag" do
+    it "leaves the query and the form untouched by the flag" do
       erb = Dir.mktmpdir do |dir|
         FileUtils.mkdir_p(File.join(dir, "config"))
         File.write(File.join(dir, "config/routes.rb"), "Rails.application.routes.draw do\nend\n")
         run_generator(described_class, %w[Item], destination: dir)
-        %w[app/models/item_query.rb app/models/item_row.rb app/forms/item_form.rb]
+        %w[app/models/item_query.rb app/forms/item_form.rb]
           .to_h { [it, File.read(File.join(dir, it))] }
       end
 

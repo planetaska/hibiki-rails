@@ -31,14 +31,10 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.sortable).to eq(%i[id title count due_on created_at])
     end
 
-    it "gives a belongs_to two row members — the key and the label" do
-      expect(schema.row_members).to eq(%i[id shelf_id shelf_name title notes count due_on active])
-    end
-
     it "resolves the label column through the association" do
       shelf = schema.belongs_tos.sole
       expect(shelf.label_column).to eq(:name)
-      expect(shelf.display_reader).to eq(:shelf_name)
+      expect(shelf.display_reader).to eq("shelf&.name")
       expect(shelf.association_class_name).to eq("Shelf")
       expect(shelf.options_local).to eq(:shelf_options)
     end
@@ -177,7 +173,6 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       expect(schema.searchable).to eq(%i[title intro])
       expect(schema.filterable).to eq(%i[available])
       expect(schema.sortable).to eq(%i[id title print release_date stock created_at])
-      expect(schema.row_members).to eq(%i[id author_id author_name title intro print release_date stock available])
       expect(schema).not_to be_introspected
     end
 
@@ -198,7 +193,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
     end
 
     it "guesses the association label, since no schema can confirm it" do
-      expect(schema.belongs_tos.sole.display_reader).to eq(:author_name)
+      expect(schema.belongs_tos.sole.display_reader).to eq("author&.name")
     end
 
     it "refuses attribute shapes that cannot be a form signal" do
@@ -249,8 +244,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldSchema do
       shelf = schema.belongs_tos.sole
 
       expect(shelf.label_column).to eq(:name)
-      expect(shelf.display_reader).to eq(:shelf_name)
-      expect(schema.row_members).to eq(%i[id title shelf_id shelf_name count])
+      expect(shelf.display_reader).to eq("shelf&.name")
     end
 
     it "reads timestamps off the model rather than assuming them" do

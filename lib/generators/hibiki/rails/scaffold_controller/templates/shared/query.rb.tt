@@ -84,8 +84,12 @@ class <%= query_class_name %>
     @page = page
   end
 
-  # The visible window, projected through <%= row_class_name %>.
-  def rows = @rows ||= <%= row_class_name %>.all(window_scope)
+  # The visible window: real records, frozen at the boundary. #freeze locks
+  # the attributes, readonly! makes save raise, strict_loading makes an
+  # unpreloaded association walk raise — stale-record footguns fail loud.
+  def rows
+    @rows ||= window_scope.strict_loading.map { it.readonly!; it.freeze }
+  end
 
   def page_count = self.class.page_count(counts[:matched])
   def page = @page
@@ -113,10 +117,8 @@ class <%= query_class_name %>
 <% if schema.belongs_tos.any? -%>
   # includes only here: the association label is needed for the window, never
   # for a count.
-  def window_scope = self.class.window(apply_sort(matched_scope.includes(<%= schema.belongs_tos.map { ":#{it.association_name}" }.join(", ") %>)), page: @page)
-<% else -%>
-  def window_scope = self.class.window(apply_sort(matched_scope), page: @page)
 <% end -%>
+  def window_scope = self.class.window(apply_sort(matched_scope<%= belongs_to_includes %>), page: @page)
 <% if searchable? -%>
 
   def apply_query(relation)

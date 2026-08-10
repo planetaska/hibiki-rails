@@ -42,7 +42,9 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @window = Hibiki::Derived.new { @page.value.clamp(1, @page_count.value) }
 
     # Lazy: N invalidations inside one action still mean one query.
-    @rows = Hibiki::Derived.new do
+    # record_equals, because ActiveRecord's == is id-only and calls an edited
+    # row unchanged — the comparator keeps both repaint gates honest.
+    @rows = Hibiki::Derived.new(equals: Hibiki::Rails.record_equals) do
       @db_version.value # the tracked dependency
       <%= query_class_name %>.new(<%= "query: @query.value, " if searchable? %>filters: @filters.value,
 <%= " " * (query_class_name.length + 11) %>sort: @sort.value, direction: @direction.value,

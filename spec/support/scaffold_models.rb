@@ -31,7 +31,7 @@ ActiveRecord::Schema.define do
 
   # Column order here is the order `columns_hash` reports, which is what the
   # introspection builder walks — so this file also pins the emitted order of
-  # BookRow's members and reactive_attributes' argument list.
+  # reactive_attributes' argument list.
   create_table :items, force: true do |t|
     t.integer :shelf_id, null: false
     t.string :title
@@ -114,11 +114,6 @@ class Item < ActiveRecord::Base
   # Required by default (belongs_to_required_by_default), which is the fact
   # the generated live_errors reads to emit "must be selected".
   belongs_to :shelf
-
-  # The label a belongs_to contributes to the row projection — the generator
-  # emits this delegate, so a fixture that lacked it would let a broken
-  # template pass.
-  delegate :name, to: :shelf, prefix: true, allow_nil: true
 
   validates :title, presence: true
   validates :notes, presence: true

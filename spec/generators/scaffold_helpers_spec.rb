@@ -60,7 +60,6 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
       # app/models, not a new app/queries: Rails computes autoload paths from
       # the app/* glob at boot, so a new top-level dir needs a restart.
       expect(admin.call(:query_path)).to eq("app/models/admin/book_query.rb")
-      expect(admin.call(:row_path)).to eq("app/models/admin/book_row.rb")
       expect(admin.call(:form_path)).to eq("app/forms/admin/book_form.rb")
       expect(admin.call(:scaffold_controller_path)).to eq("app/controllers/admin/books_controller.rb")
       expect(admin.call(:view_dir)).to eq("app/views/admin/books")

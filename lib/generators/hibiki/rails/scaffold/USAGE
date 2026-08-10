@@ -19,7 +19,6 @@ Example:
         db/migrate/XXXXXXXXXXXX_create_books.rb
         app/models/book.rb
         app/models/book_query.rb
-        app/models/book_row.rb
         app/channels/books_channel.rb
         app/channels/book_channel.rb
         app/forms/book_form.rb

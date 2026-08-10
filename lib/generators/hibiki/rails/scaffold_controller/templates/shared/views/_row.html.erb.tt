@@ -2,10 +2,11 @@
      generation-time loop over the schema. The #{...} inside an escaped tag is
      runtime Ruby and passes through untouched. -%>
 <%%# locals: (<%= singular_name %>:, actions: true, editing: false, form: nil<%= schema.belongs_tos.map { ", #{it.options_local}: []" }.join %>) -%>
-<%%# `<%= singular_name %>` is duck-typed: the row projection from the index,
-    the model from the show page. Rendered by the channel through
-    ApplicationController.render, which has no controller context — anything
-    this partial branches on arrives as a local with a default. %>
+<%%# `<%= singular_name %>` is a record either way: a frozen read-only
+    snapshot from the channel, live from the show page. Rendered by the
+    channel through ApplicationController.render, which has no controller
+    context — anything this partial branches on arrives as a local with a
+    default. %>
 <%%# The root id stays stable across display/edit, so idiomorph pairs the
     subtrees instead of rebuilding them (and losing focus). %>
 <div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>"<%= css_attr(:card) %>>

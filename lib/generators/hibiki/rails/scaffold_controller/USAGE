@@ -9,17 +9,15 @@ Description:
     reactive, edits happen in place, and changes from anywhere update every open
     list.
 
-    Two models are MODIFIED. This one gets a delegate for each belongs_to and
-    an after_commit broadcast. The related models get the missing has_many
-    association and a ping so changes are reflected here. Existing declarations
-    are left alone.
+    Two models are MODIFIED. This one gets an after_commit broadcast. The
+    related models get the missing has_many association and a ping so changes
+    are reflected here. Existing declarations are left alone.
 
 Example:
     bin/rails generate hibiki:rails:scaffold_controller Book
 
     This will create:
         app/models/book_query.rb
-        app/models/book_row.rb
         app/channels/books_channel.rb
         app/channels/book_channel.rb
         app/forms/book_form.rb
