@@ -17,6 +17,11 @@
 # database.
 ENV["DATABASE_URL"] ||= "sqlite3::memory:"
 
+# Without this the app boots as DEVELOPMENT (Rails' default when no env is
+# set), which flips every ::Rails.env gate in the gem — the swallowed-write
+# warning would prepend onto Hibiki::State for the whole suite.
+ENV["RAILS_ENV"] ||= "test"
+
 require "rails"
 require "action_controller/railtie"
 require "action_cable/engine"

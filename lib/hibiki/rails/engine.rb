@@ -21,6 +21,14 @@ module Hibiki
         app.config.to_prepare { Hibiki::Rails.registry.dispose_all }
       end
 
+      # Dev-only: warn when ActiveRecord id-equality swallows a State write
+      # that carried a real attribute change (see SwallowedWriteWarning).
+      # development?, not local?: a warning firing inside users' test suites
+      # would be noise. One-time prepend at boot — gem classes never reload.
+      initializer "hibiki_rails.swallowed_write_warning" do
+        Hibiki::State.prepend(SwallowedWriteWarning) if ::Rails.env.development?
+      end
+
       # importmap-rails apps get the "hibiki-rails" pin with zero config (the
       # guard keeps jsbundling/vite apps booting; they consume the npm
       # package — or a manual copy — instead).

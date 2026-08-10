@@ -32,6 +32,35 @@ module Hibiki
         ::Rails.error.report(error, handled: true, source: "hibiki_rails")
       end
     end
+
+    # Per-signal comparator for AR records held in signals — pass it as
+    # `equals: Hibiki::Rails.record_equals`. AR's #== is class + id, which
+    # calls a stale record equal to its edited reload; this compares class +
+    # attributes instead, recursing through Arrays, and falls back to == for
+    # everything else (nil included). Duck-typed: nothing here names an
+    # ActiveRecord constant.
+    #
+    # Opt-in sugar that makes the snapshot pattern forgiving; "records stop
+    # at the boundary" stays the documented default.
+    def self.record_equals
+      @record_equals ||= ->(prev, current) { record_equal?(prev, current) }
+    end
+
+    def self.record_equal?(prev, current)
+      if prev.respond_to?(:attributes) && current.respond_to?(:attributes)
+        prev.instance_of?(current.class) && prev.attributes == current.attributes
+      elsif prev.is_a?(Array) && current.is_a?(Array)
+        records_equal?(prev, current)
+      else
+        prev == current
+      end
+    end
+    private_class_method :record_equal?
+
+    def self.records_equal?(prev, current)
+      prev.size == current.size && prev.zip(current).all? { record_equal?(it[0], it[1]) }
+    end
+    private_class_method :records_equal?
   end
 end
 
@@ -43,4 +72,5 @@ require_relative "rails/broadcasts"
 require_relative "rails/channel"
 require_relative "rails/helpers"
 require_relative "rails/reactive_form"
+require_relative "rails/swallowed_write_warning"
 require_relative "rails/engine"
