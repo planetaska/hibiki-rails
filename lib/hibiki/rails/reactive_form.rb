@@ -10,6 +10,7 @@ module Hibiki
     #     include Hibiki::Rails::ReactiveForm
     #
     #     reactive_attributes Todo, :title, :done
+    #     reactive_association :tags          # defines the tag_ids signal
     #
     #     derived(:title_error) { "can't be blank" if title.strip.empty? }
     #     derived(:valid?)      { title_error.nil? }
@@ -64,6 +65,20 @@ module Hibiki
           end
         end
 
+        # reactive_association :tags — an ids signal (tag_ids) over a
+        # collection association, declared AFTER reactive_attributes (the
+        # target comes off the model's reflection). Hydrate reads the
+        # model's own collection-ids reader and commit hands the ids to
+        # #update, where AR's association writer does the join-row
+        # bookkeeping — so the macro only owns the signal and its cast:
+        # each id goes through the TARGET model's primary-key type, and
+        # the multi-select hidden-input blank is dropped.
+        def reactive_association(*names)
+          raise "#{self}: declare reactive_attributes before reactive_association" unless __hibiki_model_declared?
+
+          names.each { |name| __hibiki_ids_signal(name) }
+        end
+
         def hibiki_attributes
           @hibiki_attributes || __hibiki_inherited(:hibiki_attributes) || []
         end
@@ -80,7 +95,34 @@ module Hibiki
         # `done = "false"` meaning false and meaning true.
         def hibiki_type(name) = hibiki_model.type_for_attribute(name.to_s)
 
+        # The ids cast for a reactive_association: the target model's
+        # primary-key type, resolved on every use like hibiki_model so a
+        # reload can't pin a stale class.
+        def hibiki_association_type(name)
+          reflection = hibiki_model.reflect_on_association(name)
+          raise "#{hibiki_model} has no #{name} association" if reflection.nil?
+
+          reflection.klass.type_for_attribute(reflection.klass.primary_key)
+        end
+
         private
+
+        # Presence only — deliberately not resolving hibiki_model, which
+        # would constantize a String declaration at class-definition time.
+        def __hibiki_model_declared?
+          !!(@hibiki_model ||
+             (superclass.respond_to?(:hibiki_attributes) && superclass.send(:__hibiki_model_declared?)))
+        end
+
+        def __hibiki_ids_signal(name)
+          attr_name = :"#{name.to_s.singularize}_ids"
+          @hibiki_attributes = [*hibiki_attributes, attr_name]
+          state attr_name
+          __hibiki_casts.define_method(:"#{attr_name}=") do |value|
+            type = self.class.hibiki_association_type(name)
+            super(Array(value).compact_blank.map { type.cast(it) })
+          end
+        end
 
         # Declarations live in class ivars, so subclasses have to walk up
         # for them — the generated methods inherit on their own.

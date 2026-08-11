@@ -125,6 +125,20 @@ describe("changed control payloads", () => {
     expect(performed).toEqual([["set_tags", { tags: ["a", "c"] }]])
   })
 
+  // The [] suffix is a serialization artifact; the payload key is the bare
+  // attribute name on both the change and submit paths.
+  it("strips a trailing [] from the payload key", async () => {
+    const root = await mount(
+      island(`<select name="tag_ids[]" multiple data-hibiki-on="change->set_field">
+                <option value="1"></option><option value="2"></option>
+              </select>`)
+    )
+    const select = root.querySelector("select")
+    select.options[1].selected = true
+    change(select)
+    expect(performed).toEqual([["set_field", { tag_ids: ["2"] }]])
+  })
+
   // change fires on the newly-checked radio, so value is already correct.
   it("sends the newly checked radio's value", async () => {
     const root = await mount(
@@ -191,6 +205,50 @@ describe("submit", () => {
     const event = new Event("submit", { bubbles: true, cancelable: true })
     root.querySelector("form").dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  // A field named with a trailing [] collects EVERY entry as an array under
+  // the bare key. Object.fromEntries was last-wins, so a multi-value field
+  // submitted only its final entry. Checkboxes rather than a multi-select on
+  // purpose: happy-dom's FormData serializes only a multi-select's FIRST
+  // selected option, and the code under test reads FormData either way.
+  it("collects a []-named field's entries as an array", async () => {
+    const root = await mount(
+      island(`<form data-hibiki-on="submit->save" data-hibiki-reset="false">
+                <input type="checkbox" name="tag_ids[]" value="1" checked>
+                <input type="checkbox" name="tag_ids[]" value="2">
+                <input type="checkbox" name="tag_ids[]" value="3" checked>
+              </form>`)
+    )
+    submit(root.querySelector("form"))
+    expect(performed).toEqual([["save", { tag_ids: ["1", "3"] }]])
+  })
+
+  // The hidden-blank pairing: with nothing checked a bare [] field vanishes
+  // from FormData entirely, so forms pair it with a hidden "". Dropping the
+  // blank is the server-side cast's job, not the client's.
+  it("keeps a [] field's hidden blank when nothing is selected", async () => {
+    const root = await mount(
+      island(`<form data-hibiki-on="submit->save" data-hibiki-reset="false">
+                <input type="hidden" name="tag_ids[]" value="">
+                <input type="checkbox" name="tag_ids[]" value="1">
+              </form>`)
+    )
+    submit(root.querySelector("form"))
+    expect(performed).toEqual([["save", { tag_ids: [""] }]])
+  })
+
+  // Without the [] suffix, duplicate keys stay last-wins — what makes Rails'
+  // hidden-field checkbox convention submit "1" when checked, "0" when not.
+  it("keeps last-wins for duplicate keys without the [] suffix", async () => {
+    const root = await mount(
+      island(`<form data-hibiki-on="submit->save" data-hibiki-reset="false">
+                <input type="hidden" name="done" value="0">
+                <input type="checkbox" name="done" value="1" checked>
+              </form>`)
+    )
+    submit(root.querySelector("form"))
+    expect(performed).toEqual([["save", { done: "1" }]])
   })
 })
 

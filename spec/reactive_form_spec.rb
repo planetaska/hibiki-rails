@@ -209,6 +209,101 @@ RSpec.describe Hibiki::Rails::ReactiveForm do
     end
   end
 
+  describe "reactive_association" do
+    let(:labeled_form_class) do
+      Class.new do
+        include Hibiki::Rails::ReactiveForm
+
+        reactive_attributes Todo, :title
+        reactive_association :labels
+
+        def self.name = "LabeledTodoForm"
+      end
+    end
+
+    let(:red) { Label.create!(name: "red") }
+    let(:blue) { Label.create!(name: "blue") }
+
+    before do
+      Labeling.delete_all
+      Label.delete_all
+    end
+
+    it "hydrates the ids signal from the association's ids reader" do
+      record = Todo.create!(title: "milk", labels: [red, blue])
+      form = labeled_form_class.from(record)
+      expect(form.label_ids).to eq([red.id, blue.id])
+      expect(form.to_h).to eq(title: "milk", label_ids: [red.id, blue.id])
+    end
+
+    # Channel params arrive as strings; the ids cast goes through the TARGET
+    # model's primary-key type, not the form model's columns.
+    it "casts wire strings and drops the hidden-input blank" do
+      form = labeled_form_class.from(Todo.new)
+      form.label_ids = ["", red.id.to_s, blue.id.to_s]
+      expect(form.label_ids).to eq([red.id, blue.id])
+    end
+
+    it "casts a nil write to an empty selection" do
+      form = labeled_form_class.from(Todo.new(labels: [red]))
+      form.label_ids = nil
+      expect(form.label_ids).to eq([])
+    end
+
+    # The dirty? regression the cast exists for: an identity cast would hold
+    # ["1"] against a snapshot of [1] and report dirty forever.
+    it "treats a cast-equal write as a no-op, so dirty? can settle" do
+      record = Todo.create!(title: "milk", labels: [red])
+      form = labeled_form_class.from(record)
+      expect(form).not_to be_dirty
+      form.label_ids = [red.id.to_s]
+      expect(form).not_to be_dirty
+      form.label_ids = [red.id.to_s, blue.id.to_s]
+      expect(form).to be_dirty
+      form.label_ids = [red.id.to_s]
+      expect(form).not_to be_dirty
+    end
+
+    it "creates and removes join rows on commit" do
+      record = Todo.create!(title: "milk", labels: [red])
+      form = labeled_form_class.from(record)
+      form.label_ids = [blue.id.to_s]
+      expect(form.commit).to be(true)
+      expect(record.reload.labels).to eq([blue])
+      expect(Labeling.count).to eq(1)
+      expect(form).not_to be_dirty
+    end
+
+    it "commits ids on the create path" do
+      form = labeled_form_class.from(Todo.new)
+      form.title = "milk"
+      form.label_ids = [red.id.to_s]
+      expect { form.commit }.to change(Todo, :count).by(1)
+      expect(Todo.last.labels).to eq([red])
+    end
+
+    it "raises a clear error for an association the model does not have" do
+      klass = Class.new do
+        include Hibiki::Rails::ReactiveForm
+
+        reactive_attributes Todo, :title
+        reactive_association :stickers
+      end
+      form = klass.new
+      expect { form.sticker_ids = ["1"] }.to raise_error(/no stickers association/)
+    end
+
+    it "raises a clear error when declared before reactive_attributes" do
+      expect do
+        Class.new do
+          include Hibiki::Rails::ReactiveForm
+
+          reactive_association :labels
+        end
+      end.to raise_error(/reactive_attributes/)
+    end
+  end
+
   describe "the model declaration" do
     it "resolves a String or Symbol lazily, so reloading can't pin a stale class" do
       klass = Class.new do

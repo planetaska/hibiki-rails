@@ -104,6 +104,24 @@ const controlValue = (control) => {
   return control.value
 }
 
+// A trailing [] is a serialization artifact, not part of the attribute name:
+// the channel payload is JSON, where arrays are native.
+const payloadKey = (name) => (name.endsWith("[]") ? name.slice(0, -2) : name)
+
+// A submitted form's contribution to the payload. A []-named field collects
+// EVERY entry as an array under the bare key; other duplicate keys stay
+// last-wins, which is what lets Rails' hidden-field checkbox convention
+// submit "1" when checked and "0" when not.
+const formPayload = (form) => {
+  const data = new FormData(form)
+  const payload = {}
+  for (const key of new Set(data.keys())) {
+    const all = data.getAll(key)
+    payload[payloadKey(key)] = key.endsWith("[]") ? all : all.at(-1)
+  }
+  return payload
+}
+
 // The subclassable base: one channel subscription per controller element,
 // identified by a per-page-load cid (data-<identifier>-cid-value).
 export class ChannelController extends Controller {
@@ -577,9 +595,9 @@ export default class HibikiController extends ChannelController {
       ? JSON.parse(control.dataset.hibikiWith)
       : {}
     if (event.type === "submit") {
-      Object.assign(payload, Object.fromEntries(new FormData(control)))
+      Object.assign(payload, formPayload(control))
     } else if (control.name && (event.type === "change" || event.type === "input")) {
-      payload[control.name] = controlValue(control)
+      payload[payloadKey(control.name)] = controlValue(control)
     }
     // perform stamps `hbk` after this merge, so a field literally named hbk
     // loses to the seq rather than corrupting it.
