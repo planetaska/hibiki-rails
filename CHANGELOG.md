@@ -4,6 +4,28 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Added
+
+**`hibiki:rails:form` — re-derive a resource's form from its validators.**
+`bin/rails g hibiki:rails:form Book` reads the migrated schema and rewrites the
+validator-shaped files only: the `ReactiveForm` (its `live_errors` clauses) and
+the two form views (number-field bounds, requiredness). Everything else the
+scaffold wrote is untouched, and Thor still asks per file before replacing
+edits. `--skip-views` limits it to the form object; the view layer and css
+variant are detected from the files a previous run left, with `--phlex` and
+`--css` as overrides. An optional field list chooses order and subset, never
+facts.
+
+### Changed
+
+**The scaffold's empty-`live_errors` notice now recommends
+`bin/rails g hibiki:rails:form Book`** — on its own line, with no retyped field
+list — instead of re-running `scaffold_controller` with the full arguments. The
+migration the scaffold wrote preserves the argument order, so once it has run
+the schema answers both order and facts.
+
 ## 0.6.0 — 2026-08-10
 
 ### Added

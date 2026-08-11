@@ -73,6 +73,9 @@ bin/rails g hibiki:rails:scaffold_controller Book
 
 # Same, but you pick the field order; everything else still comes from the model
 bin/rails g hibiki:rails:scaffold_controller Book title:string author:references
+
+# After adding validators: re-derive the form and its views, touching nothing else
+bin/rails g hibiki:rails:form Book
 ```
 
 Your plain `rails g scaffold` is untouched. The generated markup is styled to
@@ -90,6 +93,12 @@ the channel owns the state and the components are ordinary stateless views.
 Listing the fields yourself only chooses their order and which ones appear — the
 model still answers everything else, so the live validation, a number field's
 `min:`/`max:` and a `belongs_to`'s display label all survive the choice.
+
+Because the live validation is derived from the model's validators, a scaffold
+generated before its migration ran starts with none. `hibiki:rails:form` is the
+catch-up: it rewrites only the `ReactiveForm` and the two form views from the
+schema as it stands now, asks before replacing anything you edited, and takes
+`--skip-views` to rewrite the form object alone.
 
 Your models are edited, not just read: the one being scaffolded gains the
 `after_commit` broadcast that makes writes from anywhere reach an open list, and

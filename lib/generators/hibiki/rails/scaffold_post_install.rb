@@ -112,10 +112,14 @@ module Hibiki
           # commit-time failure still mirrors the model's own errors into the
           # same per-field slots with no change at all — it is the check BEFORE
           # the round trip that has to be re-derived.
-          say_status :form, "#{form_path}'s live_errors is empty — #{live_errors_reason}. " \
-                            "Add validators to the model, then re-run " \
-                            "`#{rerun_command}` " \
-                            "to derive the clauses from them (or write them by hand)", :blue
+          #
+          # The command is on its own line so it can be copied whole, and it is
+          # hibiki:rails:form with no field list — the migration this scaffold
+          # wrote preserves the argument order, so once it has run the schema
+          # answers both order and facts and nothing needs retyping.
+          say_status :form, "#{form_path}'s live_errors is empty — #{live_errors_reason}.\n" \
+                            "Add validators to the model, migrate, then re-run\n" \
+                            "bin/rails g hibiki:rails:form #{name}", :blue
         end
 
         # Three reachable situations, and two of them used to share one
@@ -138,14 +142,6 @@ module Hibiki
         # is no Widget" about a file the user just watched scroll past, and
         # send them to write a model they already have.
         def model_present? = exists?(model_path) || class_name.safe_constantize
-
-        # Re-running has to preserve the field list, or the advice costs the
-        # user the order they chose — which was §5.16 in the other direction.
-        def rerun_command
-          fields = attributes.map { to_argv(it) }.join(" ")
-
-          "bin/rails g hibiki:rails:scaffold_controller #{name}#{" #{fields}" unless fields.empty?}"
-        end
 
         # §5.15. A unique index the model says nothing about: #commit can only
         # mirror what the model checks, so the constraint fires first and

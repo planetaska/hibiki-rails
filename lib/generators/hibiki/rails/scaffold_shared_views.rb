@@ -21,15 +21,25 @@ module Hibiki
         private
 
         # Under --infinite-scroll the sentinel is inlined in the list and there
-        # is no page control at all — not an empty one. The two error partials
-        # are unconditional: every form renders them.
+        # is no page control at all — not an empty one.
         def create_shared_views
           if phlex?
             create_shared_view("views/pagination.rb.tt", "pagination.rb") unless infinite?
+          else
+            create_shared_view("views/_pagination.html.erb.tt", "_pagination.html.erb") unless infinite?
+          end
+
+          create_form_shared_views
+        end
+
+        # The two error partials, unconditional: every form renders them. Their
+        # own method because the form generator re-emits the forms without the
+        # rest of the scaffold, and they must exist wherever the forms do.
+        def create_form_shared_views
+          if phlex?
             create_shared_view("views/field_error.rb.tt", "field_error.rb")
             create_shared_view("views/form_errors.rb.tt", "form_errors.rb")
           else
-            create_shared_view("views/_pagination.html.erb.tt", "_pagination.html.erb") unless infinite?
             create_shared_view("views/_field_error.html.erb.tt", "_field_error.html.erb")
             create_shared_view("views/_form_errors.html.erb.tt", "_form_errors.html.erb")
           end

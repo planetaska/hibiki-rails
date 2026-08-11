@@ -629,12 +629,14 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(output).to include("validates :title, uniqueness: true")
     end
 
-    it "keeps the field list when it tells you to re-run" do
-      # Re-running without the arguments would cost the order the user just
-      # chose, which is §5.16 pointing the other way.
+    it "tells you to re-run hibiki:rails:form, command on its own line, no field list" do
+      # No retyped arguments: once the migration has run the schema answers
+      # both order and facts, and the form generator rewrites only the
+      # validator-shaped files.
       output = generate(["Gauge", "label:string"])
 
-      expect(output).to include("bin/rails g hibiki:rails:scaffold_controller Gauge label:string")
+      rerun = %r{^ +Add validators to the model, migrate, then re-run\n +bin/rails g hibiki:rails:form Gauge$}
+      expect(output).to match(rerun)
     end
   end
 

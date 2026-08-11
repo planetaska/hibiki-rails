@@ -1,0 +1,24 @@
+Description:
+    Regenerates a resource's ReactiveForm and its form views from the model's
+    schema and validators. Run it after adding or changing validators so
+    live_errors, number-field bounds and requiredness match the model again.
+
+    The model must exist and its table must be migrated. With no field list,
+    columns and their order come from the schema; pass fields explicitly only
+    to choose a different order or subset — the facts stay the schema's.
+
+    Only the validator-shaped files are rewritten; the rest of the scaffold's
+    output is untouched. Thor asks per file before replacing anything you have
+    edited. The view layer and css variant are detected from the files a
+    previous scaffold left; --phlex and --css override.
+
+Example:
+    bin/rails generate hibiki:rails:form Book
+
+    This will rewrite:
+        app/forms/book_form.rb
+        app/views/books/_form.html.erb
+        app/views/books/_book_form.html.erb
+
+    Under --phlex, the views are app/views/books/{form,row_form}.rb instead.
+    Pass --skip-views to rewrite only app/forms/book_form.rb.
