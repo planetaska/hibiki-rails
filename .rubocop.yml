@@ -54,6 +54,10 @@ Metrics/ModuleLength:
     - lib/generators/hibiki/rails/css_variant.rb
     - lib/generators/hibiki/rails/scaffold_view_helpers.rb
     - lib/generators/hibiki/rails/scaffold_phlex_helpers.rb
+    # Same shape again: one naming helper and one guarded injection per thing
+    # the multiselect touches, none calling another.
+    - lib/generators/hibiki/rails/multiselect_helpers.rb
+    - lib/generators/hibiki/rails/multiselect_injections.rb
 
 # Keyword arguments don't have the readability problem this cop targets —
 # they name themselves at the call site. Helpers#on is the case in point:

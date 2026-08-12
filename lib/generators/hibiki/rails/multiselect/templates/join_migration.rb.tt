@@ -1,0 +1,14 @@
+<%# GENERATION-time ERB only. -%>
+class Create<%= join_table_name.camelize %> < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    create_table :<%= join_table_name %> do |t|
+      t.references :<%= file_name %>, null: false, foreign_key: true
+      t.references :<%= target_singular %>, null: false, foreign_key: true
+
+      t.timestamps
+    end
+
+    # One row per pair — the ids writer treats the collection as a set.
+    add_index :<%= join_table_name %>, %i[<%= file_name %>_id <%= target_singular %>_id], unique: true
+  end
+end

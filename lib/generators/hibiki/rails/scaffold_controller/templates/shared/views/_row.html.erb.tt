@@ -1,7 +1,7 @@
 <%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is a
      generation-time loop over the schema. The #{...} inside an escaped tag is
      runtime Ruby and passes through untouched. -%>
-<%%# locals: (<%= singular_name %>:, actions: true, editing: false, form: nil<%= schema.belongs_tos.map { ", #{it.options_local}: []" }.join %>) -%>
+<%%# locals: (<%= singular_name %>:, actions: true, editing: false, form: nil<%= schema.belongs_tos.map { ", #{it.options_local}: []" }.join %>, extras: {}) -%>
 <%%# `<%= singular_name %>` is a record either way: a frozen read-only
     snapshot from the channel, live from the show page. Rendered by the
     channel through ApplicationController.render, which has no controller

@@ -102,6 +102,34 @@ ActiveRecord::Schema.define do
     t.string :label
     t.timestamps
   end
+
+  # hibiki:rails:multiselect, in its three join situations. Part/Fitting is
+  # "join model exists, association not declared" (and Part doubles as the
+  # target when the generator must CREATE a join — any unused name works).
+  # Sticker/ItemSticker is "has_many :through already declared", where the
+  # join argument is redundant. NOT :labels — todo_model.rb owns that table,
+  # and the full suite loads both files into one schema.
+  create_table :parts, force: true do |t|
+    t.string :name
+    t.timestamps
+  end
+
+  create_table :fittings, force: true do |t|
+    t.integer :item_id, null: false
+    t.integer :part_id, null: false
+    t.timestamps
+  end
+
+  create_table :stickers, force: true do |t|
+    t.string :caption
+    t.timestamps
+  end
+
+  create_table :item_stickers, force: true do |t|
+    t.integer :item_id, null: false
+    t.integer :sticker_id, null: false
+    t.timestamps
+  end
 end
 
 class Shelf < ActiveRecord::Base
@@ -114,6 +142,12 @@ class Item < ActiveRecord::Base
   # Required by default (belongs_to_required_by_default), which is the fact
   # the generated live_errors reads to emit "must be selected".
   belongs_to :shelf
+
+  # The multiselect's "association already declared" path — the join argument
+  # is redundant here and read off this reflection. :parts is deliberately NOT
+  # declared: that is the injection path.
+  has_many :item_stickers, dependent: :destroy
+  has_many :stickers, through: :item_stickers
 
   validates :title, presence: true
   validates :notes, presence: true
@@ -146,6 +180,27 @@ end
 # anyway is noise, and noise is what gets post-install output ignored.
 class Badge < ActiveRecord::Base
   validates :code, uniqueness: true
+end
+
+# The multiselect's target and join fixtures. Part#name hits the
+# LABEL_CANDIDATES inference; Sticker's only string column is caption, which
+# exercises the first-string-column fallback.
+class Part < ActiveRecord::Base
+end
+
+# The "join exists" path: correct belongs_to pair, deliberately NO touch: —
+# the generator injects it.
+class Fitting < ActiveRecord::Base
+  belongs_to :item
+  belongs_to :part
+end
+
+class Sticker < ActiveRecord::Base
+end
+
+class ItemSticker < ActiveRecord::Base
+  belongs_to :item, touch: true
+  belongs_to :sticker
 end
 
 # Every validator here is one the generator must NOT copy naively: a blank

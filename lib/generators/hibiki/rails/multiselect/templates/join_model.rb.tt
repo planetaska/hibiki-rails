@@ -1,0 +1,7 @@
+<%# GENERATION-time ERB only. -%>
+class <%= join_class_name %> < ApplicationRecord
+  # touch: a <%= join_singular %> write IS a <%= file_name %> change — it bumps updated_at,
+  # which fires <%= class_name %>'s after_commit pings in every session.
+  belongs_to :<%= file_name %>, touch: true
+  belongs_to :<%= target_singular %>
+end

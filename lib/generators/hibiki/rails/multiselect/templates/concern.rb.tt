@@ -1,0 +1,87 @@
+<%# GENERATION-time ERB only — this template emits plain Ruby. -%>
+# The <%= target_plural %> multi-select for <%= collection_channel_class_name %>.
+#
+# The graph owns the selection (the form's <%= ids_attr %>): each checkbox
+# sends its own toggle and the submit payload never carries the ids, so
+# options hidden by the filter are never dropped.
+#
+# NOTE: every PUBLIC method here becomes a client-invocable channel action.
+module <%= concern_module_name %>
+  extend ActiveSupport::Concern
+<% if search? -%>
+
+  # How many options the dropdown offers at once. LIMIT+1 rows are fetched
+  # and the extra row becomes the view's "type to narrow" hint — no COUNT
+  # per keystroke.
+  OPTIONS_LIMIT = <%= limit %>
+<% end -%>
+
+  included { prepend GraphHooks }
+
+  # Wraps the channel's own lifecycle with super rather than replacing it,
+  # so the `include` line is the only edit the channel needs.
+  module GraphHooks
+    def build_graph
+      super
+
+<% if search? -%>
+      @<%= target_plural %>_query = Hibiki::State.new("")
+      # Only read while a row is being edited. The filter narrows this list
+      # and nothing else — the selection survives it.
+      @<%= target_plural %>_options = Hibiki::Derived.new do
+        @db_version.value
+        scope = <%= target_class_name %>.order(:<%= label_column %>)
+        term = @<%= target_plural %>_query.value.strip
+        unless term.empty?
+          pattern = "%#{<%= target_class_name %>.sanitize_sql_like(term)}%"
+          scope = scope.where(<%= target_class_name %>.arel_table[:<%= label_column %>].matches(pattern))
+        end
+        rows = scope.limit(OPTIONS_LIMIT + 1).pluck(:<%= label_column %>, :id)
+        { options: rows.first(OPTIONS_LIMIT), truncated: rows.size > OPTIONS_LIMIT }
+      end
+<% else -%>
+      # Only read while a row is being edited.
+      @<%= target_plural %>_options = Hibiki::Derived.new do
+        @db_version.value
+        { options: <%= target_class_name %>.order(:<%= label_column %>).pluck(:<%= label_column %>, :id) }
+      end
+<% end -%>
+    end
+<% if search? -%>
+
+    def edit(data)
+      super
+      # Each edit starts with an unfiltered dropdown.
+      @<%= target_plural %>_query.value = ""
+    end
+<% end -%>
+
+    def list_locals
+      locals = super
+      return locals unless locals[:editing_id]
+
+      extras = locals.fetch(:extras, {})
+      locals.merge(extras: extras.merge(<%= extras_key %>: <%= extras_value_source %>))
+    end
+  end
+
+  # One checkbox toggled: a SET, not a toggle — the client sends the box's
+  # checked state, so two tabs converge.
+  def <%= toggle_action %>(data)
+    return unless @editing_id.peek
+
+    # Untrusted id — resolve it against the table before it enters the form.
+    id = <%= target_class_name %>.where(id: data["id"]).pick(:id)
+    return unless id
+
+    ids = @form.<%= ids_attr %>
+    @form.<%= ids_attr %> = data["checked"] ? ids | [id] : ids - [id]
+  end
+<% if search? -%>
+
+  # The dropdown's filter input.
+  def <%= search_action %>(data)
+    @<%= target_plural %>_query.value = data["query"].to_s
+  end
+<% end -%>
+end

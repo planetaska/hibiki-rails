@@ -14,7 +14,7 @@ class <%= view_class_name(:row) %> < Views::Base
 <%= phlex_includes(:link_to, (:check_box_tag if schema.booleans.any?), hibiki: true) %>
 
 <%= initializer_source([[singular_name, nil], %w[actions true], %w[editing false], %w[form nil],
-                        *schema.belongs_tos.map { [it.options_local.to_s, "[]"] }]) %>
+                        *schema.belongs_tos.map { [it.options_local.to_s, "[]"] }, %w[extras {}]]) %>
 
   def view_template
     # The root id stays stable across display/edit, so idiomorph pairs the

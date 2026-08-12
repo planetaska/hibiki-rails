@@ -1,0 +1,44 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. #{...} inside an escaped tag is runtime
+     Ruby and passes through untouched. -%>
+<%%# locals: (form:, dom:, extras: {}) -%>
+<%%# The <%= target_plural %> multi-select. The graph owns the selection: each checkbox
+    sends its own toggle and the submit payload never carries the ids, so
+    options hidden by the filter are never dropped. %>
+<%% ms = extras.fetch(:<%= extras_key %>, { options: [] }) %>
+<div<%= css_attr(:label) %>><%= target_human_plural %></div>
+<div<%= css_attr(:dropdown) %>>
+  <%%# tabindex, not a <button>: focus-within keeps the panel open while boxes
+      inside are clicked, and the morphed repaint keeps focus and caret. %>
+  <div tabindex="0" role="button" id="<%%= dom %>_<%= target_plural %>"<%= css_attr(:dropdown_trigger) %>>
+    <%%= pluralize(form.<%= ids_attr %>.size, "<%= target_human_singular.downcase %>") %> selected
+  </div>
+  <div tabindex="0"<%= css_attr(:dropdown_panel) %>>
+<% if search? -%>
+    <%%# Narrows the option list only — the selection lives in the graph and
+        survives filtering. `on` debounces input events. %>
+    <%%= search_field_tag <%= wrapped_list(filter_field_args, indent: 25).lstrip %> %>
+<% end -%>
+    <ul<%= css_attr(:option_list) %>>
+      <%% ms[:options].each do |text, id| %>
+        <li>
+          <%%= label_tag "#{dom}_<%= target_singular %>_#{id}"<%= css? ? %(, class: "#{css(:option_label)}") : "" %> do %>
+            <%%# Named "checked", NOT <%= ids_attr %>[]: the graph's copy of the
+                selection is authoritative, so the submit payload must not
+                carry a subset that depends on which options are visible. %>
+            <%%= check_box_tag <%= wrapped_list(option_checkbox_args, indent: 30).lstrip %> %>
+            <span><%%= text %></span>
+          <%% end %>
+        </li>
+      <%% end %>
+      <%% if ms[:options].empty? %>
+        <li<%= css_attr(:option_note) %>>No <%= target_human_plural.downcase %> match</li>
+      <%% end %>
+<% if search? -%>
+      <%% if ms[:truncated] %>
+        <li<%= css_attr(:option_note) %>>Showing first <%%= ms[:options].size %> — type to narrow</li>
+      <%% end %>
+<% end -%>
+    </ul>
+  </div>
+</div>

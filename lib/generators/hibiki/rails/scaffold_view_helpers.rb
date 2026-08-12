@@ -197,12 +197,14 @@ module Hibiki
           ["#{singular_name}: #{singular_name}",
            "editing: #{singular_name}.id == editing_id",
            "form: form",
-           *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" }]
+           *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" },
+           "extras: extras"]
         end
 
         def row_form_render_locals
           ["#{singular_name}: #{singular_name}", "form: form",
-           *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" }]
+           *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" },
+           "extras: extras"]
         end
 
         # What the list fragment is handed, as [name, default] pairs — nil
@@ -215,10 +217,15 @@ module Hibiki
         # differently — a strict-locals header one side, a keyword initializer
         # the other — and the SET has to stay the same or the channel's
         # broadcast stops matching what the view accepts.
+        #
+        # `extras` is the extension hook: a hash passed down list -> row ->
+        # row_form untouched, so an add-on generator (hibiki:rails:multiselect)
+        # can merge locals into the broadcast without editing three partials.
         def list_locals
           [[controller_file_name, nil], %w[page 1], %w[page_count 1], %w[remaining 0],
            %w[editing_id nil], %w[form nil],
-           *schema.belongs_tos.map { [it.options_local.to_s, "[]"] }]
+           *schema.belongs_tos.map { [it.options_local.to_s, "[]"] },
+           %w[extras {}]]
         end
 
         # The strict-locals header for the list fragment.

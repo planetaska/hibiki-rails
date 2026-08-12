@@ -155,7 +155,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     it "declares every list local as a keyword, with its default" do
       expect(generated("app/views/items/list.rb"))
         .to include("def initialize(items:, page: 1, page_count: 1, remaining: 0, editing_id: nil, " \
-                    "form: nil,\n                 shelf_options: [])")
+                    "form: nil,\n                 shelf_options: [], extras: {})")
     end
 
     # phlex-rails' options_for_select outputs directly and returns an object

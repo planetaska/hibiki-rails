@@ -1,7 +1,7 @@
 <%#- ESCAPING: the peak. <%% emits runtime ERB; a bare <% loops over the schema
      here at generation time; #{...} inside an escaped tag is runtime Ruby and
      passes through untouched. -%>
-<%%# locals: (<%= singular_name %>:, form:<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>) -%>
+<%%# locals: (<%= singular_name %>:, form:<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>, extras: {}) -%>
 <%%# Plain *_tag helpers with UNPREFIXED names, not form_with: the client
     builds the payload with FormData, so the keys must be exactly the
     ReactiveForm's attribute names. Field ids are prefixed per row so nothing

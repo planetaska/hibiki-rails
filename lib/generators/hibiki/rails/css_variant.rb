@@ -99,7 +99,21 @@ module Hibiki
           counts: "ml-auto text-sm opacity-70",
           # my-, not mt-: the control renders above the list as well as below,
           # and the top copy needs the gap on its other side.
-          pagination_nav: "join my-2 mx-auto flex justify-center w-fit"
+          pagination_nav: "join my-2 mx-auto flex justify-center w-fit",
+
+          # The multiselect dropdown (hibiki:rails:multiselect). One structure
+          # for every variant: DaisyUI's dropdown opens on :focus-within, the
+          # tailwind override hand-rolls the same rule with group-focus-within,
+          # and under --css=none nothing hides the panel so the list renders
+          # inline — unstyled, still functional.
+          dropdown: "dropdown w-full",
+          dropdown_trigger: "select w-full items-center",
+          dropdown_panel: "dropdown-content bg-base-100 rounded-box z-10 mt-1 w-full p-2 shadow-md",
+          option_list: "menu w-full max-h-60 flex-nowrap overflow-y-auto p-0",
+          option_label: "label cursor-pointer justify-start gap-2",
+          option_note: "p-2 opacity-60 italic",
+          checkbox_sm: "checkbox checkbox-sm",
+          filter_input: "input input-sm w-full mb-2"
         }.freeze
 
         # DaisyUI is a plugin over Tailwind, and the merge says so literally:
@@ -144,7 +158,16 @@ module Hibiki
           muted: "text-gray-500 italic",
           muted_inline: "text-gray-400",
           counts: "ml-auto text-sm text-gray-500",
-          pagination_nav: "my-2 mx-auto flex justify-center w-fit -space-x-px rounded-md shadow-sm"
+          pagination_nav: "my-2 mx-auto flex justify-center w-fit -space-x-px rounded-md shadow-sm",
+          dropdown: "group relative w-full",
+          dropdown_trigger: "#{FIELD_FULL} flex cursor-pointer items-center",
+          dropdown_panel: "absolute inset-x-0 z-10 mt-1 hidden rounded-md border border-gray-200 " \
+                          "bg-white p-2 shadow-lg group-focus-within:block",
+          option_list: "max-h-60 space-y-1 overflow-y-auto",
+          option_label: "flex cursor-pointer items-center gap-2 py-1 text-sm",
+          option_note: "p-2 text-gray-500 italic",
+          checkbox_sm: CHECKBOX,
+          filter_input: "#{FIELD_FULL} mb-2 text-sm"
         ).freeze
 
         # Every lookup misses, so every class argument is omitted entirely.

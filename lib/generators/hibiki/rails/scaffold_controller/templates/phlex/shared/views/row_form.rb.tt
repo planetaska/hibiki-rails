@@ -14,7 +14,7 @@ class <%= view_class_name(:row_form) %> < Views::Base
                    *(%i[select_tag options_for_select] if schema.belongs_tos.any?), hibiki: true) %>
 
 <%= initializer_source([[singular_name, nil], ["form", nil],
-                        *schema.belongs_tos.map { [it.options_local.to_s, nil] }]) %>
+                        *schema.belongs_tos.map { [it.options_local.to_s, nil] }, %w[extras {}]]) %>
 
   def view_template
     # reset: false — a failed commit must not blank the fields.

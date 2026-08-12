@@ -1,0 +1,65 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. #{...}
+     inside a quoted string is runtime Ruby and passes through untouched. -%>
+# frozen_string_literal: true
+
+# The <%= target_plural %> multi-select. The graph owns the selection: each
+# checkbox sends its own toggle and the submit payload never carries the ids,
+# so options hidden by the filter are never dropped.
+class <%= component_class_name %> < Views::Base
+<%= phlex_includes(:check_box_tag, :label_tag, :pluralize, (:search_field_tag if search?), hibiki: true) %>
+
+  def initialize(form:, dom:, extras: {})
+    @form = form
+    @dom = dom
+    @extras = extras
+  end
+
+  def view_template
+    ms = @extras.fetch(:<%= extras_key %>, { options: [] })
+
+    div<%= arg_list(*css_args(:label)) %> { "<%= target_human_plural %>" }
+    div<%= arg_list(*css_args(:dropdown)) %> do
+      # tabindex, not a button: focus-within keeps the panel open while boxes
+      # inside are clicked, and the morphed repaint keeps focus and caret.
+      div<%= arg_list(%(tabindex: "0"), %(role: "button"), %(id: "\#{@dom}_#{target_plural}"), *css_args(:dropdown_trigger), indent: 10) %> do
+        plain pluralize(@form.<%= ids_attr %>.size, "<%= target_human_singular.downcase %>")
+        plain " selected"
+      end
+
+      div<%= arg_list(%(tabindex: "0"), *css_args(:dropdown_panel)) %> do
+<% if search? -%>
+        # Narrows the option list only — the selection lives in the graph and
+        # survives filtering. `on` debounces input events.
+        search_field_tag <%= wrapped_list(filter_field_args, indent: 25).lstrip %>
+<% end -%>
+        option_rows(ms)
+      end
+    end
+  end
+
+  private
+
+  def option_rows(ms)
+    ul<%= arg_list(*css_args(:option_list)) %> do
+      ms[:options].each do |text, id|
+        li do
+          label_tag<%= arg_list(%("\#{@dom}_#{target_singular}_\#{id}"), *css_args(:option_label), indent: 20) %> do
+            # Named "checked", NOT <%= ids_attr %>[]: the graph's copy of the
+            # selection is authoritative, so the submit payload must not carry
+            # a subset that depends on which options are visible.
+            check_box_tag <%= wrapped_list(option_checkbox_args, indent: 26).lstrip %>
+            whitespace
+            span { text }
+          end
+        end
+      end
+
+      li<%= arg_list(*css_args(:option_note)) %> { "No <%= target_human_plural.downcase %> match" } if ms[:options].empty?
+<% if search? -%>
+      if ms[:truncated]
+        li<%= arg_list(*css_args(:option_note)) %> { "Showing first #{ms[:options].size} — type to narrow" }
+      end
+<% end -%>
+    end
+  end
+end

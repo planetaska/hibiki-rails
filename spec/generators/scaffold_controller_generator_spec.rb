@@ -56,6 +56,21 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(generated("app/views/books/_book.html.erb")).to include("book.author&.name")
     end
 
+    # The extension hook: extras rides list -> row -> row_form untouched, so an
+    # add-on generator can merge locals into the broadcast without editing
+    # three partials.
+    it "passes the extras hash down the whole partial chain" do
+      list = generated("app/views/books/_list.html.erb")
+      row = generated("app/views/books/_book.html.erb")
+      row_form = generated("app/views/books/_book_form.html.erb")
+
+      expect(list).to include("extras: {})")
+      expect(list).to include("extras: extras")
+      expect(row).to include("extras: {})")
+      expect(row).to include("extras: extras")
+      expect(row_form).to include("extras: {})")
+    end
+
     it "freezes the window's records at the query boundary" do
       expect(generated("app/models/book_query.rb"))
         .to include("window_scope.strict_loading.map { it.readonly!; it.freeze }")

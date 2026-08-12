@@ -1,0 +1,27 @@
+Description:
+    Adds a dropdown multi-select for a has_many :through association onto a
+    resource that hibiki:rails:scaffold_controller already generated.
+
+    Owner and Target must exist and be migrated. Join is required only when
+    the owner doesn't declare the association yet — the join model and its
+    migration are generated (belongs_to pair, touch: on the owner side, a
+    unique index over the pair), and the has_many :through is injected into
+    the owner.
+
+    The channel gains one `include`; everything else lives in a generated
+    concern under app/channels/concerns that wraps build_graph/list_locals
+    with super. The selection is owned by the graph (the form's <target>_ids
+    signal), so filtering the option list can never drop hidden selections.
+
+    The option list is capped (OPTIONS_LIMIT in the concern, --limit to
+    choose it); the cap is dropped under --skip-search, where it would strand
+    the options it hides. Scaffolds generated before 0.7.0 lack the extras:
+    hash the view rides on — it is threaded through their partials
+    automatically.
+
+Examples:
+    bin/rails g hibiki:rails:multiselect Album Song Track
+
+    bin/rails g hibiki:rails:multiselect Album Song --skip-search
+
+    bin/rails g hibiki:rails:multiselect Album Song Track --label=name --limit=25

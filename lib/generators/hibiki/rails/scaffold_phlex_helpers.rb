@@ -254,12 +254,14 @@ module Hibiki
           ["#{singular_name}: #{record}",
            "editing: #{record}.id == @editing_id",
            "form: @form",
-           *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" }]
+           *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" },
+           "extras: @extras"]
         end
 
         def row_form_render_args
           ["#{singular_name}: @#{singular_name}", "form: @form",
-           *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" }]
+           *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" },
+           "extras: @extras"]
         end
 
         # The first paint's locals, off the same query object the channel's rows

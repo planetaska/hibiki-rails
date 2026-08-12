@@ -8,6 +8,47 @@ so importmap and bundler apps always resolve identical client code.
 
 ### Added
 
+**`hibiki:rails:multiselect` — a dropdown multi-select over a
+`has_many :through`, layered onto a scaffolded resource.**
+
+```
+bin/rails g hibiki:rails:multiselect Album Song Track
+```
+
+Owner and target must exist and be migrated; the join model is generated when
+missing (a `belongs_to` pair with `touch:` on the owner side — a join write IS
+an owner change — and a unique index over the pair) and named off the owner's
+reflection when the `has_many :through` is already declared, where the third
+argument may be omitted. An existing join gets `touch: true` added to its
+`belongs_to`.
+
+The channel half is a generated concern (`AlbumsChannel::SongsMultiselect`
+under `app/channels/concerns/`) that wraps `build_graph`, `list_locals` and
+`edit` with `super` via a prepended module — one `include` line is the
+channel's only edit, and the concern's public `toggle_song` / `search_songs`
+methods are client-invocable actions like any other. The form object gains
+`reactive_association :songs`.
+
+The selection is owned by the graph, not the form markup: each checkbox sends
+its own toggle carrying its checked state (a set, so two tabs converge), and
+the submit payload never carries the ids. That is what keeps the built-in
+searchable filter honest — narrowing the option list can never drop
+selections it hides. Options are capped (`--limit`, default 50) with a
+LIMIT+1 fetch whose extra row becomes the "type to narrow" hint — no COUNT
+per keystroke. `--skip-search` drops the filter AND the cap, which would
+strand the options it hides. `--label` overrides the inferred display column;
+`--phlex` and `--css` are detected from what the scaffold left behind.
+
+**A multiple `<select>`'s full selection now reaches the channel, and
+`ReactiveForm` can carry a collection's ids.** Two halves shipped together:
+the client collects every FormData entry of a `[]`-suffixed field name as an
+array under the bare key (previously last-wins, so a multi-select submitted
+only one option; non-`[]` duplicate keys stay last-wins on purpose — the
+hidden-field checkbox convention depends on it), and
+`reactive_association :tags` on a `ReactiveForm` defines a `tag_ids` signal
+that hydrates from the record's ids reader and commits through the
+association writer, casting each id via the target model's primary-key type.
+
 **`hibiki:rails:form` — re-derive a resource's form from its validators.**
 `bin/rails g hibiki:rails:form Book` reads the migrated schema and rewrites the
 validator-shaped files only: the `ReactiveForm` (its `live_errors` clauses) and
@@ -19,6 +60,13 @@ variant are detected from the files a previous run left, with `--phlex` and
 facts.
 
 ### Changed
+
+**Scaffolded partials pass a generic `extras: {}` hash down the
+list → row → row form chain, in both view layers.** The extension point
+add-on generators ride: merge locals into the broadcast under one key and
+they arrive at the row form with no partial edits. Existing scaffolds keep
+working untouched — a generator that needs the hash on pre-0.7.0 output
+threads it in with a `compat` notice.
 
 **The scaffold's empty-`live_errors` notice now recommends
 `bin/rails g hibiki:rails:form Book`** — on its own line, with no retyped field
