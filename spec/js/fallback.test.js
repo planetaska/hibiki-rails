@@ -13,6 +13,7 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(async () => {
   await unmount()
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 const CEILING = 10000
@@ -105,6 +106,102 @@ describe("standing aside", () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(performed).toEqual([])
+  })
+
+  // Scripts are running, so a destructive native submit must not slip
+  // past the dialog just because the island is down.
+  it("still confirms before standing aside — declined stays put", async () => {
+    vi.stubGlobal("confirm", () => false)
+    const root = await mount(
+      island(link.replace(">New", ` data-hibiki-confirm="Sure?">New`)),
+      { autoConnect: false }
+    )
+    const event = click(root.querySelector("a"))
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(performed).toEqual([])
+    vi.unstubAllGlobals()
+  })
+
+  it("lets an accepted confirm proceed natively", async () => {
+    vi.stubGlobal("confirm", () => true)
+    const root = await mount(
+      island(link.replace(">New", ` data-hibiki-confirm="Sure?">New`)),
+      { autoConnect: false }
+    )
+    const event = click(root.querySelector("a"))
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(performed).toEqual([])
+    vi.unstubAllGlobals()
+  })
+})
+
+// A channel-rendered repaint has no session, so the form it painted embeds
+// a stale authenticity_token or none at all. The page's csrf-token meta is
+// first-paint fresh — and these paths only run with scripts alive, which
+// is exactly when the DOM may have been repainted.
+describe("the csrf token of a fallback form going native", () => {
+  const meta = (content) => {
+    const tag = document.createElement("meta")
+    tag.name = "csrf-token"
+    tag.content = content
+    document.head.appendChild(tag)
+    return tag
+  }
+  afterEach(() => document.querySelector('meta[name="csrf-token"]')?.remove())
+
+  const form =
+    `<form action="/songs/1" method="post" data-hibiki-on="submit->destroy"
+           data-hibiki-fallback="true"><input type="hidden" name="_method" value="delete"></form>`
+
+  it("injects the meta token into a tokenless form on stand-aside", async () => {
+    meta("fresh-token")
+    const root = await mount(island(form), { autoConnect: false })
+    root.querySelector("form").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    )
+
+    const input = root.querySelector('input[name="authenticity_token"]')
+    expect(input?.value).toBe("fresh-token")
+  })
+
+  it("overwrites a stale embedded token on stand-aside", async () => {
+    meta("fresh-token")
+    const root = await mount(
+      island(form.replace("</form>",
+        `<input type="hidden" name="authenticity_token" value="stale"></form>`)),
+      { autoConnect: false }
+    )
+    root.querySelector("form").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    )
+
+    expect(root.querySelector('input[name="authenticity_token"]').value).toBe("fresh-token")
+  })
+
+  it("freshens before the dead-socket fallthrough submits", async () => {
+    meta("fresh-token")
+    let tokenAtSubmit
+    vi.spyOn(window.HTMLFormElement.prototype, "submit").mockImplementation(function () {
+      tokenAtSubmit = this.querySelector('input[name="authenticity_token"]')?.value
+    })
+    const root = await mount(island(form))
+    cable.sendResult = false
+    root.querySelector("form").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    )
+
+    expect(tokenAtSubmit).toBe("fresh-token")
+  })
+
+  it("touches nothing without the meta tag", async () => {
+    const root = await mount(island(form), { autoConnect: false })
+    root.querySelector("form").dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true })
+    )
+
+    expect(root.querySelector('input[name="authenticity_token"]')).toBeNull()
   })
 })
 

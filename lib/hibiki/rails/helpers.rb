@@ -143,7 +143,13 @@ module Hibiki
       #                 the markup says. This is the progressive-enhancement
       #                 spelling: give the control a real destination (an
       #                 href, an action=), because a bare button has nothing
-      #                 to fall back to.
+      #                 to fall back to. While scripts run, a confirm: still
+      #                 gates the native behavior, and a fallback form's
+      #                 authenticity_token is freshened from the page's
+      #                 csrf-token meta before it goes native — a
+      #                 channel-rendered repaint has no session, so the form
+      #                 it painted carries a stale token or none (button_to
+      #                 works in both worlds).
       def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil,
              fallback: nil)
         action = Helpers.event_name(action)

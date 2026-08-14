@@ -127,6 +127,27 @@ const formPayload = (form) => {
   return payload
 }
 
+// Before a fallback form goes native, re-stamp its CSRF token from the
+// page's csrf-token meta — which is first-paint fresh and session-valid.
+// Server-side repaints render without a session (ApplicationController
+// .render has none), so a repainted form embeds a stale token or none at
+// all; and this only ever runs with scripts alive, which is exactly when
+// the DOM may have been repainted. A truly script-free page still holds
+// its first-paint token and never needed the help.
+const freshenToken = (control) => {
+  if (!(control instanceof HTMLFormElement)) return
+  const meta = document.querySelector('meta[name="csrf-token"]')
+  if (!meta) return
+  let input = control.querySelector('input[name="authenticity_token"]')
+  if (!input) {
+    input = document.createElement("input")
+    input.type = "hidden"
+    input.name = "authenticity_token"
+    control.appendChild(input)
+  }
+  input.value = meta.content
+}
+
 // The subclassable base: one channel subscription per controller element,
 // identified by a per-page-load cid (data-<identifier>-cid-value).
 export class ChannelController extends Controller {
@@ -606,13 +627,21 @@ export default class HibikiController extends ChannelController {
     const action = token.slice(event.type.length + 2)
 
     // A fallback control's native behavior IS the degraded path: unless
-    // the island is `ready`, stand aside entirely — no preventDefault, no
-    // action, no queueing — and the browser follows the href or submits
-    // the form to its own action=. Deliberately not the connect-window
-    // queue: a queued gesture renders nothing until the link comes up,
-    // while the control's destination answers immediately.
+    // the island is `ready`, stand aside — no perform, no queueing — and
+    // the browser follows the href or submits the form to its own
+    // action=. Deliberately not the connect-window queue: a queued gesture
+    // renders nothing until the link comes up, while the control's
+    // destination answers immediately. Two touches before stepping back:
+    // a confirm: still gates the native behavior (scripts are running, so
+    // a destructive submit must not slip past the dialog), and a form's
+    // authenticity_token is freshened — server-rendered repaints carry no
+    // session, so their forms embed a stale token or none at all.
     const fallback = "hibikiFallback" in control.dataset
-    if (fallback && this.state !== "ready") return
+    if (fallback && this.state !== "ready") {
+      const message = control.dataset.hibikiConfirm
+      if (message && !window.confirm(message)) return event.preventDefault?.()
+      return freshenToken(control)
+    }
 
     // Before the confirm, not after: declining must not let the form (or
     // a fallback control's navigation) proceed. Optional call because the
@@ -664,8 +693,12 @@ export default class HibikiController extends ChannelController {
   // and re-dispatching it would loop straight back through the delegated
   // listener.
   fallthrough(control) {
-    if (control instanceof HTMLFormElement) control.submit()
-    else if (control.href) window.location.assign(control.href)
+    if (control instanceof HTMLFormElement) {
+      freshenToken(control)
+      control.submit()
+    } else if (control.href) {
+      window.location.assign(control.href)
+    }
   }
 
   // One timer per (control, action): two events on one element debounce
