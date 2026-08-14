@@ -17,8 +17,11 @@ export const sent = []
 // confirmation is a round trip, so it is deferred to a microtask rather than
 // fired inside create() — which is also the only order the client can
 // survive, since it assigns this.subscription from create's return value.
-// Set false to hold an island in its connect window.
-export const cable = { autoConnect: true }
+// Set false to hold an island in its connect window. `sendResult` is what
+// the stub's perform returns — Action Cable's real Subscription#perform
+// returns false on a socket that is not open, so set false to simulate the
+// dead-but-undetected socket.
+export const cable = { autoConnect: true, sendResult: true }
 
 vi.mock("@rails/actioncable", () => ({
   createConsumer: () => ({
@@ -31,6 +34,7 @@ vi.mock("@rails/actioncable", () => ({
             const { hbk, ...rest } = payload
             sent.push([action, payload])
             performed.push([action, rest])
+            return cable.sendResult
           },
           unsubscribe: () => {}
         }
@@ -74,6 +78,7 @@ export async function mount(html, { autoConnect = true } = {}) {
   performed.length = 0
   sent.length = 0
   cable.autoConnect = autoConnect
+  cable.sendResult = true
   document.body.innerHTML = html
 
   const { default: HibikiController } = await import(

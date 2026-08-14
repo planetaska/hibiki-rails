@@ -52,6 +52,11 @@
 //                 data-hibiki-debounce="250"           ms to let the gesture settle
 //                 data-hibiki-confirm="Are you sure?"  window.confirm gate
 //                 data-hibiki-reset="false"            keep a submitted form's inputs
+//                 data-hibiki-fallback="true"          the control's native behavior
+//                 (a link's navigation, a form's action=) is its fallback: while the
+//                 island is `ready` the event is intercepted and only the channel
+//                 action fires; in every other state the client stands aside and the
+//                 browser does what the markup says
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
 //
@@ -212,13 +217,25 @@ export class ChannelController extends Controller {
   // ActionCable's own Subscription#perform already writes `action`.)
   //
   // Returns the seq so a caller that knows which control fired can attach
-  // it; nobody has to.
+  // it; nobody has to. Returns undefined instead when the socket turned
+  // out to be closed under a subscription still believed live.
   perform(action, payload = {}) {
     const seq = ++this.seq
     payload.hbk = seq
     if (this.subscribed) {
       this.beginBusy(seq)
-      this.subscription.perform(action, payload)
+      // Action Cable's Subscription#perform returns false when the socket
+      // is not open — the gap between the socket dying and the connection
+      // monitor noticing, during which `subscribed` still says live. The
+      // frame went nowhere: settle rather than letting the trip stall out
+      // at the ceiling, and stamp `offline` now instead of when the
+      // monitor catches up. The monitor still owns reconnecting; its
+      // `connected` callback restores `ready` exactly as after a real gap.
+      if (this.subscription.perform(action, payload) === false) {
+        this.settle(seq)
+        this.linkClosed()
+        return undefined
+      }
       return seq
     }
     // Queue rather than drop while the subscription is still coming up.
@@ -574,9 +591,19 @@ export default class HibikiController extends ChannelController {
     if (!token) return
     const action = token.slice(event.type.length + 2)
 
-    // Before the confirm, not after: declining must not let the form
-    // navigate away.
-    if (event.type === "submit") event.preventDefault()
+    // A fallback control's native behavior IS the degraded path: unless
+    // the island is `ready`, stand aside entirely — no preventDefault, no
+    // action, no queueing — and the browser follows the href or submits
+    // the form to its own action=. Deliberately not the connect-window
+    // queue: a queued gesture renders nothing until the link comes up,
+    // while the control's destination answers immediately.
+    const fallback = "hibikiFallback" in control.dataset
+    if (fallback && this.state !== "ready") return
+
+    // Before the confirm, not after: declining must not let the form (or
+    // a fallback control's navigation) proceed. Optional call because the
+    // `visible` pseudo-event arrives as a plain object.
+    if (event.type === "submit" || fallback) event.preventDefault?.()
 
     const message = control.dataset.hibikiConfirm
     if (message && !window.confirm(message)) return
@@ -601,13 +628,30 @@ export default class HibikiController extends ChannelController {
     }
     // perform stamps `hbk` after this merge, so a field literally named hbk
     // loses to the seq rather than corrupting it.
-    this.trackControl(this.perform(action, payload), control)
+    const seq = this.perform(action, payload)
+    // The send failed on a socket believed live (perform already marked the
+    // island offline). The gesture's default was prevented in dispatch, so
+    // for a fallback control honor the contract by hand — the action never
+    // left the machine, so the native behavior cannot double-fire.
+    if (seq === undefined && "hibikiFallback" in control.dataset) {
+      return this.fallthrough(control)
+    }
+    this.trackControl(seq, control)
     // Resetting is right for an "add" form and wrong for an edit one: it
     // runs synchronously, before the server has replied, so a failed commit
     // would discard what the user typed.
     if (event.type === "submit" && control.dataset.hibikiReset !== "false") {
       control.reset()
     }
+  }
+
+  // The native behavior the intercepted event would have had. submit(),
+  // not requestSubmit(): the submit event already fired and was prevented,
+  // and re-dispatching it would loop straight back through the delegated
+  // listener.
+  fallthrough(control) {
+    if (control instanceof HTMLFormElement) control.submit()
+    else if (control.href) window.location.assign(control.href)
   }
 
   // One timer per (control, action): two events on one element debounce

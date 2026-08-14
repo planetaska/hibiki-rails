@@ -99,6 +99,15 @@ RSpec.describe Hibiki::Rails::Helpers do
         expect(view.on(:add, event: :submit)[:data]).not_to have_key(:hibiki_reset)
         expect(view.on(:add, event: :submit, reset: true)[:data]).not_to have_key(:hibiki_reset)
       end
+
+      it "marks a control's native behavior as its fallback" do
+        expect(view.on(:new_form, fallback: true)[:data][:hibiki_fallback]).to eq("true")
+      end
+
+      it "omits the fallback attribute for the default and for fallback: false" do
+        expect(view.on(:new_form)[:data]).not_to have_key(:hibiki_fallback)
+        expect(view.on(:new_form, fallback: false)[:data]).not_to have_key(:hibiki_fallback)
+      end
     end
 
     # The attribute is a whitespace-separated token list, so a name carrying

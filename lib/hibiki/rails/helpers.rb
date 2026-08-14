@@ -134,13 +134,24 @@ module Hibiki
       #                 an edit one — a failed commit would otherwise discard
       #                 what the user typed, synchronously, before the server
       #                 has even replied.
-      def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil)
+      #   fallback: true  the control's native behavior is its fallback: a
+      #                 link's navigation, a form's own action=. While the
+      #                 island's link is live the event is intercepted and
+      #                 only the channel action fires; any other time —
+      #                 scripts absent, still connecting, offline, stalled —
+      #                 the client stands aside and the browser does what
+      #                 the markup says. This is the progressive-enhancement
+      #                 spelling: give the control a real destination (an
+      #                 href, an action=), because a bare button has nothing
+      #                 to fall back to.
+      def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil,
+             fallback: nil)
         action = Helpers.event_name(action)
         events = Array(event).map { Helpers.event_name(it) }
         debounce = DEFAULT_INPUT_DEBOUNCE if debounce.nil? && events.include?("input")
         tokens = events.map { "#{it}->#{action}" }.join(" ")
         { data: { hibiki_on: tokens }
-            .merge(on_modifiers(with:, debounce:, confirm:, reset:)) }
+            .merge(on_modifiers(with:, debounce:, confirm:, reset:, fallback:)) }
       end
 
       # Placeholder for a single reactive value: `<%= reactive :doubled, 0 %>`
@@ -171,13 +182,14 @@ module Hibiki
       # #on's per-control modifiers, kept out of the token grammar. Each is
       # omitted when it matches the client's own default, so the common call
       # still stamps exactly one attribute.
-      def on_modifiers(with:, debounce:, confirm:, reset:)
-        debounce = Integer(debounce) if debounce
+      def on_modifiers(with:, debounce:, confirm:, reset:, fallback:)
         {
           hibiki_with: (JSON.generate(with) unless with.nil?),
-          hibiki_debounce: (debounce unless debounce.nil? || debounce.zero?),
+          # nonzero? returns the integer itself, so 0 compacts away.
+          hibiki_debounce: (Integer(debounce).nonzero? if debounce),
           hibiki_confirm: confirm&.to_s,
-          hibiki_reset: ("false" if reset == false)
+          hibiki_reset: ("false" if reset == false),
+          hibiki_fallback: ("true" if fallback)
         }.compact
       end
     end
