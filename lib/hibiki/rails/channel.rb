@@ -167,6 +167,29 @@ module Hibiki
         end
       end
 
+      # Mirror graph state into the page's address bar: wraps the block in
+      # an effect that transmits `{ url: }`; the packaged client
+      # history.replaceState's the bar to it. replaceState, never pushState —
+      # the URL is a MIRROR of state, not a history entry, so Back needs no
+      # popstate choreography and leaves the page normally. Compute a
+      # same-origin path ("/songs?page=2" — the client refuses anything
+      # else), and omit params that hold their defaults, or the bar grows
+      # noise on the first transmit. Pair it with first-paint code that READS
+      # those params (controller + subscribe-params seeding), so the mirrored
+      # URL reloads to the state it names. Equality-gated like
+      # #transmit_value: re-runs track every signal read, re-sends only when
+      # the URL actually moved.
+      def transmit_url(&compute)
+        last = Object.new
+        Hibiki::Effect.new do
+          url = compute.call.to_s
+          unless url == last
+            last = url
+            transmit({ url: })
+          end
+        end
+      end
+
       # Per-page-load graph identity, supplied by the page's subscription
       # (each tab is its own graph). Override to derive identity elsewhere.
       def cid = params[:cid]

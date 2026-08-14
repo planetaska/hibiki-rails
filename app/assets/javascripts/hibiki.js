@@ -385,7 +385,7 @@ export class ChannelController extends Controller {
     this.received(data)
   }
 
-  // Server → DOM (transmit transport). Two message shapes:
+  // Server → DOM (transmit transport). Three message shapes:
   //
   // { value: { name, text } } — a reactive value (transmit_value): write
   // the text into every [data-hibiki-value=name] placeholder, document-
@@ -393,11 +393,13 @@ export class ChannelController extends Controller {
   // textContent assignment keeps values text-only and preserves each
   // site's own tag/classes, so per-placeholder styling survives updates.
   //
+  // { url } — mirror graph state into the address bar (transmit_url).
+  //
   // { html } — a fragment: swap it in by its root id.
   //
   // Anything else is not ours to interpret. Subclasses may override, but
   // should call super (or handle `value`) to keep reactive values live.
-  received({ html, value }) {
+  received({ html, value, url }) {
     if (value) {
       const selector = `[data-hibiki-value="${CSS.escape(value.name)}"]`
       for (const site of document.querySelectorAll(selector)) {
@@ -405,12 +407,24 @@ export class ChannelController extends Controller {
       }
       return
     }
+    if (url !== undefined) return this.replaceUrl(url)
     if (!html) return
     const template = document.createElement("template")
     template.innerHTML = html
     for (const fragment of [...template.content.children]) {
       document.getElementById(fragment.id)?.replaceWith(fragment)
     }
+  }
+
+  // replaceState, never pushState: the URL is a mirror of graph state, not
+  // a history entry — Back needs no popstate handling and leaves the page
+  // normally. Same-origin only, so a channel can move the bar solely
+  // within its own app (replaceState would throw on a cross-origin URL;
+  // refusing keeps it silent and intentional).
+  replaceUrl(url) {
+    const resolved = new URL(url, window.location.href)
+    if (resolved.origin !== window.location.origin) return
+    history.replaceState(history.state, "", resolved)
   }
 
   // `static channel = "..."` wins; otherwise infer Rails-style from the
