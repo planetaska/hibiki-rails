@@ -44,6 +44,8 @@ module Hibiki
                                        desc: "No windowing at all — skips both pagination modes"
         class_option :skip_search, type: :boolean, default: false,
                                    desc: "Omit the search box and the LIKE terms behind it"
+        class_option :skip_create, type: :boolean, default: false,
+                                   desc: "Omit the inline create form — New always navigates"
         class_option :page_size, type: :numeric, default: 20, desc: "Rows per page"
         class_option :phlex, type: :boolean, default: false,
                              desc: "Emit Phlex components under app/views instead of ERB templates"

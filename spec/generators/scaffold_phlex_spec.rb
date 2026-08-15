@@ -155,7 +155,42 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
     it "declares every list local as a keyword, with its default" do
       expect(generated("app/views/items/list.rb"))
         .to include("def initialize(items:, page: 1, page_count: 1, remaining: 0, editing_id: nil, " \
-                    "form: nil,\n                 shelf_options: [], extras: {})")
+                    "form: nil,\n                 creating: false, new_form: nil, url_params: {}, " \
+                    "shelf_options: [], extras: {})")
+    end
+
+    # The 0.8.0 fallback surface, mirrored: the destroy form rides the
+    # phlex-rails ButtonTo adapter (button_to is a Rails helper, so `false`
+    # stays a boolean here — the drop-false rule is Phlex-native attributes
+    # only), the controls are one GET form, and the create form re-aims the
+    # shared row form at the *_new actions.
+    it "mirrors the fallback and inline-create surface" do
+      row = generated("app/views/items/row.rb")
+      expect(row).to include("include Phlex::Rails::Helpers::ButtonTo")
+      expect(row).to include('button_to "Destroy", item_path(@item.id), method: :delete,')
+      expect(row).to include("**on(:edit, with: { id: @item.id }, fallback: true)")
+
+      controls = generated("app/views/items/controls.rb")
+      expect(controls).to include('form(action: items_path, method: "get",')
+      expect(controls).to include("**on(:search, event: :submit, fallback: true, reset: false)")
+
+      list = generated("app/views/items/list.rb")
+      expect(list).to include("create_form if @creating")
+      expect(list).to include("form: @new_form")
+      expect(list).to include("save_action: :create")
+      expect(list).to include("url: page_url")
+
+      row_form = generated("app/views/items/row_form.rb")
+      expect(row_form).to include("**on(@save_action, event: :submit, reset: false)")
+      expect(row_form).to include("**on(@cancel_action, with: @cancel_with)")
+
+      pagination = generated("app/views/shared/pagination.rb")
+      expect(pagination).to include(%(def href(n) = @url ? "\#{@url.(n)}\#{@anchor}" : @anchor))
+      expect(pagination).to include("fallback: @url ? true : nil")
+
+      index = generated("app/views/items/index.rb")
+      expect(index).to include("params: @item_query.url_params.presence")
+      expect(index).to include("**on(:new_form, fallback: true)")
     end
 
     # phlex-rails' options_for_select outputs directly and returns an object

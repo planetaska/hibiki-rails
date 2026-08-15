@@ -7,13 +7,19 @@
      the page-number window) arrives as a local from the list partial. The
      `--css=` marker below is how a later scaffold run detects a variant
      mismatch — keep it. -%>
-<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>
+<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:, url: nil) -%>
 <%%# Shared page control (--css=<%= css_variant %>), rendered above and below
-    every scaffolded list. The links are anchors to the list, so a click also
-    does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
-    out. `on` returns a { data: } hash — merge, don't splat, or the anchor
-    stops scrolling. %>
-<%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
+    every scaffolded list. `url` is an optional ->(page) { path } builder:
+    when given, links carry real hrefs (plus the fragment) and fallback —
+    a dead island degrades to native navigation. Without it the links are
+    plain anchors to the list, as before. data-turbo="false" keeps Turbo
+    Drive out. `on` returns a { data: } hash — merge, don't splat, or the
+    anchor stops scrolling. %>
+<%% href = ->(n) { url ? "#{url.(n)}#{anchor}" : anchor } %>
+<%% page_data = ->(n) do
+     { turbo: false }.merge(on(:go_to_page, with: { page: n },
+                               fallback: url ? true : nil)[:data])
+   end %>
 <%%# The wrapper always renders (so idiomorph has a node to pair with) and
     stays bare — layout classes here would leave dead space when empty. %>
 <div id="<%%= id %>">
@@ -24,7 +30,7 @@
       <%% if page == 1 %>
         <span class="join-item btn btn-disabled" aria-disabled="true">«</span>
       <%% else %>
-        <%%= link_to "«", anchor, class: "join-item btn", rel: "prev",
+        <%%= link_to "«", href.(page - 1), class: "join-item btn", rel: "prev",
                     "aria-label": "Previous page", data: page_data.(page - 1) %>
       <%% end %>
 
@@ -34,7 +40,7 @@
         <%% elsif n == page %>
           <span class="join-item btn btn-active" aria-current="page"><%%= n %></span>
         <%% else %>
-          <%%= link_to n, anchor, class: "join-item btn",
+          <%%= link_to n, href.(n), class: "join-item btn",
                       "aria-label": "Page #{n}", data: page_data.(n) %>
         <%% end %>
       <%% end %>
@@ -42,7 +48,7 @@
       <%% if page == page_count %>
         <span class="join-item btn btn-disabled" aria-disabled="true">»</span>
       <%% else %>
-        <%%= link_to "»", anchor, class: "join-item btn", rel: "next",
+        <%%= link_to "»", href.(page + 1), class: "join-item btn", rel: "next",
                     "aria-label": "Next page", data: page_data.(page + 1) %>
       <%% end %>
     </nav>

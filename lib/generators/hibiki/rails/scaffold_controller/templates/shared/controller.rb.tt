@@ -7,8 +7,9 @@ class <%= scaffold_controller_class_name %> < ApplicationController
   # GET /<%= controller_file_path %>
   def index
     # The same query object the channel builds, so first paint and every
-    # repaint share one code path.
-    @<%= singular_table_name %>_query = <%= query_class_name %>.new
+    # repaint share one code path — and it reads the URL params the channel
+    # mirrors back (transmit_url), so a mirrored URL reloads to its state.
+    @<%= singular_table_name %>_query = <%= query_class_name %>.from_params(params)
 <%= phlex_render(:index, indent: 4) -%>
   end
 

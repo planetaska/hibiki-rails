@@ -75,6 +75,52 @@ class <%= query_class_name %>
   end
 <% end -%>
 
+  # The URL half of the query state: request params in, canonical params
+  # out. The controller's first paint, the channel's subscribe seeding, and
+  # the channel's transmit_url all go through these, so a mirrored URL
+  # reloads to the state it names.
+
+  def self.from_params(params)
+    new(<%= "query: params[:query].to_s, " if searchable? %>filters: filters_from(params),
+        sort: sort_from(params), direction: direction_from(params),
+        page: page_from(params))
+  end
+
+  def self.filters_from(params)
+    FILTERABLE.each_with_object({}) do |column, filters|
+      raw = params[column].to_s
+      filters[column] = <%= class_name %>.type_for_attribute(column).cast(raw) unless raw.empty?
+    end
+  end
+
+  def self.sort_from(params)
+    sort = params[:sort].to_s.to_sym
+    SORTABLE.include?(sort) ? sort : DEFAULT_SORT
+  end
+
+  def self.direction_from(params) = params[:direction].to_s == "desc" ? :desc : :asc
+
+  def self.page_from(params) = [ params[:page].to_i, 1 ].max
+
+  # Canonical query params — defaults omitted, so URLs stay minimal.
+  def self.url_params(query: "", filters: {}, sort: DEFAULT_SORT,
+                      direction: :asc, page: 1)
+    params = {}
+<% if searchable? -%>
+    params[:query] = query unless query.to_s.strip.empty?
+<% end -%>
+    filters.each { |column, value| params[column] = value }
+    params[:sort] = sort unless sort.to_sym == DEFAULT_SORT
+    params[:direction] = direction unless direction.to_sym == :asc
+    params[:page] = page unless page == 1
+    params
+  end
+
+  def url_params
+    self.class.url_params(<%= "query: @term, " if searchable? %>filters: @filters, sort: @sort,
+                          direction: @direction, page: @page)
+  end
+
   def initialize(query: "", filters: {}, sort: DEFAULT_SORT, direction: :asc,
                  page: 1)
     @term = query.to_s.strip

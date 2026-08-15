@@ -5,13 +5,23 @@
 
 # Search / filter / sort: pure signal state. Inside the island, but outside
 # the replaced fragment — a list repaint can't clobber what the user is typing.
+# The whole block is a GET form to the index: while the island is live the
+# tokens fire channel actions; otherwise Enter / Apply / the direction button
+# submit natively and the controller's from_params answers. Control values
+# come from url_params so a seeded load paints them.
 class <%= view_class_name(:controls) %> < Views::Base
 <%= phlex_includes(*(:search_field_tag if searchable?), :select_tag, :options_for_select, hibiki: true) %>
 
-<%= initializer_source([%w[sort :id], %w[direction :asc]]) %>
+<%= initializer_source([%w[url_params {}]]) %>
 
   def view_template
-    div<%= arg_list(*css_args(:controls)) %> do
+<% if searchable? -%>
+    # reset: false — the client's default resets a submitted form, which here
+    # would blank the query the user just searched for.
+    form<%= arg_list(%(action: #{index_helper(type: :path)}), %(method: "get"), *css_args(:controls), "**on(:search, event: :submit, fallback: true, reset: false)", indent: 9) %> do
+<% else -%>
+    form<%= arg_list(%(action: #{index_helper(type: :path)}), %(method: "get"), *css_args(:controls), indent: 9) %> do
+<% end -%>
 <% if searchable? -%>
       search_field
       whitespace
@@ -24,11 +34,16 @@ class <%= view_class_name(:controls) %> < Views::Base
       whitespace
       direction_button
       whitespace
+      apply_button
+      whitespace
       counts
     end
   end
 
   private
+
+  def sort = (@url_params[:sort] || <%= query_class_name %>::DEFAULT_SORT).to_s
+  def direction = @url_params[:direction].to_s == "desc" ? :desc : :asc
 <% if searchable? -%>
 
   def search_field
@@ -45,7 +60,7 @@ class <%= view_class_name(:controls) %> < Views::Base
     label<%= arg_list(*css_args(:form_control)) %> do
       span<%= arg_list(*css_args(:label_text)) %> { "<%= column.human_name %>" }
       select_tag<%= arg_list(*filter_select_head_args(column), indent: 17) %> do
-        <%= filter_select_options_source %>
+        <%= filter_select_options_source(column) %>
       end
     end
   end
@@ -55,17 +70,26 @@ class <%= view_class_name(:controls) %> < Views::Base
     label<%= arg_list(*css_args(:form_control)) %> do
       span<%= arg_list(*css_args(:label_text)) %> { "Sort by" }
       select_tag<%= arg_list(":sort", *sort_select_tail_args, indent: 17) %> do
-        options_for_select([<%= sort_option_pairs(indent: 28).lstrip %>], @sort.to_s)
+        options_for_select([<%= sort_option_pairs(indent: 28).lstrip %>], sort)
       end
     end
   end
 
   # Never re-rendered, so the label is a reactive value. The visible text
-  # reports the state; the static aria-label carries the action.
+  # reports the state; the static aria-label carries the action. Live, the
+  # click toggles; dead, it submits the form carrying the opposite direction
+  # (the value goes stale after live toggles, but the dead path is always a
+  # fresh page).
   def direction_button
     button<%= arg_list(*direction_button_args, indent: 12) %> do
-      span(**reactive_attrs(:<%= value_name("direction") %>)) { <%= query_class_name %>.direction_label(@direction) }
+      span(**reactive_attrs(:<%= value_name("direction") %>)) { <%= query_class_name %>.direction_label(direction) }
     end
+  end
+
+  # The no-JS submit for the selects; live, the changed selects have already
+  # sent their own actions.
+  def apply_button
+    button<%= arg_list(%(type: "submit"), *css_args(:btn)) %> { "Apply" }
   end
 
   # Reactive-value placeholders — outside the replaced fragment, so a swap

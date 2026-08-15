@@ -145,7 +145,11 @@ module Hibiki
 
         def inject_component_render
           path = view_path("row_form.rb")
-          line = "        render #{component_class_name}.new(form: @form, dom: dom, extras: @extras)\n"
+          # Two vintages of row_form: dom became a keyword (@dom) when the
+          # form was parameterized for inline create; before that it was a
+          # private method.
+          dom = wired?(path, "@dom = dom") ? "@dom" : "dom"
+          line = "        render #{component_class_name}.new(form: @form, dom: #{dom}, extras: @extras)\n"
           return if wired?(path, "Multiselect.new")
           return manual_wiring(path, line) unless wired?(path, PHLEX_FIELDSET_CLOSE)
 
@@ -218,7 +222,8 @@ module Hibiki
         def thread_extras_erb
           [view_path("_list.html.erb"), view_path("_#{row_partial}.html.erb"),
            view_path("_#{row_form_partial}.html.erb")].each do |path|
-            gsub_file path, /^(<%# locals: \(.*?)\) -%>/, '\1, extras: {}) -%>', verbose: false
+            # /m: the row form's locals header wraps onto a second line.
+            gsub_file path, /^(<%# locals: \(.*?)\) -%>/m, '\1, extras: {}) -%>', verbose: false
           end
           # `form: form` appears exactly once per file, inside the one render
           # call that must pass extras on.

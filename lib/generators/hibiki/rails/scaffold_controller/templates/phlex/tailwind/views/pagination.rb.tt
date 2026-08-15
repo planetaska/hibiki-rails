@@ -6,9 +6,10 @@
 # frozen_string_literal: true
 
 # Shared page control (--css=<%= css_variant %>), rendered above and below
-# every scaffolded list. The links are anchors to the list, so a click also
-# does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
-# out.
+# every scaffolded list. `url` is an optional ->(page) { path } builder:
+# when given, links carry real hrefs (plus the fragment) and fallback — a
+# dead island degrades to native navigation. Without it the links are plain
+# anchors to the list, as before. data-turbo="false" keeps Turbo Drive out.
 class Views::Shared::Pagination < Views::Base
 <%= phlex_includes(:link_to, hibiki: true) %>
 
@@ -18,7 +19,8 @@ class Views::Shared::Pagination < Views::Base
   ITEM_CURRENT = "#{ITEM} z-10 bg-indigo-600 border-indigo-600 text-white"
   ITEM_INERT = "#{ITEM} bg-white text-gray-300 cursor-not-allowed"
 
-<%= initializer_source([%w[page 1], %w[page_count 1], %w[pages []], ["anchor"], ["id"]]) %>
+<%= initializer_source([%w[page 1], %w[page_count 1], %w[pages []], ["anchor"], ["id"],
+                        %w[url nil]]) %>
 
   def view_template
     # The wrapper always renders (so idiomorph has a node to pair with) and
@@ -59,7 +61,11 @@ class Views::Shared::Pagination < Views::Base
   # The STRING "false", not the boolean — Phlex omits false-valued attributes.
   # And merge, don't splat: the anchor needs its own data attribute too.
   def step(text, n, label:, rel: nil)
-    link_to text, @anchor, class: ITEM_LINK, rel:, "aria-label": label,
-            data: { turbo: "false" }.merge(on(:go_to_page, with: { page: n })[:data])
+    link_to text, href(n), class: ITEM_LINK, rel:, "aria-label": label,
+            data: { turbo: "false" }.merge(on(:go_to_page, with: { page: n },
+                                              fallback: @url ? true : nil)[:data])
   end
+
+  # A real href when a url builder was given; a bare anchor otherwise.
+  def href(n) = @url ? "#{@url.(n)}#{@anchor}" : @anchor
 end

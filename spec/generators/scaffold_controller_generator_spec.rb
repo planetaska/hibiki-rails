@@ -279,6 +279,151 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(generated("app/models/book_query.rb")).to include("PAGE_SIZE = 5")
     end
+
+    it "--skip-create drops the inline form and keeps New outside the island" do
+      generate(["Book", *book_fields, "--css=daisyui", "--skip-create"])
+
+      channel = generated("app/channels/books_channel.rb")
+      expect(channel).not_to include("@creating")
+      expect(channel).not_to include("def create(")
+      expect(channel).to include("transmit_url do")
+
+      index = generated("app/views/books/index.html.erb")
+      expect(index).not_to include("new_form")
+      expect(index.index("New book")).to be < index.index("hibiki_island")
+
+      expect(generated("app/views/books/_list.html.erb")).not_to include("creating")
+    end
+  end
+
+  # The 0.8.0 surface: every control's native href/action is its degraded
+  # path, the URL mirrors the graph, and the first broadcast repaints the
+  # state the server first-painted.
+  describe "the fallback and URL surface" do
+    before { generate(["Book", *book_fields, "--css=daisyui"]) }
+
+    it "gives the query object its URL half" do
+      query = generated("app/models/book_query.rb")
+
+      expect(query).to include("def self.from_params(params)")
+      expect(query).to include("def self.filters_from(params)")
+      expect(query).to include("def self.url_params(query: \"\", filters: {}, sort: DEFAULT_SORT,")
+      expect(query).to include("params[:direction] = direction unless direction.to_sym == :asc")
+    end
+
+    it "first-paints from the request params" do
+      expect(generated("app/controllers/books_controller.rb"))
+        .to include("@book_query = BookQuery.from_params(params)")
+    end
+
+    it "seeds the channel's signals from the subscribe params" do
+      channel = generated("app/channels/books_channel.rb")
+
+      expect(channel).to include("@query = Hibiki::State.new(params[:query].to_s)")
+      expect(channel).to include("@filters = Hibiki::State.new(BookQuery.filters_from(params))")
+      expect(channel).to include("@page = Hibiki::State.new(BookQuery.page_from(params))")
+    end
+
+    it "stamps the canonical params onto the island subscription" do
+      expect(generated("app/views/books/index.html.erb"))
+        .to include("params: @book_query.url_params.presence")
+    end
+
+    it "mirrors the graph into the address bar, form URLs included" do
+      channel = generated("app/channels/books_channel.rb")
+
+      expect(channel).to include("transmit_url do")
+      expect(channel).to include("urls.new_book_path")
+      expect(channel).to include("urls.edit_book_path(id)")
+      expect(channel).to include("urls.books_path(**query_url_params)")
+    end
+
+    it "makes the controls one GET form to the index" do
+      controls = generated("app/views/books/_controls.html.erb")
+
+      expect(controls).to include('tag.form(action: books_path, method: "get"')
+      # reset: false, or the intercepted submit blanks the query field.
+      expect(controls).to include("**on(:search, event: :submit, fallback: true, reset: false)")
+      expect(controls).to include('tag.button("Apply", type: "submit"')
+      # The direction submit button carries the OPPOSITE value for the dead path.
+      expect(controls).to include('value: (direction == :asc ? "desc" : "asc")')
+    end
+
+    it "degrades Edit to a real link and Destroy to a real form" do
+      row = generated("app/views/books/_book.html.erb")
+
+      expect(row).to include('link_to "Edit", edit_book_path(book.id)')
+      expect(row).to include("**on(:edit, with: { id: book.id }, fallback: true)")
+      expect(row).to include('button_to "Destroy", book_path(book.id), method: :delete')
+      expect(row).to include("form: { data: { turbo: false }.merge(")
+      expect(row).to include('confirm: "Are you sure?", fallback: true)[:data]) }')
+    end
+
+    it "hands the page control real hrefs carrying the query state" do
+      list = generated("app/views/books/_list.html.erb")
+
+      expect(list).to include("page_url = ->(n) do")
+      expect(list).to include("books_path(**query)")
+      expect(list.scan("url: page_url").size).to eq(2)
+
+      pagination = generated("app/views/shared/_pagination.html.erb")
+      expect(pagination).to include("url: nil)")
+      expect(pagination).to include(%(href = ->(n) { url ? "\#{url.(n)}\#{anchor}" : anchor }))
+      expect(pagination).to include("fallback: url ? true : nil")
+    end
+  end
+
+  describe "the inline create form" do
+    before { generate(["Book", *book_fields, "--css=daisyui"]) }
+
+    it "owns creation in the channel, one form object per use" do
+      channel = generated("app/channels/books_channel.rb")
+
+      expect(channel).to include("@creating = Hibiki::State.new(false)")
+      expect(channel).to include("@new_form = BookForm.new")
+      expect(channel).to include("def new_form(_data)")
+      expect(channel).to include("def cancel_new(_data)")
+      expect(channel).to include("def set_new_field(data)")
+      expect(channel).to include("def create(data)")
+      expect(channel).to include("creating: @creating.value,")
+      expect(channel).to include("new_form: (@new_form if @creating.value),")
+    end
+
+    it "loads the belongs_to options while either form is open" do
+      expect(generated("app/channels/books_channel.rb"))
+        .to include("author_options: ((editing_id || @creating.value) ? @author_options.value : [])")
+    end
+
+    it "moves the New link inside the island with the new page as its fallback" do
+      index = generated("app/views/books/index.html.erb")
+
+      expect(index).to include("**on(:new_form, fallback: true)")
+      expect(index.index("hibiki_island")).to be < index.index("New book")
+    end
+
+    it "re-aims the shared row form at the *_new actions from the list" do
+      list = generated("app/views/books/_list.html.erb")
+
+      expect(list).to include("<% if creating %>")
+      expect(list).to include("form: new_form")
+      expect(list).to include(%(dom: "book_new"))
+      expect(list).to include("save_action: :create")
+      expect(list).to include("field_action: :set_new_field")
+    end
+
+    it "parameterizes the row form once for both uses" do
+      row_form = generated("app/views/books/_book_form.html.erb")
+
+      expect(row_form).to include("save_action: :save, cancel_action: :cancel,")
+      expect(row_form).to include("**on(save_action, event: :submit, reset: false)")
+      expect(row_form).to include("**on(field_action, event:")
+      expect(row_form).to include("**on(cancel_action, with: cancel_with)")
+    end
+
+    it "gates live errors on dirtiness so a fresh form paints clean" do
+      expect(generated("app/forms/book_form.rb"))
+        .to include("def error_for(name) = super || (live_errors[name.to_sym] if dirty?)")
+    end
   end
 
   describe "the shared partials" do
@@ -350,6 +495,19 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(generated("app/views/shared/_pagination.html.erb")).to include("--css=daisyui")
       expect(output).to include("different --css style")
+    end
+
+    # The 0.8.0 upgrade path: a pre-0.8 page control has no url: local and
+    # the regenerated list now passes one — kept as-is, that is a
+    # strict-locals error on its next render.
+    it "refreshes a same-styled page control that predates the url: local" do
+      write("app/views/shared/_pagination.html.erb",
+            "<%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>\n" \
+            "<%# Shared page control (--css=daisyui) %>\n<div></div>\n")
+      output = generate(["Book", *book_fields, "--css=daisyui"])
+
+      expect(generated("app/views/shared/_pagination.html.erb")).to include("url: nil)")
+      expect(output).to include("predates the url: local")
     end
 
     it "names per-resource copies left over from before the partials were shared" do

@@ -1,11 +1,26 @@
 <%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
      consumed here at generation time. Most of this file is GENERATION time —
      the option lists are built from the schema and baked in. -%>
-<%%# locals: (sort: :id, direction: :asc) -%>
+<%%# locals: (url_params: {}) -%>
 <%%# Search / filter / sort: pure signal state. Inside the island, but outside
     the replaced fragment — a list repaint can't clobber what the user is
-    typing. %>
-<div<%= css_attr(:controls) %>>
+    typing. The whole block is a GET form to the index: while the island is
+    live the tokens fire channel actions; otherwise Enter / Apply / the
+    direction button submit natively and the controller's from_params answers.
+    Control values come from url_params so a seeded load paints them. %>
+<%% sort = (url_params[:sort] || <%= query_class_name %>::DEFAULT_SORT).to_s %>
+<%% direction = url_params[:direction].to_s == "desc" ? :desc : :asc %>
+<% if searchable? -%>
+<%%# reset: false — the client's default resets a submitted form, which here
+    would blank the query the user just searched for. %>
+<%%= tag.form(action: <%= index_helper(type: :path) %>, method: "get",
+<% if css? -%>
+             class: "<%= css(:controls) %>",
+<% end -%>
+             **on(:search, event: :submit, fallback: true, reset: false)) do %>
+<% else -%>
+<%%= tag.form(action: <%= index_helper(type: :path) %>, method: "get"<%= css? ? %(, class: "#{css(:controls)}") : "" %>) do %>
+<% end -%>
 <% if searchable? -%>
   <label<%= css_attr(:form_control) %>>
     <span<%= css_attr(:label_text) %>>Search</span>
@@ -25,15 +40,22 @@
     <span<%= css_attr(:label_text) %>>Sort by</span>
     <%%= select_tag :sort,
                    options_for_select(
-                     [<%= sort_option_pairs(indent: 22).lstrip %>], sort.to_s),
+                     [<%= sort_option_pairs(indent: 22).lstrip %>], sort),
                    <%= wrapped_list(sort_select_tail_args, indent: 19).lstrip %> %>
   </label>
 
   <%%# Never re-rendered, so the label is a reactive value. The visible text
-      reports the state; the static aria-label carries the action. %>
+      reports the state; the static aria-label carries the action. Live, the
+      click toggles; dead, it submits the form carrying the opposite
+      direction (the value goes stale after live toggles, but the dead path
+      is always a fresh page). %>
   <%%= tag.button(<%= wrapped_list(direction_button_args, indent: 17).lstrip %>) do %>
     <%%= reactive :<%= value_name("direction") %>, <%= query_class_name %>.direction_label(direction) %>
   <%% end %>
+
+  <%%# The no-JS submit for the selects; live, the changed selects have
+      already sent their own actions. %>
+  <%%= tag.button("Apply", type: "submit"<%= css? ? %(, class: "#{css(:btn)}") : "" %>) %>
 
   <%%# Reactive-value placeholders — outside the replaced fragment, so a swap
       never resets their text. %>
@@ -53,4 +75,4 @@
       <span class="hbk-stalled">no response</span>
     </span>
   </p>
-</div>
+<%% end %>

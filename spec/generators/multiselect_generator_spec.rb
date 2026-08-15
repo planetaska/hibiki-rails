@@ -219,7 +219,7 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
       expect(component).to include("class Views::Items::PartsMultiselect < Views::Base")
       expect(component).to include("def initialize(form:, dom:, extras: {})")
       expect(generated("app/views/items/row_form.rb"))
-        .to include("render Views::Items::PartsMultiselect.new(form: @form, dom: dom, extras: @extras)")
+        .to include("render Views::Items::PartsMultiselect.new(form: @form, dom: @dom, extras: @extras)")
       expect(generated("app/views/items/row.rb")).to include("plain(@item.parts.map(&:name)")
     end
 

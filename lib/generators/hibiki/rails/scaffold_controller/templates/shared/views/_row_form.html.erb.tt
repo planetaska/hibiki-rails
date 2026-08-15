@@ -1,14 +1,15 @@
 <%#- ESCAPING: the peak. <%% emits runtime ERB; a bare <% loops over the schema
      here at generation time; #{...} inside an escaped tag is runtime Ruby and
      passes through untouched. -%>
-<%%# locals: (<%= singular_name %>:, form:<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>, extras: {}) -%>
+<%%# locals: (form:, dom:, save_action: :save, cancel_action: :cancel,
+             field_action: :set_field, cancel_with: nil<%= schema.belongs_tos.map { ", #{it.options_local}:" }.join %>, extras: {}) -%>
 <%%# Plain *_tag helpers with UNPREFIXED names, not form_with: the client
     builds the payload with FormData, so the keys must be exactly the
-    ReactiveForm's attribute names. Field ids are prefixed per row so nothing
-    collides. %>
-<%% dom = "<%= row_dom_id_prefix %>_#{<%= singular_name %>.id}" %>
+    ReactiveForm's attribute names. Field ids are prefixed per use so nothing
+    collides. One template, two uses: the per-row edit form (the defaults)
+    and the inline create form (dom: "<%= row_dom_id_prefix %>_new", the *_new actions). %>
 <%%# reset: false — a failed commit must not blank the fields. %>
-<%%= tag.form(**on(:save, event: :submit, reset: false)<%= css? ? %(, class: "#{css(:row_form)}") : "" %>) do %>
+<%%= tag.form(**on(save_action, event: :submit, reset: false)<%= css? ? %(, class: "#{css(:row_form)}") : "" %>) do %>
   <div<%= css_attr(:fieldset) %>>
 <% schema.columns.each_with_index do |column, index| -%>
 <% if column.type == :boolean -%>
@@ -21,7 +22,7 @@
 <% if css? -%>
                           class: "<%= css(:toggle) %>",
 <% end -%>
-                          **on(:set_field, event: :change, with: { field: "<%= column.name %>" }) %>
+                          **on(field_action, event: :change, with: { field: "<%= column.name %>" }) %>
         <%= column.human_name %>
       <%% end %>
     </div>
@@ -52,7 +53,7 @@
     <%% end %>
     <%%# type: "button" — tag.button defaults to submit. %>
     <%%= tag.button("Cancel", type: "button"<%= css? ? %(, class: "#{css(:btn)}") : "" %>,
-                   **on(:cancel, with: { id: <%= singular_name %>.id })) %>
+                   **on(cancel_action, with: cancel_with)) %>
     <%%# A badge, not a disabled Save: dirty? only moves after a round trip
         and must not gate the gesture. %>
     <%% if form.dirty? %>

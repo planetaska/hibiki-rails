@@ -51,7 +51,20 @@ module Hibiki
           dest = File.join(SHARED_VIEW_DIR, basename)
           return template(source, dest) unless exists?(dest)
 
-          (@shared_views_kept ||= []) << dest unless wired?(dest, css_marker)
+          unless wired?(dest, css_marker)
+            (@shared_views_kept ||= []) << dest
+            return
+          end
+
+          # A pre-0.8 page control has no url: local and the list now passes
+          # one — a strict-locals error on its next render. Same style and
+          # generator-owned, so refresh it in place.
+          refresh_shared_view(source, dest) if basename.include?("pagination") && !wired?(dest, "url:")
+        end
+
+        def refresh_shared_view(source, dest)
+          say_status :views, "#{dest} predates the url: local — refreshed", :yellow
+          template(source, dest, force: true)
         end
 
         def css_marker = "--css=#{css_variant}"

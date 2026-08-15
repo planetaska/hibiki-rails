@@ -75,9 +75,9 @@ module Hibiki
 
           [%("#{column.name}"), "#{form_ref}.#{column.name}",
            *(bounds unless bounds.empty?),
-           %(id: "\#{dom}_#{column.name}"),
+           %(id: "\#{#{dom_ref}}_#{column.name}"),
            *css_args(row_field_token(column)),
-           %(**on(:set_field, event: :#{column.tag_event}, with: { field: "#{column.name}" }))]
+           %(**on(#{field_action_ref}, event: :#{column.tag_event}, with: { field: "#{column.name}" }))]
         end
 
         # Split around the options positional, because the two view layers put
@@ -95,9 +95,9 @@ module Hibiki
         def row_select_head_args(column)
           [%("#{column.name}"),
            %(include_blank: "Select #{column.human_name.downcase}"),
-           %(id: "\#{dom}_#{column.name}"),
+           %(id: "\#{#{dom_ref}}_#{column.name}"),
            *css_args(row_field_token(column)),
-           %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))]
+           %(**on(#{field_action_ref}, event: :change, with: { field: "#{column.name}" }))]
         end
 
         def row_select_options_source(column)
@@ -117,6 +117,13 @@ module Hibiki
         def form_ref = phlex? ? "@form" : "form"
         def options_ref(column) = phlex? ? "@#{column.options_local}" : column.options_local.to_s
 
+        # And for the row form's parameterization (one template, two uses:
+        # the per-row edit form and the inline create form) plus the URL
+        # params the controls and list read.
+        def dom_ref = phlex? ? "@dom" : "dom"
+        def field_action_ref = phlex? ? "@field_action" : "field_action"
+        def url_params_ref = phlex? ? "@url_params" : "url_params"
+
         # Talks to the channel directly rather than through a form submit, so
         # it needs no hidden-field pair.
         def row_toggle_args(column)
@@ -126,23 +133,18 @@ module Hibiki
            %(**on(:set_#{column.name}, event: :change, with: { id: #{record_ref}.id }))]
         end
 
-        # Split around the label for the same reason the selects split around
-        # their options: `tag.button("Edit", ...)` takes it as an argument and
-        # Phlex's `button(...) { "Edit" }` takes it as content.
-        def row_button_args(label, action, token, confirm: nil)
-          [%("#{label}"), *row_button_attr_args(action, token, confirm:)]
-        end
-
-        def row_button_attr_args(action, token, confirm: nil)
-          [%(type: "button"),
-           *css_args(token),
-           %(**on(:#{action}, #{%(confirm: "#{confirm}", ) if confirm}with: { id: #{record_ref}.id }))]
+        # fallback: true — while the island's link is live the click opens the
+        # inline form; otherwise the href navigates to the standard edit page.
+        def edit_link_args
+          [%("Edit"), "edit_#{singular_route_name}_path(#{record_ref}.id)",
+           *css_args(:btn_outline),
+           %(**on(:edit, with: { id: #{record_ref}.id }, fallback: true))]
         end
 
         # ---- the controls partial --------------------------------------------
 
         def search_field_args
-          [":query", "nil",
+          [":query", "#{url_params_ref}[:query]",
            *css_args(:input),
            %(placeholder: "#{schema.searchable.map { it.to_s.humanize.downcase }.join(' or ')}"),
            "**on(:search, event: :input)"]
@@ -153,7 +155,7 @@ module Hibiki
         def filter_select_args(column)
           head, *tail = filter_select_head_args(column)
 
-          [head, filter_select_options_source, *tail]
+          [head, filter_select_options_source(column), *tail]
         end
 
         def filter_select_head_args(column)
@@ -162,19 +164,25 @@ module Hibiki
            %(**on(:set_filter, event: :change, with: { column: "#{column.name}" }))]
         end
 
-        def filter_select_options_source
-          %(options_for_select([["Any", ""], ["Yes", "true"], ["No", "false"]]))
+        def filter_select_options_source(column)
+          selected = "#{url_params_ref}[:#{column.name}].to_s"
+          %(options_for_select([["Any", ""], ["Yes", "true"], ["No", "false"]], #{selected}))
         end
 
         def sort_select_tail_args
           [*css_args(:select), "**on(:set_sort, event: :change)"]
         end
 
+        # A SUBMIT button carrying the OPPOSITE direction: live, the click
+        # toggles; dead, it submits the controls form with a fresh page. The
+        # value goes stale after live toggles, but the dead path is always a
+        # fresh page.
         def direction_button_args
-          [%(type: "button"),
+          [%(type: "submit"), %(name: "direction"),
+           %(value: (direction == :asc ? "desc" : "asc")),
            *css_args(:btn_ghost),
            %("aria-label": "Reverse sort direction"),
-           "**on(:toggle_direction)"]
+           "**on(:toggle_direction, fallback: true)"]
         end
 
         # ---- render calls ----------------------------------------------------
@@ -190,7 +198,8 @@ module Hibiki
           ["#{controller_file_name}: @#{singular_table_name}_query.rows",
            "page: @#{singular_table_name}_query.page",
            "page_count: @#{singular_table_name}_query.page_count",
-           "remaining: @#{singular_table_name}_query.remaining"]
+           "remaining: @#{singular_table_name}_query.remaining",
+           "url_params: @#{singular_table_name}_query.url_params"]
         end
 
         def row_render_locals
@@ -202,7 +211,19 @@ module Hibiki
         end
 
         def row_form_render_locals
-          ["#{singular_name}: #{singular_name}", "form: form",
+          ["form: form",
+           %(dom: "#{row_dom_id_prefix}_\#{#{singular_name}.id}"),
+           "cancel_with: { id: #{singular_name}.id }",
+           *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" },
+           "extras: extras"]
+        end
+
+        # The inline create form's render, from the list: the same row form,
+        # re-aimed at the *_new actions.
+        def create_form_render_locals
+          ["form: new_form", %(dom: "#{row_dom_id_prefix}_new"),
+           "save_action: :create", "cancel_action: :cancel_new",
+           "field_action: :set_new_field",
            *schema.belongs_tos.map { "#{it.options_local}: #{it.options_local}" },
            "extras: extras"]
         end
@@ -224,6 +245,8 @@ module Hibiki
         def list_locals
           [[controller_file_name, nil], %w[page 1], %w[page_count 1], %w[remaining 0],
            %w[editing_id nil], %w[form nil],
+           *([%w[creating false], %w[new_form nil]] if inline_create?),
+           %w[url_params {}],
            *schema.belongs_tos.map { [it.options_local.to_s, "[]"] },
            %w[extras {}]]
         end

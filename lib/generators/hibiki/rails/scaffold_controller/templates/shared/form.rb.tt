@@ -24,6 +24,7 @@ class <%= form_class_name %>
 
   derived(:valid?) { live_errors.empty? }
 
-  # The record's mirrored errors win once a commit has actually failed.
-  def error_for(name) = super || live_errors[name.to_sym]
+  # The record's mirrored errors win once a commit has actually failed. Live
+  # errors wait for dirty? — a freshly opened form must not paint them.
+  def error_for(name) = super || (live_errors[name.to_sym] if dirty?)
 end

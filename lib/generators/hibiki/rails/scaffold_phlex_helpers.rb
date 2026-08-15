@@ -259,7 +259,19 @@ module Hibiki
         end
 
         def row_form_render_args
-          ["#{singular_name}: @#{singular_name}", "form: @form",
+          ["form: @form",
+           %(dom: "#{row_dom_id_prefix}_\#{@#{singular_name}.id}"),
+           "cancel_with: { id: @#{singular_name}.id }",
+           *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" },
+           "extras: @extras"]
+        end
+
+        # The inline create form's render, from the list: the same row form,
+        # re-aimed at the *_new actions.
+        def create_form_render_args
+          ["form: @new_form", %(dom: "#{row_dom_id_prefix}_new"),
+           "save_action: :create", "cancel_action: :cancel_new",
+           "field_action: :set_new_field",
            *schema.belongs_tos.map { "#{it.options_local}: @#{it.options_local}" },
            "extras: @extras"]
         end
@@ -270,7 +282,8 @@ module Hibiki
           query = "@#{singular_table_name}_query"
 
           ["#{controller_file_name}: #{query}.rows", "page: #{query}.page",
-           "page_count: #{query}.page_count", "remaining: #{query}.remaining"]
+           "page_count: #{query}.page_count", "remaining: #{query}.remaining",
+           "url_params: #{query}.url_params"]
         end
       end
     end

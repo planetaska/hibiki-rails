@@ -3,14 +3,36 @@
 <%%# locals: (<%= list_locals_signature %>) -%>
 <%%# The island's re-rendered fragment. Its root id is the broadcast target —
     deliberately not the island root, which carries the stream source. %>
+<% unless infinite? -%>
+<%%# Real pagination hrefs carrying the current query state — the channel
+    re-renders them with url_params fresh, so the fallback URLs stay
+    truthful as the live state moves. %>
+<%% page_url = ->(n) do
+     query = url_params.except(:page)
+     query[:page] = n unless n == 1
+     <%= index_helper(type: :path) %>(**query)
+   end %>
+<% end -%>
 <div id="<%= list_dom_id %>"<%= css_attr(:list) %>>
+<% if inline_create? -%>
+  <%%# The inline create form — only the channel ever renders it (the New
+      link's action sets creating), so the first paint never carries it. %>
+  <%% if creating %>
+    <div id="<%= row_dom_id_prefix %>_new"<%= css_attr(:card) %>>
+      <div<%= css_attr(:card_body) %>>
+        <%%= render "<%= partial_path(row_form_partial) %>", <%= wrapped_list(create_form_render_locals, indent: render_indent(partial_path(row_form_partial)) + 4, width: 0).lstrip %> %>
+      </div>
+    </div>
+  <%% end %>
+
+<% end -%>
 <% unless infinite? -%>
   <%%# Both page-control copies live inside the replaced fragment on purpose,
       so they re-render with the list; their distinct ids keep idiomorph from
       rebuilding them. %>
   <%% pages = <%= query_class_name %>.page_numbers(page: page, page_count: page_count) %>
   <%%= render "shared/pagination", page: page, page_count: page_count, pages: pages,
-             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>_top" %>
+             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>_top", url: page_url %>
 
 <% end -%>
   <%% <%= controller_file_name %>.each do |<%= singular_name %>| %>
@@ -39,6 +61,6 @@
   <%% end %>
 <% else -%>
   <%%= render "shared/pagination", page: page, page_count: page_count, pages: pages,
-             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>" %>
+             anchor: "#<%= list_dom_id %>", id: "<%= pagination_dom_id %>", url: page_url %>
 <% end -%>
 </div>

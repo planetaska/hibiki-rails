@@ -15,6 +15,12 @@ class <%= view_class_name(:list) %> < Views::Base
 
   def view_template
     div<%= arg_list(%(id: "#{list_dom_id}"), *css_args(:list)) %> do
+<% if inline_create? -%>
+      # The inline create form — only the channel ever renders it (the New
+      # link's action sets creating), so the first paint never carries it.
+      create_form if @creating
+
+<% end -%>
 <% unless infinite? -%>
       # Both page-control copies live inside the replaced fragment on purpose,
       # so they re-render with the list; their distinct ids keep idiomorph
@@ -37,18 +43,37 @@ class <%= view_class_name(:list) %> < Views::Base
 <% end -%>
     end
   end
-<% unless infinite? -%>
 
   private
+<% if inline_create? -%>
+
+  def create_form
+    div<%= arg_list(%(id: "#{row_dom_id_prefix}_new"), *css_args(:card)) %> do
+      div<%= arg_list(*css_args(:card_body)) %> do
+<%= render_call(:row_form, create_form_render_args, indent: 8) %>
+      end
+    end
+  end
+<% end -%>
+<% unless infinite? -%>
 
   def pagination(id)
     pages = <%= query_class_name %>.page_numbers(page: @page, page_count: @page_count)
-<%= render_call(:pagination, ["page: @page", "page_count: @page_count", "pages: pages", %(anchor: "##{list_dom_id}"), "id: id"], indent: 4, shared: true) %>
+<%= render_call(:pagination, ["page: @page", "page_count: @page_count", "pages: pages", %(anchor: "##{list_dom_id}"), "id: id", "url: page_url"], indent: 4, shared: true) %>
+  end
+
+  # Real pagination hrefs carrying the current query state — the channel
+  # re-renders them with url_params fresh, so the fallback URLs stay
+  # truthful as the live state moves.
+  def page_url
+    ->(n) do
+      query = @url_params.except(:page)
+      query[:page] = n unless n == 1
+      <%= index_helper(type: :path) %>(**query)
+    end
   end
 <% end -%>
 <% if infinite? -%>
-
-  private
 
   # `visible` is a pseudo-event backed by an IntersectionObserver, so this
   # button doubles as the infinite-scroll sentinel. The client stamps

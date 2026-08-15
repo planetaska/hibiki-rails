@@ -5,17 +5,32 @@
 <div<%= css_attr(:page) %>>
   <h1<%= css_attr(:heading) %>><%= human_name.pluralize %></h1>
 
+<% unless inline_create? -%>
   <div<%= css_attr(:actions_bar) %>>
     <%%= link_to "New <%= human_name.downcase %>", <%= new_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_primary)}") : "" %> %>
   </div>
 
+<% end -%>
   <%%# The island. The data-hibiki-* attributes are a private Ruby<->JS
-      contract — always go through the helpers, never write them by hand. %>
-  <%%= tag.div(**hibiki_island(<%= collection_channel_class_name %>, cid:)) do %>
+      contract — always go through the helpers, never write them by hand.
+      The canonical URL params ride the subscription, seeding the graph so
+      its first broadcast repaints THIS state, not the defaults. %>
+  <%%= tag.div(**hibiki_island(<%= collection_channel_class_name %>, cid:, params: @<%= singular_table_name %>_query.url_params.presence)) do %>
     <%%# The client waits for this source to confirm before subscribing. %>
     <%%= turbo_stream_from "<%= collection_stream_name %>", cid %>
+<% if inline_create? -%>
 
-    <%%= render "<%= partial_path('controls') %>" %>
+    <%%# Inside the island (the client only forwards events from controls it
+        owns) but outside the re-rendered fragment. fallback: true — while
+        the island's link is live the click opens the inline create form;
+        otherwise the href navigates to the standard new page. %>
+    <div<%= css_attr(:actions_bar) %>>
+      <%%= link_to "New <%= human_name.downcase %>", <%= new_helper(type: :path) %><%= css? ? %(, class: "#{css(:btn_primary)}") : "" %>,
+                  **on(:new_form, fallback: true) %>
+    </div>
+<% end -%>
+
+    <%%= render "<%= partial_path('controls') %>", url_params: @<%= singular_table_name %>_query.url_params %>
 
     <%%# Non-blocking progress bar, outside the replaced fragment so a swap
         can't destroy it. Styled by app/assets/stylesheets/hibiki_busy.css. %>

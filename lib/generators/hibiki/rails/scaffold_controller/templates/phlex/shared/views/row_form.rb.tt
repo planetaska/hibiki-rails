@@ -3,8 +3,9 @@
      carries none, which is the port's one real simplification. -%>
 # frozen_string_literal: true
 
-# The inline edit form for one row, talking to the channel rather than to a
-# controller.
+# The inline form for one record, talking to the channel rather than to a
+# controller. One component, two uses: the per-row edit form (the defaults)
+# and the inline create form (dom: "<%= row_dom_id_prefix %>_new", the *_new actions).
 #
 # Plain *_tag helpers with UNPREFIXED names, not form_with: the client builds
 # the payload with FormData, so the keys must be exactly the ReactiveForm's
@@ -13,12 +14,14 @@ class <%= view_class_name(:row_form) %> < Views::Base
 <%= phlex_includes(:label_tag, *row_field_helper_modules,
                    *(%i[select_tag options_for_select] if schema.belongs_tos.any?), hibiki: true) %>
 
-<%= initializer_source([[singular_name, nil], ["form", nil],
+<%= initializer_source([["form", nil], ["dom", nil], %w[save_action :save],
+                        %w[cancel_action :cancel], %w[field_action :set_field],
+                        %w[cancel_with nil],
                         *schema.belongs_tos.map { [it.options_local.to_s, nil] }, %w[extras {}]]) %>
 
   def view_template
     # reset: false — a failed commit must not blank the fields.
-    form<%= arg_list("**on(:save, event: :submit, reset: false)", *css_args(:row_form)) %> do
+    form<%= arg_list("**on(@save_action, event: :submit, reset: false)", *css_args(:row_form)) %> do
       div<%= arg_list(*css_args(:fieldset)) %> do
 <% schema.columns.each do |column| -%>
         <%= column.name %>_field
@@ -31,23 +34,20 @@ class <%= view_class_name(:row_form) %> < Views::Base
 
   private
 
-  # Field ids are prefixed per row so nothing collides.
-  def dom = "<%= row_dom_id_prefix %>_#{@<%= singular_name %>.id}"
-
 <% schema.columns.each do |column| -%>
   def <%= column.name %>_field
 <% if column.type == :boolean -%>
     # A changed checkbox sends its checked state as a JSON boolean — no
     # hidden-field pair needed.
     div<%= arg_list(*css_args(:checkbox_wrap)) %> do
-      label_tag<%= arg_list(%("\#{dom}_#{column.name}"), *css_args(:label)) %> do
-        check_box_tag <%= wrapped_list([%("#{column.name}"), %("1"), "#{form_ref}.#{column.name}", %(id: "\#{dom}_#{column.name}"), *css_args(:toggle), %(**on(:set_field, event: :change, with: { field: "#{column.name}" }))], indent: 22).lstrip %>
+      label_tag<%= arg_list(%("\#{@dom}_#{column.name}"), *css_args(:label)) %> do
+        check_box_tag <%= wrapped_list([%("#{column.name}"), %("1"), "#{form_ref}.#{column.name}", %(id: "\#{@dom}_#{column.name}"), *css_args(:toggle), %(**on(@field_action, event: :change, with: { field: "#{column.name}" }))], indent: 22).lstrip %>
         whitespace
         plain "<%= column.human_name %>"
       end
     end
 <% else -%>
-    label_tag <%= wrapped_list([%("\#{dom}_#{column.name}"), %("#{column.human_name}"), *css_args(:label)], indent: 14).lstrip %>
+    label_tag <%= wrapped_list([%("\#{@dom}_#{column.name}"), %("#{column.human_name}"), *css_args(:label)], indent: 14).lstrip %>
 <% if column.belongs_to? -%>
     # options_for_select outputs directly, so the options are a block here —
     # phlex-rails' own prescription.
@@ -71,7 +71,7 @@ class <%= view_class_name(:row_form) %> < Views::Base
       end
 
       # type: "button" — Phlex's button defaults to submit.
-      button<%= arg_list(%(type: "button"), *css_args(:btn), %(**on(:cancel, with: { id: #{record_ref}.id }))) %> { "Cancel" }
+      button<%= arg_list(%(type: "button"), *css_args(:btn), "**on(@cancel_action, with: @cancel_with)") %> { "Cancel" }
 
       # A badge, not a disabled Save: dirty? only moves after a round trip and
       # must not gate the gesture.

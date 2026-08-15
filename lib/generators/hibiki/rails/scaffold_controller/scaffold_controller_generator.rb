@@ -57,6 +57,8 @@ module Hibiki
                                        desc: "No windowing at all — skips both pagination modes"
         class_option :skip_search, type: :boolean, default: false,
                                    desc: "Omit the search box and the LIKE terms behind it"
+        class_option :skip_create, type: :boolean, default: false,
+                                   desc: "Omit the inline create form — New always navigates"
         class_option :page_size, type: :numeric, default: 20,
                                  desc: "Rows per page"
         class_option :skip_routes, type: :boolean,
@@ -297,6 +299,7 @@ module Hibiki
 
         def infinite? = options[:infinite_scroll]
         def searchable? = schema.searchable? && !options[:skip_search]
+        def inline_create? = !options[:skip_create]
 
         # The view layer. It reaches the templates and nothing else: the graph,
         # the query object, the form, the actions and the whole data-hibiki

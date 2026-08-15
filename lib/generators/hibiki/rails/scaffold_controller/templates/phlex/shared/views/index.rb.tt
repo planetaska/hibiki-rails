@@ -11,10 +11,12 @@ class <%= view_class_name(:index) %> < Views::Base
 
     div<%= arg_list(*css_args(:page)) %> do
       h1<%= arg_list(*css_args(:heading)) %> { "<%= human_name.pluralize %>" }
+<% unless inline_create? -%>
 
       div<%= arg_list(*css_args(:actions_bar)) %> do
         link_to <%= wrapped_list([%("New #{human_name.downcase}"), new_helper(type: :path), *css_args(:btn_primary)], indent: 16).lstrip %>
       end
+<% end -%>
 
       island
     end
@@ -23,15 +25,28 @@ class <%= view_class_name(:index) %> < Views::Base
   private
 
   # The island. The data-hibiki-* attributes are a private Ruby<->JS contract —
-  # always go through the helpers, never write them by hand.
+  # always go through the helpers, never write them by hand. The canonical
+  # URL params ride the subscription, seeding the graph so its first
+  # broadcast repaints THIS state, not the defaults.
   def island
     cid = SecureRandom.uuid
 
-    div(**hibiki_island(<%= collection_channel_class_name %>, cid:)) do
+    div(**hibiki_island(<%= collection_channel_class_name %>, cid:,
+                        params: @<%= singular_table_name %>_query.url_params.presence)) do
       # The client waits for this source to confirm before subscribing.
       turbo_stream_from "<%= collection_stream_name %>", cid
+<% if inline_create? -%>
 
-<%= render_call(:controls, [], indent: 6) %>
+      # Inside the island (the client only forwards events from controls it
+      # owns) but outside the re-rendered fragment. fallback: true — while
+      # the island's link is live the click opens the inline create form;
+      # otherwise the href navigates to the standard new page.
+      div<%= arg_list(*css_args(:actions_bar)) %> do
+        link_to <%= wrapped_list([%("New #{human_name.downcase}"), new_helper(type: :path), *css_args(:btn_primary), "**on(:new_form, fallback: true)"], indent: 16).lstrip %>
+      end
+<% end -%>
+
+<%= render_call(:controls, ["url_params: @#{singular_table_name}_query.url_params"], indent: 6) %>
 
       # Non-blocking progress bar, outside the replaced fragment so a swap
       # can't destroy it. Styled by app/assets/stylesheets/hibiki_busy.css.

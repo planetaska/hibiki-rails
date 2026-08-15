@@ -9,13 +9,19 @@
      the page-number window) arrives as a local from the list partial. The
      `--css=` marker below is how a later scaffold run detects a variant
      mismatch — keep it. -%>
-<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:) -%>
+<%%# locals: (page: 1, page_count: 1, pages: [], anchor:, id:, url: nil) -%>
 <%%# Shared page control (--css=<%= css_variant %>), rendered above and below
-    every scaffolded list. The links are anchors to the list, so a click also
-    does the browser's own fragment jump; data-turbo="false" keeps Turbo Drive
-    out. `on` returns a { data: } hash — merge, don't splat, or the anchor
-    stops scrolling. %>
-<%% page_data = ->(n) { { turbo: false }.merge(on(:go_to_page, with: { page: n })[:data]) } %>
+    every scaffolded list. `url` is an optional ->(page) { path } builder:
+    when given, links carry real hrefs (plus the fragment) and fallback —
+    a dead island degrades to native navigation. Without it the links are
+    plain anchors to the list, as before. data-turbo="false" keeps Turbo
+    Drive out. `on` returns a { data: } hash — merge, don't splat, or the
+    anchor stops scrolling. %>
+<%% href = ->(n) { url ? "#{url.(n)}#{anchor}" : anchor } %>
+<%% page_data = ->(n) do
+     { turbo: false }.merge(on(:go_to_page, with: { page: n },
+                               fallback: url ? true : nil)[:data])
+   end %>
 <%% item = "relative inline-flex items-center border border-gray-300 px-4 py-2 text-sm font-medium first:rounded-l-md last:rounded-r-md" %>
 <%% item_link = "#{item} bg-white text-gray-700 hover:bg-gray-50" %>
 <%% item_current = "#{item} z-10 bg-indigo-600 border-indigo-600 text-white" %>
@@ -30,7 +36,7 @@
       <%% if page == 1 %>
         <span class="<%%= item_inert %>" aria-disabled="true">«</span>
       <%% else %>
-        <%%= link_to "«", anchor, class: item_link, rel: "prev",
+        <%%= link_to "«", href.(page - 1), class: item_link, rel: "prev",
                     "aria-label": "Previous page", data: page_data.(page - 1) %>
       <%% end %>
 
@@ -40,7 +46,7 @@
         <%% elsif n == page %>
           <span class="<%%= item_current %>" aria-current="page"><%%= n %></span>
         <%% else %>
-          <%%= link_to n, anchor, class: item_link,
+          <%%= link_to n, href.(n), class: item_link,
                       "aria-label": "Page #{n}", data: page_data.(n) %>
         <%% end %>
       <%% end %>
@@ -48,7 +54,7 @@
       <%% if page == page_count %>
         <span class="<%%= item_inert %>" aria-disabled="true">»</span>
       <%% else %>
-        <%%= link_to "»", anchor, class: item_link, rel: "next",
+        <%%= link_to "»", href.(page + 1), class: item_link, rel: "next",
                     "aria-label": "Next page", data: page_data.(page + 1) %>
       <%% end %>
     </nav>

@@ -16,20 +16,32 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     # A version token — writers bump it, dependent queries re-run.
     @db_version = Hibiki::State.new(0)
 
+    # Seeded from the subscribe params (stamped by the index view from the
+    # request URL), so the first broadcast repaints the state the server
+    # first-painted instead of resetting to defaults. Untrusted like any
+    # subscribe param: the same normalizers the controller uses validate
+    # against the query's allowlists.
 <% if searchable? -%>
-    @query = Hibiki::State.new("")
+    @query = Hibiki::State.new(params[:query].to_s)
 <% end -%>
-    @filters = Hibiki::State.new({})
-    @sort = Hibiki::State.new(<%= query_class_name %>::DEFAULT_SORT)
-    @direction = Hibiki::State.new(:asc)
+    @filters = Hibiki::State.new(<%= query_class_name %>.filters_from(params))
+    @sort = Hibiki::State.new(<%= query_class_name %>.sort_from(params))
+    @direction = Hibiki::State.new(<%= query_class_name %>.direction_from(params))
 
     # The window, as a page number — shared by both pagination modes.
-    @page = Hibiki::State.new(1)
+    @page = Hibiki::State.new(<%= query_class_name %>.page_from(params))
 
     # Which row renders the form instead of its display markup.
     @editing_id = Hibiki::State.new(nil)
     # One form serves every row; #hydrate is the reset path.
     @form = <%= form_class_name %>.new
+<% if inline_create? -%>
+
+    # The inline create form. Its own form object, so an open row edit and
+    # an open create form never fight over one instance.
+    @creating = Hibiki::State.new(false)
+    @new_form = <%= form_class_name %>.new
+<% end -%>
 
     # ---- derived -------------------------------------------------------------
 
@@ -59,7 +71,7 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @remaining = Hibiki::Derived.new { @counts.value[:matched] - @rows.value.size }
 <% schema.belongs_tos.each do |column| -%>
 
-    # One collection per belongs_to, only read while a row is being edited.
+    # One collection per belongs_to, only read while a form is open.
     @<%= column.options_local %> = Hibiki::Derived.new do
       @db_version.value
       <%= column.association_class_name %>.order(:<%= column.label_column %>).pluck(:<%= column.label_column %>, :id)
@@ -88,6 +100,23 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     # Matching-scoped, not window-scoped.
     transmit_value(:<%= value_name(schema.primary_boolean.name) %>) { @counts.value[:<%= schema.primary_boolean.name %>] }
 <% end -%>
+
+    # Mirror the graph into the address bar (replaceState, no history
+    # entries). An open form mirrors its fallback URL, so a reload
+    # mid-edit lands on the standard page.
+    transmit_url do
+<% if inline_create? -%>
+      if @creating.value
+        urls.<%= new_helper(type: :path) %>
+      elsif (id = @editing_id.value) && @rows.value.any? { it.id == id }
+<% else -%>
+      if (id = @editing_id.value) && @rows.value.any? { it.id == id }
+<% end -%>
+        urls.edit_<%= singular_route_name %>_path(id)
+      else
+        urls.<%= index_helper(type: :path) %>(**query_url_params)
+      end
+    end
   end
 
   # ---- actions: query & window -----------------------------------------------
@@ -185,7 +214,7 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
   def save(data)
     return unless @editing_id.peek
 
-    assign(data)
+    assign(@form, data)
     # A false commit mirrors the record's errors onto the form, so the repaint
     # carries the messages.
     return unless @form.commit
@@ -193,6 +222,36 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @editing_id.value = nil
     invalidate
   end
+<% if inline_create? -%>
+
+  # ---- actions: inline create ------------------------------------------------
+
+  # The New link's action; without JS (or a live link) the same click
+  # navigates to the standard new page instead.
+  def new_form(_data)
+    @new_form.hydrate(<%= class_name %>.new)
+    @creating.value = true
+  end
+
+  def cancel_new(_data) = @creating.value = false
+
+  def set_new_field(data)
+    name = data["field"].to_s.to_sym
+    return unless <%= form_class_name %>.hibiki_attributes.include?(name)
+
+    @new_form.public_send(:"#{name}=", data[name.to_s])
+  end
+
+  def create(data)
+    return unless @creating.peek
+
+    assign(@new_form, data)
+    return unless @new_form.commit
+
+    @creating.value = false
+    invalidate
+  end
+<% end -%>
 
   private
 
@@ -227,18 +286,33 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
       page_count: @page_count.value,
       remaining: @remaining.value,
       editing_id: editing_id,
-      form: (@form if editing_id)<%= "," if schema.belongs_tos.any? %>
+      form: (@form if editing_id),
+<% if inline_create? -%>
+      creating: @creating.value,
+      new_form: (@new_form if @creating.value),
+<% end -%>
+      url_params: query_url_params<%= "," if schema.belongs_tos.any? %>
 <% schema.belongs_tos.each_with_index do |column, index| -%>
-      <%= column.options_local %>: (editing_id ? @<%= column.options_local %>.value : [])<%= "," unless index == schema.belongs_tos.size - 1 %>
+      <%= column.options_local %>: (<%= inline_create? ? "(editing_id || @creating.value)" : "editing_id" %> ? @<%= column.options_local %>.value : [])<%= "," unless index == schema.belongs_tos.size - 1 %>
 <% end -%>
     }
   end
 
+  # The canonical query params for the current graph state — pagination
+  # hrefs and transmit_url both read it (signal reads, so callers track).
+  def query_url_params
+    <%= query_class_name %>.url_params(<%= "query: @query.value, " if searchable? %>filters: @filters.value,
+<%= " " * (query_class_name.length + 16) %>sort: @sort.value, direction: @direction.value,
+<%= " " * (query_class_name.length + 16) %>page: @window.value)
+  end
+
+  def urls = ::Rails.application.routes.url_helpers
+
   # Assign only declared attributes — the permitted-params analogue.
-  def assign(data)
+  def assign(form, data)
     <%= form_class_name %>.hibiki_attributes.each do |name|
       key = name.to_s
-      @form.public_send(:"#{name}=", data[key]) if data.key?(key)
+      form.public_send(:"#{name}=", data[key]) if data.key?(key)
     end
   end
 end

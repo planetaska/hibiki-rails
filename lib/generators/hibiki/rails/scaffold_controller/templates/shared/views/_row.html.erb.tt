@@ -34,10 +34,23 @@
     <%% if actions %>
     <div<%= css_attr(:card_actions) %>>
       <%%= link_to "Show this <%= human_name.downcase %>", <%= singular_route_name %>_path(<%= singular_name %>.id)<%= css? ? %(, class: "#{css(:btn_outline)}") : "" %> %>
-      <%%= tag.button(<%= wrapped_list(row_button_args("Edit", :edit, :btn_outline), indent: 21).lstrip %>) %>
-      <%%# confirm: is the client-side equivalent of data-turbo-confirm — the
-          action is gated before it is ever performed. %>
-      <%%= tag.button(<%= wrapped_list(row_button_args("Destroy", :destroy, :btn_warning, confirm: "Are you sure?"), indent: 21).lstrip %>) %>
+      <%%# fallback: true — while the island's link is live the click opens the
+          inline form; otherwise the href navigates to the standard edit page. %>
+      <%%= link_to <%= wrapped_list(edit_link_args, indent: 18).lstrip %> %>
+      <%%# A real DELETE form (button_to), so destroy degrades natively: live,
+          the submit is intercepted and the channel action fires; dead, the
+          form posts _method=delete to the standard controller. The client
+          freshens the form's authenticity_token before any native submit —
+          rows repainted by the channel render without a session, so their
+          forms carry no token. confirm: gates both paths while scripts run.
+          turbo: false — the degraded submit is a plain full-page POST. %>
+      <%%= button_to "Destroy", <%= singular_route_name %>_path(<%= singular_name %>.id), method: :delete,
+<% if css? -%>
+                    class: "<%= css(:btn_warning) %>",
+<% end -%>
+                    form: { data: { turbo: false }.merge(
+                      on(:destroy, event: :submit, with: { id: <%= singular_name %>.id },
+                         confirm: "Are you sure?", fallback: true)[:data]) } %>
     </div>
     <%% end %>
     <%% end %>
