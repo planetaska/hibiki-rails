@@ -26,7 +26,7 @@ module <%= concern_module_name %>
 
 <% if search? -%>
       @<%= target_plural %>_query = Hibiki::State.new("")
-      # Only read while a row is being edited. The filter narrows this list
+      # Only read while a form is open. The filter narrows this list
       # and nothing else — the selection survives it.
       @<%= target_plural %>_options = Hibiki::Derived.new do
         @db_version.value
@@ -40,7 +40,7 @@ module <%= concern_module_name %>
         { options: rows.first(OPTIONS_LIMIT), truncated: rows.size > OPTIONS_LIMIT }
       end
 <% else -%>
-      # Only read while a row is being edited.
+      # Only read while a form is open.
       @<%= target_plural %>_options = Hibiki::Derived.new do
         @db_version.value
         { options: <%= target_class_name %>.order(:<%= label_column %>).pluck(:<%= label_column %>, :id) }
@@ -54,11 +54,19 @@ module <%= concern_module_name %>
       # Each edit starts with an unfiltered dropdown.
       @<%= target_plural %>_query.value = ""
     end
+
+    # The inline create form's dropdown, likewise. `super if defined?` —
+    # on a scaffold without inline create there is nothing to wrap and
+    # this hook is inert.
+    def new_form(data)
+      super if defined?(super)
+      @<%= target_plural %>_query.value = ""
+    end
 <% end -%>
 
     def list_locals
       locals = super
-      return locals unless locals[:editing_id]
+      return locals unless locals[:editing_id] || locals[:creating]
 
       extras = locals.fetch(:extras, {})
       locals.merge(extras: extras.merge(<%= extras_key %>: <%= extras_value_source %>))
@@ -66,16 +74,18 @@ module <%= concern_module_name %>
   end
 
   # One checkbox toggled: a SET, not a toggle — the client sends the box's
-  # checked state, so two tabs converge.
+  # checked state, so two tabs converge. `dom` names the form the box
+  # belongs to — a row edit and the inline create form can be open at once.
   def <%= toggle_action %>(data)
-    return unless @editing_id.peek
+    form = multiselect_form(data["dom"].to_s)
+    return unless form
 
     # Untrusted id — resolve it against the table before it enters the form.
     id = <%= target_class_name %>.where(id: data["id"]).pick(:id)
     return unless id
 
-    ids = @form.<%= ids_attr %>
-    @form.<%= ids_attr %> = data["checked"] ? ids | [id] : ids - [id]
+    ids = form.<%= ids_attr %>
+    form.<%= ids_attr %> = data["checked"] ? ids | [id] : ids - [id]
   end
 <% if search? -%>
 
@@ -84,4 +94,15 @@ module <%= concern_module_name %>
     @<%= target_plural %>_query.value = data["query"].to_s
   end
 <% end -%>
+
+  private
+
+  # Which open form a toggle aims at; nil drops the write.
+  def multiselect_form(dom)
+    if dom.end_with?("_new")
+      @new_form if @creating&.peek
+    else
+      @form if @editing_id.peek
+    end
+  end
 end

@@ -173,7 +173,7 @@ module Hibiki
           [%("checked"), "id", "#{form_ref}.#{ids_attr}.include?(id)",
            %(id: "\#{#{dom_ref}}_#{target_singular}_\#{id}"),
            *css_args(:checkbox_sm),
-           %(**on(:#{toggle_action}, event: :change, with: { id: id }))]
+           %(**on(:#{toggle_action}, event: :change, with: { id: id, dom: #{dom_ref} }))]
         end
 
         def filter_field_args

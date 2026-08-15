@@ -64,6 +64,12 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
       expect(concern).to include("rows = scope.limit(OPTIONS_LIMIT + 1).pluck(:name, :id)")
       expect(concern).to include("def toggle_part(data)")
       expect(concern).to include("def search_parts(data)")
+      # Both forms are served: the extras merge fires while editing OR
+      # creating, and the toggle routes on the dom the checkbox sent.
+      expect(concern).to include("return locals unless locals[:editing_id] || locals[:creating]")
+      expect(concern).to include('form = multiselect_form(data["dom"].to_s)')
+      expect(concern).to include("@new_form if @creating&.peek")
+      expect(concern).to include("def new_form(data)")
       # The wrapped hooks call super — replacing them would sever the channel.
       expect(concern.scan(/^\s*(?:locals = )?super$/).size).to eq(3)
     end
@@ -97,7 +103,7 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
       # no tag may carry it.)
       expect(partial).to include(%(check_box_tag "checked"))
       expect(partial).not_to include(%("part_ids[]"))
-      expect(partial).to include("**on(:toggle_part, event: :change, with: { id: id })")
+      expect(partial).to include("**on(:toggle_part, event: :change, with: { id: id, dom: dom })")
       expect(partial).to include("**on(:search_parts, event: :input)")
     end
 
