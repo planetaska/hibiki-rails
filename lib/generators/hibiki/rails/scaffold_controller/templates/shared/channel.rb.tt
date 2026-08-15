@@ -11,6 +11,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
   CHANGED = "<%= changed_streamable %>"
 
   def build_graph
+    # ---- state ---------------------------------------------------------------
+
     # A version token — writers bump it, dependent queries re-run.
     @db_version = Hibiki::State.new(0)
 
@@ -28,6 +30,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @editing_id = Hibiki::State.new(nil)
     # One form serves every row; #hydrate is the reset path.
     @form = <%= form_class_name %>.new
+
+    # ---- derived -------------------------------------------------------------
 
     # Reads neither sort nor window, so re-sorting and paging cost no COUNTs.
     @counts = Hibiki::Derived.new do
@@ -62,6 +66,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     end
 <% end -%>
 
+    # ---- effects -------------------------------------------------------------
+
     # One render effect for the whole list fragment. Morph, not replace:
     # it keeps focus and caret in an open inline form.
     Hibiki::Effect.new do
@@ -84,7 +90,7 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
 <% end -%>
   end
 
-  # ---- actions -------------------------------------------------------------
+  # ---- actions: query & window -----------------------------------------------
   # ActionCable hands the payload over only when arity == 1 EXACTLY — always
   # `def foo(data)`, never a default argument. The hash has STRING keys.
 
@@ -133,6 +139,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @direction.value = (@direction.peek == :asc ? :desc : :asc)
     reset_window
   end
+
+  # ---- actions: records ------------------------------------------------------
 <% schema.booleans.each do |column| -%>
 
   # A SET, not a toggle, so two tabs clicking the same row converge.
@@ -154,6 +162,8 @@ class <%= collection_channel_class_name %> < ApplicationCable::Channel
     @editing_id.value = nil if @editing_id.peek == record.id
     invalidate
   end
+
+  # ---- actions: row edit -----------------------------------------------------
 
   def edit(data)
     record = <%= class_name %>.find_by(id: data["id"])
