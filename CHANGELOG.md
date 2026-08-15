@@ -4,6 +4,67 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.8.0 — 2026-08-15
+
+### Added
+
+**`on(..., fallback: true)` — progressive enhancement over native controls.**
+A control's native behavior — a link's href, a form's `action=` — is its
+degraded path. Only a `ready` island intercepts the gesture and performs the
+channel action; while connecting, offline, or stalled the client stands aside
+entirely and the browser does what the markup says. A dead-but-undetected
+socket is caught too: when the subscription reports the send failed, the
+client settles the trip and runs the native behavior by hand
+(`form.submit()` / `location.assign`) — the gesture never left, so it cannot
+double-fire. Two guarantees ride along: `confirm:` still gates the native
+path while scripts run (a destructive submit must not slip past the dialog
+just because the island is down), and before any native submit the client
+freshens the form's `authenticity_token` from the `csrf-token` meta tag —
+forms repainted by a channel are rendered without a session and carry no
+token, so freshening is load-bearing, not an edge case. A truly script-free
+page still holds its first-paint token and needs no help.
+
+**`transmit_url` — mirror graph state into the address bar.**
+`transmit_value`'s URL sibling: an equality-gated effect transmits `{ url: }`
+and the client `history.replaceState`s the bar to it. Never `pushState` — the
+URL is a mirror of graph state, not a history entry, so there is no popstate
+choreography and Back leaves the page normally. Same-origin only; the client
+resolves the URL against the page's own origin and refuses anything else.
+
+**The scaffold now generates the whole degraded-path pattern.** The query
+object grows a URL half — `from_params` and canonical `url_params` (defaults
+omitted) — shared by the controller's first paint, the island's
+subscribe-params seeding (the graph starts from the URL's state, so its first
+broadcast repaints what the server painted instead of resetting to defaults),
+the pagination hrefs, and the channel's `transmit_url`, which also mirrors an
+open form's URL so a reload mid-edit lands on the standard edit page. The
+controls become one GET form to the index: live, the controls fire channel
+actions; dead, Enter, Apply, and the direction button submit natively and
+`from_params` answers. Edit is a real link to the edit page, Destroy a real
+`button_to` DELETE form, and the page control's links carry real hrefs — all
+with `fallback: true`, in both view layers and every css variant.
+
+**The scaffold's list gains an inline create form, on by default.** The New
+link (now inside the island) opens a channel-owned create form at the top of
+the list — its own `ReactiveForm` instance, so an open row edit and an open
+create never fight over state — and degrades to the standard new page. The
+shared row form is parameterized (`dom:`, `save_action:`, `cancel_action:`,
+`field_action:`, `cancel_with:`) and serves both uses; `--skip-create` omits
+the whole surface. Generated forms also gate live validation on `dirty?`, so
+a freshly opened form paints clean instead of flagging every blank field.
+
+**`hibiki:rails:multiselect` serves the inline create form too.** The
+dropdown appears with the full option list and an empty selection; each
+checkbox's toggle names the form it belongs to, so an open row edit and the
+create form never cross-write, even side by side.
+
+### Changed
+
+**Re-running the scaffold over a pre-0.8.0 app refreshes a same-styled shared
+page control in place** — the regenerated list passes the new `url:` local,
+which the old shared partial does not declare. A page control written under a
+different `--css` style is still kept and noticed, never restyled.
+
 ## 0.7.0 — 2026-08-12
 
 ### Added

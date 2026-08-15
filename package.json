@@ -1,6 +1,6 @@
 {
   "name": "hibiki-rails",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "The packaged client for hibiki_rails \u2014 Svelte-5-style signals for Ruby, over Action Cable",
   "type": "module",
   "main": "app/assets/javascripts/hibiki.js",
