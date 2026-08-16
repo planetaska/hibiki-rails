@@ -125,6 +125,24 @@ ActiveRecord::Schema.define do
     t.timestamps
   end
 
+  # hibiki:rails:nested, in two edges. Item→Credit is the root edge: ordered
+  # (a real position column), one belongs_to needing an option collection
+  # (part), one scalar with a live error (role). Credit→Remark is the deep
+  # edge: unordered, no belongs_to beyond the parent.
+  create_table :credits, force: true do |t|
+    t.integer :item_id, null: false
+    t.integer :part_id, null: false
+    t.string :role
+    t.integer :position
+    t.timestamps
+  end
+
+  create_table :remarks, force: true do |t|
+    t.integer :credit_id, null: false
+    t.text :body
+    t.timestamps
+  end
+
   create_table :item_stickers, force: true do |t|
     t.integer :item_id, null: false
     t.integer :sticker_id, null: false
@@ -196,6 +214,21 @@ class Fitting < ActiveRecord::Base
 end
 
 class Sticker < ActiveRecord::Base
+end
+
+# The nested fixtures. Credit's belongs_to :item is what the generator
+# requires of a child; Part#name feeds the option-label inference.
+class Credit < ActiveRecord::Base
+  belongs_to :item
+  belongs_to :part
+
+  validates :role, presence: true
+end
+
+class Remark < ActiveRecord::Base
+  belongs_to :credit
+
+  validates :body, presence: true
 end
 
 class ItemSticker < ActiveRecord::Base

@@ -1,0 +1,7 @@
+<%# GENERATION-time ERB only. -%>
+class Add<%= position_column.camelize %>To<%= child_table_name.camelize %> < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    # Ordered nested rows: the parent form stamps this from array order.
+    add_column :<%= child_table_name %>, :<%= position_column %>, :integer
+  end
+end

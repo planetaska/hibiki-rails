@@ -113,7 +113,15 @@ module Hibiki
           option_label: "label cursor-pointer justify-start gap-2",
           option_note: "p-2 opacity-60 italic",
           checkbox_sm: "checkbox checkbox-sm",
-          filter_input: "input input-sm w-full mb-2"
+          filter_input: "input input-sm w-full mb-2",
+
+          # The nested fieldset (hibiki:rails:nested): one bordered card per
+          # child row, a legend on the fieldset, and the small row controls
+          # (↑/↓/Remove/Add).
+          fieldset_legend: "fieldset-legend px-2",
+          nested_row: "border border-base-300 rounded-box p-3 mb-2 space-y-2",
+          btn_ghost_sm: "btn btn-sm btn-ghost",
+          btn_outline_sm: "btn btn-sm btn-outline"
         }.freeze
 
         # DaisyUI is a plugin over Tailwind, and the merge says so literally:
@@ -167,7 +175,11 @@ module Hibiki
           option_label: "flex cursor-pointer items-center gap-2 py-1 text-sm",
           option_note: "p-2 text-gray-500 italic",
           checkbox_sm: CHECKBOX,
-          filter_input: "#{FIELD_FULL} mb-2 text-sm"
+          filter_input: "#{FIELD_FULL} mb-2 text-sm",
+          fieldset_legend: "px-2 text-sm font-medium text-gray-700",
+          nested_row: "rounded-md border border-gray-200 p-3 mb-2 space-y-2",
+          btn_ghost_sm: SECONDARY_BUTTON.sub("px-3 py-2", "px-2 py-1"),
+          btn_outline_sm: SECONDARY_BUTTON.sub("px-3 py-2", "px-2 py-1")
         ).freeze
 
         # Every lookup misses, so every class argument is omitted entirely.

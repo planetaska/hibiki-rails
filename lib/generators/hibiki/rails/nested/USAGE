@@ -1,0 +1,30 @@
+Description:
+    Wires one parent→child edge of a nested form onto a resource that
+    hibiki:rails:scaffold_controller already generated: the child's
+    ReactiveForm, a _<child>_fields partial with path-addressed inputs
+    (riding the generic Hibiki::Rails::NestedActions channel actions),
+    reactive_nested on the parent form, model wiring (has_many +
+    accepts_nested_attributes_for allow_destroy), the classic fields_for
+    fallback in the full-page form, and the controller's params.expect
+    double-array group.
+
+    Parent and Child models must exist and be migrated, and Child must
+    declare belongs_to :<parent>. An optional field list narrows or orders
+    the child's form fields; the facts stay the schema's.
+
+    Depth is composition: run once per edge. A run whose Parent is itself a
+    nested child (its _<parent>_fields partial exists) nests into that
+    partial instead of the row form.
+
+    Ordering: a `position` column on the child (or --position=COLUMN) makes
+    the fieldset ordered — the has_many gains an order scope, the parent
+    form stamps positions from array order, and rows get ↑/↓ buttons. The
+    named column is added by migration when missing; --skip-position opts
+    out entirely.
+
+Examples:
+    bin/rails g hibiki:rails:nested Song Credit
+
+    bin/rails g hibiki:rails:nested Credit Contribution
+
+    bin/rails g hibiki:rails:nested Song Credit artist:references role:string --position=rank

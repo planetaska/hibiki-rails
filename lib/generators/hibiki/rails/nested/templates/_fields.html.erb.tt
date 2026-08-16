@@ -1,0 +1,43 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% loops
+     over the schema at generation time. #{...} inside an escaped tag is
+     runtime Ruby and passes through untouched. -%>
+<%%# locals: (<%= child_singular %>:, dom:, path:<%= schema.belongs_tos.map { ", #{it.options_local}: []" }.join %>, index: 0, count: 1) -%>
+<%%# One <%= child_human_singular.downcase %> row. `path` addresses this node for the nested_* actions;
+    input names ride "#{path}/#{field}", so a submit's FormData can never
+    collide with the parent form's own attribute names. %>
+<%% dom_path = "#{dom}_#{path.tr('/', '_')}" %>
+<div id="<%%= dom_path %>"<%= css_attr(:nested_row) %>>
+<% schema.columns.each do |column| -%>
+<% if column.type == :boolean -%>
+  <div<%= css_attr(:checkbox_wrap) %>>
+    <%%= label_tag "#{dom_path}_<%= column.name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> do %>
+      <%%= check_box_tag <%= wrapped_list(nested_toggle_args(column), indent: 24).lstrip %> %>
+      <%= column.human_name %>
+    <%% end %>
+  </div>
+<% elsif column.belongs_to? -%>
+  <%%= label_tag "#{dom_path}_<%= column.name %>", "<%= column.human_name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> %>
+  <%%= select_tag <%= wrapped_list(nested_select_args(column), indent: 17).lstrip %> %>
+  <%%= render "shared/field_error", message: <%= child_singular %>.error_for(:<%= column.name %>) %>
+<% else -%>
+  <%%= label_tag "#{dom_path}_<%= column.name %>", "<%= column.human_name %>"<%= css? ? %(, class: "#{css(:label)}") : "" %> %>
+  <%%= <%= column.tag_field_helper %> <%= wrapped_list(nested_field_args(column), indent: column.tag_field_helper.length + 7).lstrip %> %>
+  <%%= render "shared/field_error", message: <%= child_singular %>.error_for(:<%= column.name %>) %>
+<% end -%>
+
+<% end -%>
+  <div<%= css_attr(:form_actions) %>>
+<% if ordered? -%>
+    <%%# Reorder: `to` is the index among visible rows — <%= position_column %>
+        persists from array order at save. %>
+    <%% if index.positive? %>
+      <%%= tag.button("↑", <%= wrapped_list(nested_move_args(:up), indent: 21).lstrip %>) %>
+    <%% end %>
+    <%% if index < count - 1 %>
+      <%%= tag.button("↓", <%= wrapped_list(nested_move_args(:down), indent: 21).lstrip %>) %>
+    <%% end %>
+<% end -%>
+    <%%= tag.button("Remove <%= child_human_singular.downcase %>", type: "button"<%= css? ? %(, class: "#{css(:btn_ghost_sm)}") : "" %>,
+                   **on(:nested_remove, with: { dom: dom, path: path })) %>
+  </div>
+</div>

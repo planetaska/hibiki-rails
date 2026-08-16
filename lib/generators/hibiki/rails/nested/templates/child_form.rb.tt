@@ -1,0 +1,34 @@
+<%# GENERATION-time ERB only. -%>
+class <%= child_form_class_name %>
+  include Hibiki::Rails::ReactiveForm
+
+  # The strong-params analogue: a channel action cannot assign past this list.
+  # Writers cast through the model's own type_for_attribute.
+<% if ordered? -%>
+  # <%= position_column %> is deliberately absent: the parent form's to_h
+  # stamps it from the array order, so the visual order IS the ordering.
+<% end -%>
+  reactive_attributes <%= child_class_name %>, <%= wrapped_symbols(schema.attribute_names, indent: child_class_name.length + 24).lstrip %>
+
+<% if schema.live_errors.any? -%>
+  # Live validation before any round trip, derived from what the model
+  # declares. The model's own validates stay authoritative at commit time.
+  derived(:live_errors) do
+    {
+<% schema.live_errors.each_with_index do |(name, clause), index| -%>
+      <%= name %>: <%= clause %><%= "," unless index == schema.live_errors.size - 1 %>
+<% end -%>
+    }.compact
+  end
+<% else -%>
+  # Empty until the model declares validators — add clauses here (or
+  # validators on the model) and they light up with no other change.
+  derived(:live_errors) { {} }
+<% end -%>
+
+  derived(:valid?) { live_errors.empty? }
+
+  # The record's mirrored errors win once a commit has actually failed. Live
+  # errors wait for dirty? — a freshly added row must not paint them.
+  def error_for(name) = super || (live_errors[name.to_sym] if dirty?)
+end

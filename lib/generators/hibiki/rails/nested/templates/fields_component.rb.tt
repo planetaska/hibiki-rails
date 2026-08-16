@@ -1,0 +1,70 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. #{...}
+     inside a quoted string is runtime Ruby and passes through untouched. -%>
+# frozen_string_literal: true
+
+# One <%= child_human_singular.downcase %> row of the nested fieldset. `@path` addresses this node
+# for the nested_* actions; input names ride "#{path}/#{field}", so a submit's
+# FormData can never collide with the parent form's own attribute names.
+class <%= fields_component_class_name %> < Views::Base
+<%= phlex_includes(:label_tag, *row_field_helper_modules,
+                   *(%i[select_tag options_for_select] if schema.belongs_tos.any?), hibiki: true) %>
+
+<%= initializer_source([[child_singular, nil], %w[dom], %w[path],
+                        *schema.belongs_tos.map { [it.options_local.to_s, "[]"] },
+                        %w[index 0], %w[count 1]]) %>
+
+  def view_template
+    div(id: dom_path<%= css? ? %(, class: "#{css(:nested_row)}") : "" %>) do
+<% schema.columns.each do |column| -%>
+      <%= column.name %>_field
+<% end -%>
+      controls
+    end
+  end
+
+  private
+
+  def dom_path = "#{@dom}_#{@path.tr('/', '_')}"
+
+<% schema.columns.each do |column| -%>
+  def <%= column.name %>_field
+<% if column.type == :boolean -%>
+    div<%= arg_list(*css_args(:checkbox_wrap)) %> do
+      label_tag<%= arg_list(%("\#{dom_path}_#{column.name}"), *css_args(:label)) %> do
+        check_box_tag <%= wrapped_list(nested_toggle_args(column), indent: 22).lstrip %>
+        whitespace
+        plain "<%= column.human_name %>"
+      end
+    end
+<% elsif column.belongs_to? -%>
+    label_tag <%= wrapped_list([%("\#{dom_path}_#{column.name}"), %("#{column.human_name}"), *css_args(:label)], indent: 14).lstrip %>
+    # options_for_select outputs directly, so the options are a block here —
+    # phlex-rails' own prescription.
+    select_tag<%= arg_list(*nested_select_head_args(column), indent: 15) %> do
+      <%= nested_select_options_source(column) %>
+    end
+<%= render_call(:field_error, [%(message: #{nested_record_ref}.error_for(:#{column.name}))], indent: 4, shared: true) %>
+<% else -%>
+    label_tag <%= wrapped_list([%("\#{dom_path}_#{column.name}"), %("#{column.human_name}"), *css_args(:label)], indent: 14).lstrip %>
+    <%= column.tag_field_helper %> <%= wrapped_list(nested_field_args(column), indent: column.tag_field_helper.length + 5).lstrip %>
+<%= render_call(:field_error, [%(message: #{nested_record_ref}.error_for(:#{column.name}))], indent: 4, shared: true) %>
+<% end -%>
+  end
+
+<% end -%>
+  def controls
+    div<%= arg_list(*css_args(:form_actions)) %> do
+<% if ordered? -%>
+      # Reorder: `to` is the index among visible rows — <%= position_column %>
+      # persists from array order at save.
+      if @index.positive?
+        button<%= arg_list(*nested_move_args(:up), indent: 15) %> { "↑" }
+      end
+      if @index < @count - 1
+        button<%= arg_list(*nested_move_args(:down), indent: 15) %> { "↓" }
+      end
+<% end -%>
+      button<%= arg_list(%(type: "button"), *css_args(:btn_ghost_sm), "**on(:nested_remove, with: { dom: @dom, path: @path })", indent: 13) %> { "Remove <%= child_human_singular.downcase %>" }
+    end
+  end
+end

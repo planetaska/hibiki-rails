@@ -20,13 +20,23 @@ Metrics/BlockLength:
     - spec/**/*
     - "*.gemspec"
 
+# The nested injections are mostly SNIPPET BUILDERS: arrays of the emitted
+# lines, data more than logic, plus guarded two-branch (root/deep) edits.
+# Splitting a snippet across methods to satisfy a count would scatter the
+# emitted file's shape, which is the thing a reviewer needs to see whole.
 Metrics/AbcSize:
   Exclude:
     - spec/**/*
+    - lib/generators/hibiki/rails/nested_injections.rb
 
 Metrics/MethodLength:
   Exclude:
     - spec/**/*
+    - lib/generators/hibiki/rails/nested_injections.rb
+
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - lib/generators/hibiki/rails/nested_injections.rb
 
 # A Thor generator's public methods ARE its sequence of steps, so its length
 # tracks how much it emits rather than how tangled it is. Three real concerns
@@ -62,6 +72,10 @@ Metrics/ModuleLength:
     # the multiselect touches, none calling another.
     - lib/generators/hibiki/rails/multiselect_helpers.rb
     - lib/generators/hibiki/rails/multiselect_injections.rb
+    # And again for the nested generator, whose two-mode (root/deep) naming
+    # and snippet builders are the multiselect shape at a larger surface.
+    - lib/generators/hibiki/rails/nested_helpers.rb
+    - lib/generators/hibiki/rails/nested_injections.rb
 
 # Keyword arguments don't have the readability problem this cop targets —
 # they name themselves at the call site. Helpers#on is the case in point:
