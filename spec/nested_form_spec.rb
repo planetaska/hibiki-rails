@@ -148,6 +148,48 @@ RSpec.describe Hibiki::Rails::ReactiveForm, "reactive_nested" do
       expect(form.tasks).to eq([])
     end
 
+    it "moves a child to an index among visible siblings, clamped" do
+      first = form.nested_add(:tasks)
+      second = form.nested_add(:tasks)
+      third = form.nested_add(:tasks)
+
+      form.nested_move(:tasks, third, to: 0)
+      expect(form.tasks).to eq([third, first, second])
+
+      form.nested_move(:tasks, third, to: 99)
+      expect(form.tasks).to eq([first, second, third])
+    end
+
+    it "moves around marked rows without disturbing them" do
+      project.tasks.create!(name: "doomed", position: 1)
+      form = form_class.from(project)
+      marked = form.tasks.sole
+      form.nested_remove(:tasks, marked)
+
+      first = form.nested_add(:tasks)
+      second = form.nested_add(:tasks)
+      # Visible order is [first, second]; index 1 targets second's slot even
+      # though the marked row sits in the array.
+      form.nested_move(:tasks, first, to: 1)
+      expect(form.tasks.reject(&:marked_for_destruction?)).to eq([second, first])
+      expect(form.tasks).to include(marked)
+
+      # A marked row itself refuses to move.
+      form.nested_move(:tasks, marked, to: 0)
+      expect(form.tasks.reject(&:marked_for_destruction?)).to eq([second, first])
+    end
+
+    it "flips dirty? on a move" do
+      project.tasks.create!(name: "record", position: 1)
+      project.tasks.create!(name: "mix", position: 2)
+      form = form_class.from(project)
+      expect(form).not_to be_dirty
+
+      form.nested_move(:tasks, form.tasks.last, to: 0)
+      expect(form).to be_dirty
+      expect(form.to_h[:tasks_attributes].map { it[:name] }).to eq(%w[mix record])
+    end
+
     it "keeps a persisted child and marks it for destruction" do
       project.tasks.create!(name: "record", position: 1)
       form = form_class.from(project)

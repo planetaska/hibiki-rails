@@ -34,6 +34,15 @@ module Hibiki
         owner.nested_remove(name, child) if child
       end
 
+      # `to` is the index among the child's visible siblings; the form
+      # clamps it, so any integer is safe.
+      def nested_move(data)
+        owner, name, child = __hibiki_nested_target(data)
+        return unless child && !data["to"].nil?
+
+        owner.nested_move(name, child, to: data["to"].to_i)
+      end
+
       # The changed control's value arrives under its own name, which the
       # views build as "#{path}/#{field}" — per-child unique, and inert in
       # a submit payload (assign only reads declared scalars).

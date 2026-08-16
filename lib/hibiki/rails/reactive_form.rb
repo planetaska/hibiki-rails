@@ -230,6 +230,22 @@ module Hibiki
         child
       end
 
+      # Move a child to index `to` among its VISIBLE siblings — the index
+      # the rendered rows show, so marked rows can't shift the target.
+      # They ride along at the tail; their order never matters (position
+      # stamping and rendering both skip them). Clamped, so any integer is
+      # safe.
+      def nested_move(name, child, to:)
+        children = public_send(name)
+        return child if child.marked_for_destruction? || !children.include?(child)
+
+        visible = children.reject(&:marked_for_destruction?)
+        visible.delete(child)
+        visible.insert(to.clamp(0, visible.size), child)
+        public_send(:"#{name}=", visible + (children - visible))
+        child
+      end
+
       # AR's spelling; #hydrate is the unmark.
       def mark_for_destruction
         __hibiki_destroy.value = true

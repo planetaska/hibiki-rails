@@ -85,9 +85,9 @@ RSpec.describe Hibiki::Rails::NestedActions, type: :channel do
   end
 
   describe "as actions" do
-    it "exposes exactly the three public methods, internals stay private" do
+    it "exposes exactly the four public methods, internals stay private" do
       expect(NestedActionsTestChannel.action_methods)
-        .to include("nested_add", "nested_remove", "nested_set_field")
+        .to include("nested_add", "nested_remove", "nested_move", "nested_set_field")
       expect(NestedActionsTestChannel.action_methods)
         .not_to include("nested_form_for", "__hibiki_nested_target")
     end
@@ -134,6 +134,18 @@ RSpec.describe Hibiki::Rails::NestedActions, type: :channel do
       perform(:nested_set_field, dom: "project_1", path: "tasks/#{task_key}", field: "name")
       drain
       expect(form.tasks.sole.name).to eq("record")
+    end
+
+    it "moves a child and drops a move without a to" do
+      perform(:nested_add, dom: "project_1", path: "tasks")
+      perform(:nested_move, dom: "project_1", path: "tasks/n1", to: 0)
+      drain
+      expect(form.tasks.map(&:nested_key)).to eq(["n1", task_key])
+
+      perform(:nested_move, dom: "project_1", path: "tasks/n1") # no to: — dropped
+      perform(:nested_move, dom: "project_1", path: "tasks", to: 0) # collection address — dropped
+      drain
+      expect(form.tasks.map(&:nested_key)).to eq(["n1", task_key])
     end
 
     it "removes a new child and marks a persisted one" do

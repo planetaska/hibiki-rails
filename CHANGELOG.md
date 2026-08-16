@@ -25,7 +25,9 @@ unload a later success would insert them twice.
 
 **`Hibiki::Rails::NestedActions` — generic channel actions for nested
 forms.** Opt-in include next to `Hibiki::Rails::Channel`: `nested_add`,
-`nested_remove`, and `nested_set_field`, addressing any node by a
+`nested_remove`, `nested_move` (reorder to an index among visible
+siblings — with position stamped from array order, up/down controls are
+all a reorderable list needs), and `nested_set_field`, addressing any node by a
 `dom` + `path` payload (`"credits/c3/contributions/n1"` — association names
 alternating with child keys, any depth). Every hop is gated against the form
 classes' declarations, keys against live children, fields against
