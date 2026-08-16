@@ -4,6 +4,36 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Added
+
+**`reactive_nested` — nested forms over `accepts_nested_attributes_for`.**
+`reactive_nested :credits, "CreditForm"` on a ReactiveForm declares a signal
+holding an array of child forms; the child class may itself declare
+`reactive_nested`, so depth is composition — nothing counts levels. `#to_h`
+serializes the tree as recursive `*_attributes` (with `id:` and `_destroy:`),
+so `#commit` persists everything in the record's one save; a failed commit
+distributes each child record's errors onto the matching child form, and
+`dirty?` tracks child edits, adds, removes, and destroy-marks for free. New
+instance API: `nested_add` / `nested_remove` (a persisted child is marked
+`_destroy`, a new one leaves the array), `nested_key` (`"c<id>"` / `"n<seq>"`
+— stable DOM identity across repaints), `mark_for_destruction`. The form
+also unloads its nested associations after every commit attempt: a failed
+save leaves AR-built children in the in-memory association, and without the
+unload a later success would insert them twice.
+
+**`Hibiki::Rails::NestedActions` — generic channel actions for nested
+forms.** Opt-in include next to `Hibiki::Rails::Channel`: `nested_add`,
+`nested_remove`, and `nested_set_field`, addressing any node by a
+`dom` + `path` payload (`"credits/c3/contributions/n1"` — association names
+alternating with child keys, any depth). Every hop is gated against the form
+classes' declarations, keys against live children, fields against
+`hibiki_attributes`. The default form resolver understands the scaffold's
+`@form`/`@editing_id` and `@new_form`/`@creating` ivars; override the private
+`nested_form_for(dom)` for anything else. No client change — nested controls
+name themselves `"#{path}/#{field}"` and ride the existing payload mechanics.
+
 ## 0.8.0 — 2026-08-15
 
 ### Added

@@ -51,6 +51,10 @@ Metrics/ClassLength:
 # another, which is the one thing this design is trying to prevent.
 Metrics/ModuleLength:
   Exclude:
+    # One cohesive protocol — hydrate/serialize/commit — where the nested
+    # half of each method belongs beside its scalar half; a line-count split
+    # would put part of hydrate's contract in another file.
+    - lib/hibiki/rails/reactive_form.rb
     - lib/generators/hibiki/rails/css_variant.rb
     - lib/generators/hibiki/rails/scaffold_view_helpers.rb
     - lib/generators/hibiki/rails/scaffold_phlex_helpers.rb
