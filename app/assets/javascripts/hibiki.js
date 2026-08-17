@@ -80,6 +80,36 @@
 // element entering the viewport). Everything that is not "which event"
 // is a sibling attribute, so the token grammar never has to grow.
 //
+// App JS reaching the graph — the ONE public seam. A gesture that needs
+// script (drag-and-drop, a third-party widget) fires its action through
+// the island's OWN subscription: `perform(action, payload)` on the island
+// controller instance is public API. Reach the instance with Stimulus's
+// standard lookup —
+//
+//   const islandEl = element.closest('[data-controller~="hibiki"]')
+//   const island = application.getControllerForElementAndIdentifier(islandEl, "hibiki")
+//   island?.perform("nested_move", { path, to })
+//
+// — or skip the incantation with the performOn export at the bottom of
+// this file (works outside Stimulus too):
+//
+//   import { performOn } from "hibiki-rails"
+//   performOn(element, "nested_move", { path, to })
+//
+// The return value is the whole contract: truthy (the trip's seq) means
+// the action was ACCEPTED — sent live, or queued during the initial
+// connect window — so a repaint is coming and the caller should leave the
+// DOM as the user arranged it (the morph lands as a visual no-op). Falsy
+// (undefined) means it was DROPPED — the island is offline, or the socket
+// turned out to be dead at send — and the caller owns recovery: revert
+// the gesture, or stand back and let the next repaint self-heal. Nothing
+// queues across an offline gap on purpose (a reconnect builds a fresh
+// server-side graph, so replayed intent would land on state it was not
+// formed against). Everything else is NOT a seam: the data-hibiki-*
+// attributes are private, and subclassing ChannelController to reach an
+// existing island opens a SECOND subscription — a second server-side
+// graph nobody paints from.
+//
 // Register the generic controller under the identifier "hibiki" (the
 // helpers hardcode it):
 //
@@ -92,6 +122,13 @@ import { createConsumer } from "@rails/actioncable"
 // subscriptions over a single websocket. Never disconnected: islands come
 // and go with the DOM, the socket stays.
 let consumer
+
+// Live islands by root element, for performOn's ancestor walk — membership
+// here, not an attribute probe, so the helper couples to neither the
+// identifier string nor the wire attributes. Generic islands only:
+// ChannelController subclasses have `this.perform`. WeakMap so a removed
+// island pins nothing even if disconnect never ran.
+const islands = new WeakMap()
 
 // camelCase Stimulus method name → snake_case Ruby channel action.
 const underscore = (name) => name.replace(/([A-Z])/g, "_$1").toLowerCase()
@@ -238,8 +275,11 @@ export class ChannelController extends Controller {
   // ActionCable's own Subscription#perform already writes `action`.)
   //
   // Returns the seq so a caller that knows which control fired can attach
-  // it; nobody has to. Returns undefined instead when the socket turned
-  // out to be closed under a subscription still believed live.
+  // it; nobody has to. Returns undefined instead when the payload went
+  // nowhere: the socket turned out to be closed under a subscription still
+  // believed live, or the island was already offline. Public API on the
+  // island controller (the header's "App JS reaching the graph") — truthy
+  // = accepted, falsy = dropped and the caller owns recovery.
   perform(action, payload = {}) {
     const seq = ++this.seq
     payload.hbk = seq
@@ -275,8 +315,11 @@ export class ChannelController extends Controller {
     if (!this.connectedOnce) {
       this.beginBusy(seq)
       this.queued.push([action, payload])
+      return seq
     }
-    return seq
+    // The offline gap: dropped, and the return says so — a truthy seq here
+    // would tell a public caller a repaint is coming when none is.
+    return undefined
   }
 
   // ActionCable's `connected`, i.e. the server confirmed the subscription.
@@ -517,6 +560,7 @@ export default class HibikiController extends ChannelController {
   }
 
   async connect() {
+    islands.set(this.element, this)
     // Before the listeners, not after: a click delegated in the next
     // millisecond reaches perform(), which needs the busy map and the
     // queue to exist. This is also what stamps data-hibiki-state
@@ -580,6 +624,7 @@ export default class HibikiController extends ChannelController {
   }
 
   disconnect() {
+    islands.delete(this.element)
     for (const [type, handler] of this.listeners) {
       this.element.removeEventListener(type, handler)
     }
@@ -725,6 +770,21 @@ export default class HibikiController extends ChannelController {
 }
 
 export { HibikiController }
+
+// The public seam without the Stimulus lookup (the header's "App JS
+// reaching the graph"): fire an action through the subscription of the
+// island CONTAINING element. Same return contract as perform — the seq
+// when accepted, undefined when dropped or when no island contains the
+// element (a structural mistake, hence the warn; the offline case stays
+// quiet because it is expected weather).
+export function performOn(element, action, payload = {}) {
+  for (let node = element; node; node = node.parentElement) {
+    const island = islands.get(node)
+    if (island) return island.perform(action, payload)
+  }
+  console.warn("hibiki: performOn found no island containing", element)
+  return undefined
+}
 
 // The Turbo-broadcast race helper the base uses internally, still
 // exported for custom (non-Stimulus) clients: resolves once Turbo stamps

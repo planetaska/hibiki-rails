@@ -36,6 +36,51 @@ classes' declarations, keys against live children, fields against
 `nested_form_for(dom)` for anything else. No client change — nested controls
 name themselves `"#{path}/#{field}"` and ride the existing payload mechanics.
 
+**`hibiki:rails:nested` — generate one parent→child edge of a nested form.**
+`bin/rails g hibiki:rails:nested Song Credit`, then `... Credit Contribution`
+for the next level — depth is composition, each run wires one edge. The child
+model must exist and `belongs_to` the parent; attribute arguments only
+reorder or subset what the schema already knows. Emits the child ReactiveForm
+and a `_<child>_fields` partial (or Phlex component) with path-addressed
+inputs, injects the ordered `has_many` + `accepts_nested_attributes_for`,
+`reactive_nested`, the `NestedActions` include, preloads, and the classic
+`fields_for` + `params.expect` degraded path into the full-page form. A
+`position` column is detected for ordering (`--position=COLUMN` names one,
+adding the migration; `--skip-position` opts out) and ordered edges get
+up/down controls. Works against a scaffolded collection (root mode) or an
+already-nested parent's fields partial (deep mode), on both view layers.
+
+**`perform(action, payload)` is public API — and a `performOn` helper.**
+The blessed seam for app JS (a drag library's drop handler, any third-party
+widget) to fire actions on an island's graph through the island's OWN
+subscription. Reach the controller instance with Stimulus's standard
+`application.getControllerForElementAndIdentifier(islandEl, "hibiki")`, or
+skip the incantation with the new export — `performOn(element, action,
+payload)` finds the island containing `element` and performs through it,
+Stimulus context not required. The return value is the contract: truthy (the
+trip's sequence number) means the action was accepted — sent live, or queued
+during the island's initial connect window — and a repaint is coming, so
+leave the DOM as the user arranged it; `undefined` means it was dropped (the
+island is offline, the socket turned out to be dead, or no island contains
+the element) and the caller owns recovery: revert the gesture, or stand back
+and let the next repaint self-heal. Nothing queues across an offline gap, on
+purpose — a reconnect builds a fresh server-side graph, and replaying intent
+formed against the old one is worse than dropping it. Hand-writing
+`data-hibiki-*` attributes and subclassing `ChannelController` to reach an
+existing island remain unsupported: the attributes are a private contract,
+and a subclass opens a second subscription with a second graph nobody paints
+from.
+
+### Fixed
+
+**`perform` during an offline gap reported success while dropping the
+payload.** Between a socket drop and the reconnect, `perform` returned the
+trip's sequence number as if the action had been accepted, while sending
+nothing and queueing nothing. Declared actions never noticed (the fallback
+machinery gates on island state before performing), but with the return
+value now public API the lie mattered: it returns `undefined` there, the
+same dropped signal as a dead socket caught at send.
+
 ## 0.8.0 — 2026-08-15
 
 ### Added

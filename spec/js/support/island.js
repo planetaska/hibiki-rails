@@ -90,6 +90,16 @@ export async function mount(html, { autoConnect = true } = {}) {
   return document.querySelector('[data-controller~="hibiki"]')
 }
 
+// The documented public lookup, verbatim — what an app controller does to
+// reach the island instance whose perform is public API.
+export const controller = (element) =>
+  application.getControllerForElementAndIdentifier(element, "hibiki")
+
+// The module under test, for tests that need its other exports (performOn).
+// Dynamically imported exactly like mount's, so the actioncable mock is in
+// place and the module instance is the same one driving the island.
+export const client = () => import("../../../app/assets/javascripts/hibiki.js")
+
 // Remove the element first and let Stimulus' own MutationObserver notice:
 // application.stop() only stops the observers, it does not disconnect the
 // contexts they already matched.
