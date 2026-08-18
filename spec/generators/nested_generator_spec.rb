@@ -340,14 +340,157 @@ RSpec.describe Hibiki::Rails::Generators::NestedGenerator do
     end
   end
 
+  describe "creating the child (Item Widget with a field list, no Widget model)" do
+    def widget_migration
+      Dir[File.join(@destination, "db/migrate/*_create_widgets.rb")].sole
+    end
+
+    describe "the full run" do
+      before do
+        scaffold
+        seed_models
+        @output = generate(%w[Item Widget part:references role:string position:integer --css=daisyui])
+      end
+
+      it "generates the model with the parent reference prepended, and says to migrate" do
+        model = generated("app/models/widget.rb")
+
+        expect(model).to include("belongs_to :item")
+        expect(model).to include("belongs_to :part")
+        expect(model.index("belongs_to :item")).to be < model.index("belongs_to :part")
+        expect(@output).to include("Widget was generated — run bin/rails db:migrate")
+      end
+
+      it "generates one create-table migration carrying every column, position included" do
+        migration = File.read(widget_migration)
+
+        expect(migration).to include("t.references :item, null: false, foreign_key: true")
+        expect(migration).to include("t.string :role")
+        expect(migration).to include("t.integer :position")
+        expect(Dir[File.join(@destination, "db/migrate/*.rb")].size).to eq(1)
+      end
+
+      it "wires everything off the argument list alone" do
+        expect(generated("app/forms/widget_form.rb"))
+          .to include("reactive_attributes Widget, :part_id, :role")
+        expect(generated("app/models/item.rb"))
+          .to include("has_many :widgets, -> { order(:position) }, dependent: :destroy, " \
+                      "inverse_of: :item, index_errors: true")
+        expect(generated("app/controllers/items_controller.rb"))
+          .to include("{ widgets_attributes: [[ :id, :part_id, :role, :position, :_destroy ]] } ])")
+        expect(generated("app/views/items/_widget_fields.html.erb")).to include("nested_move")
+        expect(generated("app/channels/items_channel.rb")).to include("Part.order(:name).pluck(:name, :id)")
+        expect_valid_generated_sources(@destination)
+      end
+
+      it "refuses a re-run before the migration ran, changing nothing" do
+        before_state = Dir[File.join(@destination, "{app,db}/**/*")]
+                       .to_h { [it, (File.read(it) if File.file?(it))] }
+        output = generate(%w[Item Widget part:references role:string position:integer --css=daisyui])
+
+        expect(output).to include("Widget has no table yet. Run bin/rails db:migrate first.")
+        after_state = Dir[File.join(@destination, "{app,db}/**/*")]
+                      .to_h { [it, (File.read(it) if File.file?(it))] }
+        expect(after_state).to eq(before_state)
+      end
+    end
+
+    it "adds no position column unless the field list carries one" do
+      scaffold
+      seed_models
+      generate(%w[Item Widget role:string --css=daisyui])
+
+      expect(File.read(widget_migration)).not_to include(":position")
+      expect(generated("app/models/item.rb")).to include("has_many :widgets, dependent: :destroy")
+      expect(generated("app/views/items/_widget_fields.html.erb")).not_to include("nested_move")
+      expect(generated("app/forms/item_form.rb")).not_to include("def to_h")
+    end
+
+    it "appends the --position column to the create-table migration" do
+      scaffold
+      seed_models
+      generate(%w[Item Widget role:string --position=rank --css=daisyui])
+
+      expect(File.read(widget_migration)).to include("t.integer :rank")
+      expect(Dir[File.join(@destination, "db/migrate/*.rb")].size).to eq(1)
+      expect(generated("app/models/item.rb")).to include("-> { order(:rank) }")
+      expect(generated("app/forms/item_form.rb")).to include("attrs[:rank] = i + 1")
+      expect(generated("app/forms/widget_form.rb")).to include("reactive_attributes Widget, :role\n")
+    end
+
+    it "keeps a parent reference the user typed where they put it" do
+      scaffold
+      seed_models
+      generate(%w[Item Widget role:string item:references --css=daisyui])
+
+      migration = File.read(widget_migration)
+      expect(migration.scan("t.references :item").size).to eq(1)
+      expect(migration.index("t.string :role")).to be < migration.index("t.references :item")
+      expect(generated("app/forms/widget_form.rb")).to include("reactive_attributes Widget, :role\n")
+    end
+
+    it "emits a Phlex fields component when the scaffold is Phlex" do
+      scaffold(%w[Item --phlex --css=daisyui])
+      seed_models
+      generate(%w[Item Widget part:references role:string --css=daisyui])
+
+      expect(generated("app/views/items/widget_fields.rb"))
+        .to include("class Views::Items::WidgetFields < Views::Base")
+      expect_valid_generated_sources(@destination)
+      expect_zeitwerk_resolvable_views(@destination)
+    end
+
+    describe "refusals that must precede the model write" do
+      def expect_nothing_created
+        expect(exists?("app/models/widget.rb")).to be(false)
+        expect(Dir[File.join(@destination, "db/migrate/*.rb")]).to be_empty
+      end
+
+      it "keeps the no-table refusal when the model file exists without a constant" do
+        scaffold
+        write("app/models/widget.rb", "class Widget < ApplicationRecord\nend\n")
+        output = generate(%w[Item Widget role:string --css=daisyui])
+
+        expect(output).to include("Widget has no table yet. Run bin/rails db:migrate first.")
+        expect(Dir[File.join(@destination, "db/migrate/*.rb")]).to be_empty
+      end
+
+      it "refuses a field list that is only the parent reference" do
+        scaffold
+        output = generate(%w[Item Widget item:references --css=daisyui])
+
+        expect(output).to include("Widget has no editable columns beyond item_id")
+        expect_nothing_created
+      end
+
+      it "refuses the bare foreign-key spelling" do
+        scaffold
+        output = generate(%w[Item Widget item_id:integer role:string --css=daisyui])
+
+        expect(output).to include("Spell the parent column item:references")
+        expect_nothing_created
+      end
+
+      it "refuses an unscaffolded parent before creating anything" do
+        output = generate(%w[Item Widget role:string --css=daisyui])
+
+        expect(output).to include("neither a hibiki:rails scaffold")
+        expect_nothing_created
+      end
+    end
+  end
+
   describe "preflight" do
     it "refuses a parent that is neither scaffolded nor a nested child" do
       expect(generate(%w[Item Credit])).to include("neither a hibiki:rails scaffold")
     end
 
-    it "refuses a child with no model" do
+    it "refuses a child with no model and no field list, teaching the inline syntax" do
       scaffold
-      expect(generate(%w[Item Widget])).to include("No model Widget")
+      output = generate(%w[Item Widget])
+
+      expect(output).to include("No model Widget")
+      expect(output).to include("bin/rails g hibiki:rails:nested Item Widget role:string")
     end
 
     it "refuses a child that does not belong_to the parent" do

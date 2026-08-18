@@ -4,6 +4,25 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.9.1 — 2026-08-18
+
+### Added
+
+**`hibiki:rails:nested` creates a missing child model from the field list.**
+`bin/rails g hibiki:rails:nested Song Credit role:string position:integer`
+no longer refuses when `Credit` doesn't exist: the generator invokes
+`active_record:model` with `song:references` prepended (kept where you put it
+if you typed it yourself), then wires the edge off the argument list exactly
+as if the field list had narrowed an existing schema. Run
+`bin/rails db:migrate` before using the fieldset. A created child is never
+ordered silently — put `position` in the field list, or pass
+`--position=COLUMN` and the column joins the create-table migration. With an
+existing child model nothing changes, and a missing model with no field list
+still refuses, now suggesting the inline syntax.
+
+The runtime and the packaged client did not change; the npm 0.9.1 exists only
+to keep the lockstep rule.
+
 ## 0.9.0 — 2026-08-17
 
 ### Added

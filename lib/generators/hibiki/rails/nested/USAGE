@@ -8,9 +8,11 @@ Description:
     fallback in the full-page form, and the controller's params.expect
     double-array group.
 
-    Parent and Child models must exist and be migrated, and Child must
-    declare belongs_to :<parent>. An optional field list narrows or orders
-    the child's form fields; the facts stay the schema's.
+    When the Child model exists (migrated, with belongs_to :<parent>), an
+    optional field list narrows or orders its form fields; the facts stay
+    the schema's. When it doesn't, the field list creates it — model and
+    migration via active_record:model, <parent>:references prepended for
+    you. Run bin/rails db:migrate before using the fieldset.
 
     Depth is composition: run once per edge. A run whose Parent is itself a
     nested child (its _<parent>_fields partial exists) nests into that
@@ -20,7 +22,8 @@ Description:
     the fieldset ordered — the has_many gains an order scope, the parent
     form stamps positions from array order, and rows get ↑/↓ buttons. The
     named column is added by migration when missing; --skip-position opts
-    out entirely.
+    out entirely. A created child is never ordered silently: put position
+    in the field list, or pass --position.
 
 Examples:
     bin/rails g hibiki:rails:nested Song Credit
@@ -28,3 +31,5 @@ Examples:
     bin/rails g hibiki:rails:nested Credit Contribution
 
     bin/rails g hibiki:rails:nested Song Credit artist:references role:string --position=rank
+
+    bin/rails g hibiki:rails:nested Song Credit role:string position:integer

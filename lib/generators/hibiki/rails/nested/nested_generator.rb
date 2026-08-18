@@ -22,6 +22,8 @@ module Hibiki
       # generic Hibiki::Rails::NestedActions), reactive_nested on the parent
       # form, the model wiring, the classic fields_for fallback in the
       # full-page form, and the controller's params.expect double-array group.
+      # A missing child model is created from the field list (model +
+      # migration via active_record:model, the parent reference prepended).
       #
       # Depth is composition — run once per edge. A run whose parent is
       # itself a nested child injects into the parent's own fields partial
@@ -60,6 +62,14 @@ module Hibiki
         def preflight
           check_wireable!
           warn_without_phlex_rails
+        end
+
+        def create_child_model
+          return unless create_child?
+
+          # to_argv, never GeneratedAttribute#to_s: `title:string!` round-trips
+          # through to_s as "title:string{null}", which .parse then rejects.
+          invoke "active_record:model", child_model_argv
         end
 
         def create_child_form
@@ -111,10 +121,7 @@ module Hibiki
         end
 
         def post_install
-          if @position_migration
-            say_status :migrate, "#{child_table_name}.#{position_column} was added — " \
-                                 "run bin/rails db:migrate before using the fieldset.", :yellow
-          end
+          migrate_notice
           schema.belongs_tos.each do |column|
             say_status :assoc, "using #{column.association_class_name}##{column.label_column} as " \
                                "the #{column.human_name.downcase} option label — edit " \
@@ -123,6 +130,18 @@ module Hibiki
         end
 
         private
+
+        # Never both: a created child's ordering column rides its
+        # create-table migration.
+        def migrate_notice
+          if create_child?
+            say_status :migrate, "#{child_class_name} was generated — " \
+                                 "run bin/rails db:migrate before using the fieldset.", :yellow
+          elsif @position_migration
+            say_status :migrate, "#{child_table_name}.#{position_column} was added — " \
+                                 "run bin/rails db:migrate before using the fieldset.", :yellow
+          end
+        end
 
         # The scaffold's own view layer, read from what it left on disk; an
         # explicit --phlex wins. Deep mode reads it off the parent's fields

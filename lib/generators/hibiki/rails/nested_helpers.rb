@@ -36,7 +36,18 @@ module Hibiki
 
         def child_form_class_name = "#{child_class_name}Form"
         def child_form_path = File.join("app/forms", "#{child_class_name.underscore}_form.rb")
+        def child_model_path = File.join("app/models", "#{child_class_name.underscore}.rb")
         def child_table_name = child_class_name.tableize.tr("/", "_")
+
+        # Create mode: no constant, no model file, and a field list to build
+        # from. Memoized before the invoke writes the file — later calls must
+        # keep the preflight answer.
+        def create_child?
+          return @create_child if defined?(@create_child)
+
+          @create_child = attributes.any? && child_class_name.safe_constantize.nil? &&
+                          !exists?(child_model_path)
+        end
 
         def child_class
           @child_class ||= begin
@@ -53,9 +64,13 @@ module Hibiki
         end
 
         def missing_child_message
-          "No model #{child_class_name}. hibiki:rails:nested needs the child model " \
-            "to exist:\n    bin/rails g model #{child_class_name} #{singular_name}:references " \
-            "role:string\nMigrate, then re-run."
+          if exists?(child_model_path)
+            "#{child_class_name} has no table yet. Run bin/rails db:migrate first."
+          else
+            "No model #{child_class_name}. Pass its fields and the generator creates it " \
+              "(#{singular_name}:references is added for you):\n    " \
+              "bin/rails g hibiki:rails:nested #{name} #{child} role:string"
+          end
         end
 
         # The child's belongs_to back to the parent. Required: the has_many's
@@ -92,9 +107,14 @@ module Hibiki
 
         # Everything that can refuse, before anything is written.
         def check_wireable!
-          child_class
-          parent_reflection
-          check_parent_wireable!
+          if create_child?
+            check_parent_wireable!
+            check_creatable!
+          else
+            child_class
+            parent_reflection
+            check_parent_wireable!
+          end
           check_editable_columns!
         end
 
@@ -119,8 +139,19 @@ module Hibiki
 
           raise ::Rails::Generators::Error,
                 "#{child_class_name} has no editable columns beyond " \
-                "#{parent_reflection.foreign_key}#{" and #{position_column}" if ordered?} — " \
+                "#{child_foreign_key}#{" and #{position_column}" if ordered?} — " \
                 "nothing to build a fieldset from."
+        end
+
+        # A bare <parent>_id column generates no belongs_to, and the has_many's
+        # inverse_of and accepts_nested_attributes_for both stand on it.
+        def check_creatable!
+          fk = "#{singular_name}_id"
+          return if attributes.none? { !it.reference? && it.name == fk }
+
+          raise ::Rails::Generators::Error,
+                "Spell the parent column #{singular_name}:references — a bare #{fk} " \
+                "generates no belongs_to, and the nested wiring needs one."
         end
 
         # ---- the owning resource ---------------------------------------------
@@ -182,15 +213,36 @@ module Hibiki
 
         # ---- the child schema ------------------------------------------------
         #
-        # Always the introspection path — the child model is required — with
-        # the scaffold's 3.6 merge when a field list narrows or orders it. The
-        # parent's foreign key and the ordering column never become form
-        # fields: the association assigns one, the parent form stamps the
-        # other.
+        # Introspection when the child model exists (the scaffold's 3.6 merge
+        # when a field list narrows or orders it); the argument-only path when
+        # this run is creating the model — the fresh constant is not loadable
+        # in-process, so nothing may read it. The parent's foreign key and the
+        # ordering column never become form fields: the association assigns
+        # one, the parent form stamps the other.
+
+        def introspectable_child = create_child? ? nil : child_class
+
+        # Argument-derived in create mode: there is no reflection to ask yet.
+        def child_foreign_key
+          @child_foreign_key ||= create_child? ? "#{singular_name}_id" : parent_reflection.foreign_key.to_s
+        end
+
+        # What create_child_model hands to active_record:model: the parent
+        # reference prepended unless the field list already spells it, the
+        # --position column appended when ordering asked for one the list
+        # doesn't carry.
+        def child_model_argv
+          parent_ref = ("#{singular_name}:references" unless parent_ref_argument?)
+          position_arg = ("#{position_column}:integer" if ordered? && options[:position].present? &&
+                                                          attributes.none? { it.name == position_column })
+          [child_class_name, *parent_ref, *attributes.map { to_argv(it) }, *position_arg]
+        end
+
+        def parent_ref_argument? = attributes.any? { it.reference? && it.name == singular_name }
 
         def full_schema
           @full_schema ||= if attributes.any?
-                             ScaffoldSchema.from_attributes(attributes, model: child_class)
+                             ScaffoldSchema.from_attributes(attributes, model: introspectable_child)
                            else
                              ScaffoldSchema.from_model(child_class)
                            end
@@ -206,7 +258,7 @@ module Hibiki
 
         def form_excluded?(column)
           return true if column.belongs_to? && column.association_name == singular_name.to_sym
-          return true if column.name.to_s == parent_reflection.foreign_key.to_s
+          return true if column.name.to_s == child_foreign_key
 
           ordered? && column.name.to_s == position_column
         end
@@ -218,6 +270,7 @@ module Hibiki
 
           @ordered = if options[:skip_position] then false
                      elsif options[:position].present? then true
+                     elsif create_child? then attributes.any? { it.name == "position" }
                      else child_class.column_names.include?("position")
                      end
         end
@@ -225,7 +278,7 @@ module Hibiki
         def position_column = @position_column ||= options[:position].presence || "position"
 
         def position_migration_needed?
-          ordered? && !child_class.column_names.include?(position_column)
+          ordered? && !create_child? && !child_class.column_names.include?(position_column)
         end
 
         # ---- template refs ---------------------------------------------------
