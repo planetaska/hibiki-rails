@@ -1,0 +1,31 @@
+<%#- ESCAPING: <%% emits runtime ERB into the generated view; a bare <% is
+     consumed here at generation time. #{...} inside an escaped tag is runtime
+     Ruby and passes through untouched. -%>
+<%%# locals: (form:, dom:, extras: {}) -%>
+<%%# The <%= attachment_name %> upload. The file input carries NO name on purpose: the save
+    submit serializes the form with FormData and a File can't ride the
+    channel — the input direct-uploads on change and hands the signed id to
+    <%= set_action %>; the badges are the graph echoing that state back. %>
+<%% pending = extras.fetch(:<%= extras_key %>, {})[dom] %>
+<%% attachment = form.record&.<%= attachment_reader %> %>
+<%%= label_tag "#{dom}_<%= attachment_name %>", "<%= attachment_human %>"<%= arg_css(:label) %> %>
+<div<%= css_attr(:upload_row) %>>
+  <%% if attachment && !pending&.dig(:remove) %>
+    <%%= image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %> %>
+  <%% end %>
+  <%%= tag.input type: "file", accept: "image/*", id: "#{dom}_<%= attachment_name %>"<%= arg_css(:file_input_sm) %>,
+                data: { controller: "upload-field",
+                        upload_field_url_value: rails_direct_uploads_path,
+                        upload_field_action_value: "<%= set_action %>",
+                        upload_field_dom_value: dom,
+                        action: "change->upload-field#upload" } %>
+  <%% if pending&.dig(:remove) %>
+    <span<%= css_attr(:badge_warning) %>><%= attachment_name %> removed on save</span>
+  <%% elsif pending %>
+    <span<%= css_attr(:badge_info) %>><%%= pending[:filename] %> — attaches on save</span>
+  <%% end %>
+  <%% if !pending&.dig(:remove) && (attachment || pending) %>
+    <%%= tag.button("Remove", type: "button"<%= arg_css(:btn_ghost_sm) %>,
+                   **on(:<%= remove_action %>, with: { dom: dom })) %>
+  <%% end %>
+</div>

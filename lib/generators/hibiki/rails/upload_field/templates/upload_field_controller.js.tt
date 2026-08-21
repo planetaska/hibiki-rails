@@ -1,0 +1,29 @@
+// Direct-uploads the chosen file the moment it's picked, then hands ONLY the
+// signed blob id to the island's graph, via the action and dom the view
+// stamped on the input — one controller serves every upload field. A falsy
+// performOn return means the island is offline and nothing was queued, so
+// the input is reset to show nothing was taken.
+import { Controller } from "@hotwired/stimulus"
+import { DirectUpload } from "@rails/activestorage"
+import { performOn } from "hibiki-rails"
+
+export default class extends Controller {
+  static values = { url: String, action: String, dom: String }
+
+  upload() {
+    const file = this.element.files[0]
+    if (!file) return
+
+    new DirectUpload(file, this.urlValue).create((error, blob) => {
+      if (error) {
+        console.error("upload failed:", error)
+        this.element.value = ""
+        return
+      }
+      const accepted = performOn(this.element, this.actionValue, {
+        dom: this.domValue, signed_id: blob.signed_id, filename: file.name
+      })
+      if (!accepted) this.element.value = ""
+    })
+  }
+}

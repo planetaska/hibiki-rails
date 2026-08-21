@@ -1,0 +1,26 @@
+Description:
+    Adds a has_one_attached upload onto a resource that
+    hibiki:rails:scaffold_controller already generated, on both edit
+    surfaces. One attachment per run.
+
+    The classic form gains a direct-upload file field plus a remove
+    checkbox (a virtual remove_<attachment> attribute on the model, whose
+    purge yields to a same-submit upload). The inline channel form gains a
+    nameless file input that direct-uploads on change and hands only the
+    signed blob id to the graph — the pending state lives there, keyed by
+    the form's dom, so it survives repaints and the edit row and inline
+    create form stay independent.
+
+    The channel gains one `include`; everything else lives in a generated
+    concern under app/channels/concerns that wraps the lifecycle with
+    super. Both channel queries are preloaded with with_attached_<name>,
+    and one shared upload_field_controller.js is emitted per app.
+
+    Prerequisites (warned about, never installed): the Active Storage
+    tables, the image_processing gem for thumbnails, and
+    ActiveStorage.start() in the JS entrypoint for the classic form.
+
+Examples:
+    bin/rails g hibiki:rails:upload_field Album cover
+
+    bin/rails g hibiki:rails:upload_field Album cover --css=tailwind --phlex

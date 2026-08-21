@@ -4,6 +4,29 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Added
+
+**`hibiki:rails:upload_field` — a `has_one_attached` upload on both edit
+surfaces.** `bin/rails g hibiki:rails:upload_field Album cover` extends a
+hibiki:rails scaffold: the classic form gains a direct-upload file field plus
+a remove checkbox (a virtual `remove_cover` attribute whose purge yields to a
+same-submit upload), and the inline channel form gains a nameless file input
+that direct-uploads on change and hands only the signed blob id to the graph.
+The pending state lives in the channel (a generated concern under
+`app/channels/concerns`, one `include` in the channel), keyed by the form's
+dom, so it survives repaints and the edit row and inline create form stay
+independent; attach/purge happens after a successful commit. Both channel
+queries are preloaded with `with_attached_cover`, `:cover`/`:remove_cover`
+join the permitted params, and one shared
+`app/javascript/controllers/upload_field_controller.js` is emitted per app —
+parameterized by Stimulus values, so a second attachment reuses it. One
+attachment per run; `has_one_attached` only.
+
+The packaged client did not change — the emitted Stimulus controller imports
+`@rails/activestorage` from the app's own dependencies.
+
 ## 0.9.1 — 2026-08-18
 
 ### Added

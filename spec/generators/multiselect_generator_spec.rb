@@ -239,10 +239,12 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
     before do
       scaffold
       seed_models
-      # Strip the 0.7.0 extension point back out, the shape 0.6.0 emitted.
+      # Strip the 0.7.0 extension point back out, the shape 0.6.0 emitted —
+      # the wrapped form too (the list renders each local on its own line).
       %w[_list.html.erb _item.html.erb _item_form.html.erb].each do |basename|
         path = File.join(@destination, "app/views/items", basename)
-        File.write(path, File.read(path).gsub(", extras: {}", "").gsub(", extras: extras", ""))
+        File.write(path, File.read(path).gsub(", extras: {}", "").gsub(", extras: extras", "")
+                             .gsub(/,\n\s*extras: (\{\}|extras)/, ""))
       end
       @output = generate(%w[Item Part Fitting --css=daisyui])
     end

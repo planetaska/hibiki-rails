@@ -10,6 +10,7 @@ require_relative "../scaffold_phlex_helpers"
 require_relative "../scaffold_model_injection"
 require_relative "../scaffold_schema"
 require_relative "../css_variant"
+require_relative "../extras_threading"
 require_relative "../multiselect_helpers"
 require_relative "../multiselect_injections"
 
@@ -33,6 +34,7 @@ module Hibiki
         include ScaffoldViewHelpers
         include ScaffoldPhlexHelpers
         include ScaffoldModelInjection
+        include ExtrasThreading
         include MultiselectHelpers
         include MultiselectInjections
 
