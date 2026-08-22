@@ -111,9 +111,14 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       expect(partial).to include("number_to_human_size(attachment.blob.byte_size)")
       expect(partial).to include(%(upload_field_action_value: "set_photo"))
       expect(partial).to include("upload_field_dom_value: dom")
-      expect(partial).to include("attaches on save")
+      expect(partial).to include("<%= pending[:filename].truncate(12) %> — attaches on save")
       expect(partial).to include("photo removed on save")
       expect(partial).to include("**on(:remove_photo, with: { dom: dom })")
+      # The row wraps and the badge sits on its own full-width line AFTER
+      # Remove, so a long filename never pushes the button off the row.
+      expect(partial).to include(%(<div class="flex flex-wrap items-center gap-3">))
+      expect(partial).to include(%(  <div class="w-full">\n    <% if pending&.dig(:remove) %>))
+      expect(partial.index("**on(:remove_photo")).to be < partial.index("attaches on save")
     end
 
     it "renders the partial from the row form and the thumbnail from the row" do
@@ -249,6 +254,10 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
         .to include("render Views::Items::PhotoUpload.new(form: @form, dom: @dom, extras: @extras)")
       expect(component).to include("include Phlex::Rails::Helpers::NumberToHumanSize")
       expect(component).to include("if attachment.blob.variable?")
+      expect(component).to include(%(div(class: "flex flex-wrap items-center gap-3") do))
+      expect(component).to include(%(      div(class: "w-full") do\n        if pending&.dig(:remove)))
+      expect(component).to include(%({ "#{pending[:filename].truncate(12)} — attaches on save" }))
+      expect(component.index("**on(:remove_photo")).to be < component.index("attaches on save")
       row = generated("app/views/items/row.rb")
       expect(row).to include("photo_attachment = @item.photo_attachment")
       expect(row).to include("elsif photo_attachment.blob.variable?")

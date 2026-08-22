@@ -125,9 +125,12 @@ module Hibiki
 
           # The upload field (hibiki:rails:upload_field): the attachment row
           # in both forms, its thumbnail, the non-image filename link on the
-          # row, and the pending badge. upload_row and thumb are plain
+          # row, and the pending badge on its own full-width line under the
+          # controls (the row wraps, so a long filename never pushes Remove
+          # off-screen). upload_row, upload_status and thumb are plain
           # utilities, so the tailwind variant inherits them.
-          upload_row: "flex items-center gap-3",
+          upload_row: "flex flex-wrap items-center gap-3",
+          upload_status: "w-full",
           thumb: "rounded",
           file_link: "link link-hover",
           file_input: "file-input w-full",

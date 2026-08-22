@@ -40,14 +40,16 @@ class <%= component_class_name %> < Views::Base
                 upload_field_dom_value: @dom,
                 action: "change->upload-field#upload" }
       )
-      if pending&.dig(:remove)
-        span<%= arg_list(*css_args(:badge_warning)) %> { "<%= attachment_name %> removed on save" }
-      elsif pending
-        span<%= arg_list(*css_args(:badge_info)) %> { "#{pending[:filename]} — attaches on save" }
-      end
       if !pending&.dig(:remove) && (attachment || pending)
         button(type: "button"<%= arg_css(:btn_ghost_sm) %>,
                **on(:<%= remove_action %>, with: { dom: @dom })) { "Remove" }
+      end
+      div<%= arg_list(*css_args(:upload_status)) %> do
+        if pending&.dig(:remove)
+          span<%= arg_list(*css_args(:badge_warning)) %> { "<%= attachment_name %> removed on save" }
+        elsif pending
+          span<%= arg_list(*css_args(:badge_info)) %> { "#{pending[:filename].truncate(12)} — attaches on save" }
+        end
       end
     end
   end

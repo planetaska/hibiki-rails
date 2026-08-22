@@ -24,13 +24,15 @@
                         upload_field_action_value: "<%= set_action %>",
                         upload_field_dom_value: dom,
                         action: "change->upload-field#upload" } %>
-  <%% if pending&.dig(:remove) %>
-    <span<%= css_attr(:badge_warning) %>><%= attachment_name %> removed on save</span>
-  <%% elsif pending %>
-    <span<%= css_attr(:badge_info) %>><%%= pending[:filename] %> — attaches on save</span>
-  <%% end %>
   <%% if !pending&.dig(:remove) && (attachment || pending) %>
     <%%= tag.button("Remove", type: "button"<%= arg_css(:btn_ghost_sm) %>,
                    **on(:<%= remove_action %>, with: { dom: dom })) %>
   <%% end %>
+  <div<%= css_attr(:upload_status) %>>
+    <%% if pending&.dig(:remove) %>
+      <span<%= css_attr(:badge_warning) %>><%= attachment_name %> removed on save</span>
+    <%% elsif pending %>
+      <span<%= css_attr(:badge_info) %>><%%= pending[:filename].truncate(12) %> — attaches on save</span>
+    <%% end %>
+  </div>
 </div>
