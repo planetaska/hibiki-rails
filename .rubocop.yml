@@ -82,7 +82,8 @@ Metrics/ModuleLength:
     - lib/generators/hibiki/rails/nested_helpers.rb
     - lib/generators/hibiki/rails/nested_injections.rb
     # And for the upload field, whose injections are the same snippet-builder
-    # data tables.
+    # data tables and whose helpers carry the --accept token map.
+    - lib/generators/hibiki/rails/upload_field_helpers.rb
     - lib/generators/hibiki/rails/upload_field_injections.rb
 
 # Keyword arguments don't have the readability problem this cop targets —

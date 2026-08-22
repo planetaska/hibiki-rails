@@ -10,10 +10,15 @@
 <%% attachment = form.record&.<%= attachment_reader %> %>
 <%%= label_tag "#{dom}_<%= attachment_name %>", "<%= attachment_human %>"<%= arg_css(:label) %> %>
 <div<%= css_attr(:upload_row) %>>
+  <%%# variable? — an image gets a thumbnail, anything else its filename. %>
   <%% if attachment && !pending&.dig(:remove) %>
-    <%%= image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %> %>
+    <%% if attachment.blob.variable? %>
+      <%%= image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %> %>
+    <%% else %>
+      <span<%= css_attr(:muted_inline) %>><%%= attachment.blob.filename %> (<%%= number_to_human_size(attachment.blob.byte_size) %>)</span>
+    <%% end %>
   <%% end %>
-  <%%= tag.input type: "file", accept: "image/*", id: "#{dom}_<%= attachment_name %>"<%= arg_css(:file_input_sm) %>,
+  <%%= tag.input type: "file", accept: "<%= accept_attr %>", id: "#{dom}_<%= attachment_name %>"<%= arg_css(:file_input_sm) %>,
                 data: { controller: "upload-field",
                         upload_field_url_value: rails_direct_uploads_path,
                         upload_field_action_value: "<%= set_action %>",

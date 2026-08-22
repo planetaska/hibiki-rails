@@ -13,7 +13,44 @@ module Hibiki
       module UploadFieldHelpers
         JS_CONTROLLER = "app/javascript/controllers/upload_field_controller.js"
 
+        # The --accept tokens, css_variant-style: validated against this map,
+        # with a raw type/subtype or .ext passing through untouched. Office
+        # formats are extension lists because their MIME names are unreadable
+        # in a view and browsers honor either form.
+        ACCEPT = {
+          image: "image/*", audio: "audio/*", video: "video/*",
+          pdf: "application/pdf", csv: "text/csv", text: "text/plain",
+          doc: ".doc,.docx", xls: ".xls,.xlsx", ppt: ".ppt,.pptx"
+        }.freeze
+
         private
+
+        # ---- --accept --------------------------------------------------------
+
+        def accept_tokens
+          tokens = options[:accept].to_s.split(",").map(&:strip).reject(&:empty?)
+          tokens.empty? ? ["image"] : tokens
+        end
+
+        def accept_value(token)
+          return token if token.include?("/") || token.start_with?(".")
+
+          ACCEPT.fetch(token.to_sym) do
+            raise ::Rails::Generators::Error,
+                  "unknown --accept token #{token.inspect} — expected one of " \
+                  "#{ACCEPT.keys.join(', ')}, a type/subtype, or an .ext"
+          end
+        end
+
+        # The attribute both file inputs carry. Advisory only — the display
+        # branches on the blob at render time, and enforcement is the app's.
+        def accept_attr
+          @accept_attr ||= accept_tokens.flat_map { accept_value(it).split(",") }.uniq.join(",")
+        end
+
+        # Thumbnails, and so image_processing, only matter when an image can
+        # arrive through the picker at all.
+        def image_accepted? = accept_attr.split(",").any? { it.start_with?("image/") }
 
         # ---- the attachment --------------------------------------------------
 

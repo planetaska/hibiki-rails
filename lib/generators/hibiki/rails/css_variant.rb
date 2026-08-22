@@ -124,11 +124,12 @@ module Hibiki
           btn_outline_sm: "btn btn-sm btn-outline",
 
           # The upload field (hibiki:rails:upload_field): the attachment row
-          # in both forms, its thumbnail, and the pending badge. upload_row
-          # and thumb are plain utilities, so the tailwind variant inherits
-          # them.
+          # in both forms, its thumbnail, the non-image filename link on the
+          # row, and the pending badge. upload_row and thumb are plain
+          # utilities, so the tailwind variant inherits them.
           upload_row: "flex items-center gap-3",
           thumb: "rounded",
+          file_link: "link link-hover",
           file_input: "file-input w-full",
           file_input_sm: "file-input file-input-sm",
           badge_info: "badge badge-info"
@@ -190,6 +191,7 @@ module Hibiki
           nested_row: "rounded-md border border-gray-200 p-3 mb-2 space-y-2",
           btn_ghost_sm: SECONDARY_BUTTON.sub("px-3 py-2", "px-2 py-1"),
           btn_outline_sm: SECONDARY_BUTTON.sub("px-3 py-2", "px-2 py-1"),
+          file_link: "text-indigo-600 hover:underline",
           file_input: "block w-full text-sm text-gray-700 file:mr-3 file:rounded-md " \
                       "file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm " \
                       "file:font-medium file:text-gray-700 hover:file:bg-gray-200",

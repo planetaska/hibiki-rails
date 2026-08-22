@@ -102,8 +102,13 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       expect(partial).to include("form.record&.photo_attachment")
       # A File can't ride the channel: tag.input, which emits no name — never
       # file_field_tag, which would.
-      expect(partial).to include(%(tag.input type: "file"))
+      expect(partial).to include(%(tag.input type: "file", accept: "image/*"))
       expect(partial).not_to include("file_field_tag")
+      # The display branches per blob: an image thumbnails, anything else
+      # shows its filename — so a wrong-typed file never 500s the row.
+      expect(partial).to include("<% if attachment.blob.variable? %>")
+      expect(partial).to include("resize_to_limit: [ 48, 48 ]")
+      expect(partial).to include("number_to_human_size(attachment.blob.byte_size)")
       expect(partial).to include(%(upload_field_action_value: "set_photo"))
       expect(partial).to include("upload_field_dom_value: dom")
       expect(partial).to include("attaches on save")
@@ -122,9 +127,12 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       expect(row_form).to include(%(extras: extras %>\n  </div>))
       # The display reads photo_attachment; the bare proxy memoizes into an
       # ivar and raises FrozenError on the frozen rows.
-      expect(row.scan("item.photo_attachment").size).to eq(2)
+      expect(row.scan("item.photo_attachment").size).to eq(1)
       expect(row).not_to match(/item\.photo\.\w/)
+      expect(row).to include("<% elsif photo_attachment.blob.variable? %>")
       expect(row).to include("resize_to_limit: [ 80, 80 ]")
+      expect(row).to include("link_to photo_attachment.blob.filename, rails_blob_path(photo_attachment)")
+      expect(row).to include("number_to_human_size(photo_attachment.blob.byte_size)")
     end
 
     it "extends both strict_loading preloads" do
@@ -143,7 +151,10 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       # Above the submit div, and the checkbox only renders with something
       # attached.
       expect(form.index("file_field :photo")).to be < form.index("form.submit")
-      expect(form.scan("<% if item.photo_attachment %>").size).to eq(2)
+      expect(form.scan("<% photo_attachment = item.photo_attachment %>").size).to eq(1)
+      expect(form).to include("<% if photo_attachment && photo_attachment.blob.variable? %>")
+      expect(form).to include("<% elsif photo_attachment %>")
+      expect(form.scan("<% if photo_attachment %>").size).to eq(1)
     end
 
     it "appends the two scalars to params.expect" do
@@ -236,22 +247,79 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       expect(component).to include("def initialize(form:, dom:, extras: {})")
       expect(generated("app/views/items/row_form.rb"))
         .to include("render Views::Items::PhotoUpload.new(form: @form, dom: @dom, extras: @extras)")
-      expect(generated("app/views/items/row.rb")).to include("@item.photo_attachment")
+      expect(component).to include("include Phlex::Rails::Helpers::NumberToHumanSize")
+      expect(component).to include("if attachment.blob.variable?")
+      row = generated("app/views/items/row.rb")
+      expect(row).to include("photo_attachment = @item.photo_attachment")
+      expect(row).to include("elsif photo_attachment.blob.variable?")
+      expect(row).to include("link_to(photo_attachment.blob.filename, rails_blob_path(photo_attachment)")
     end
 
-    it "injects the page-form method pair and the ImageTag helper includes" do
+    it "injects the page-form method pair and the helper includes, each once" do
       form = generated("app/views/items/form.rb")
       row = generated("app/views/items/row.rb")
 
       expect(form.scan("photo_upload_fields(form)").size).to eq(2)
       expect(form).to include("form.file_field :photo, accept: \"image/*\", direct_upload: true")
-      expect(form.scan("include Phlex::Rails::Helpers::ImageTag").size).to eq(1)
-      expect(row.scan("include Phlex::Rails::Helpers::ImageTag").size).to eq(1)
+      expect(form).to include("if photo_attachment && photo_attachment.blob.variable?")
+      %w[ImageTag NumberToHumanSize].each do |helper|
+        expect(form.scan("include Phlex::Rails::Helpers::#{helper}").size).to eq(1)
+        expect(row.scan("include Phlex::Rails::Helpers::#{helper}").size).to eq(1)
+      end
+      # The scaffold's row already had LinkTo; the guard left it alone.
+      expect(row.scan("include Phlex::Rails::Helpers::LinkTo").size).to eq(1)
     end
 
     it "emits sources that compile and resolve under Zeitwerk" do
       expect_valid_generated_sources(@destination)
       expect_zeitwerk_resolvable_views(@destination)
+    end
+  end
+
+  describe "--accept" do
+    before do
+      scaffold
+      seed_model
+    end
+
+    it "stamps the mapped value on both inputs and skips the thumbnail notice" do
+      output = generate(%w[Item document --accept=pdf --css=daisyui])
+
+      expect(generated("app/views/items/_document_upload.html.erb"))
+        .to include(%(tag.input type: "file", accept: "application/pdf"))
+      expect(generated("app/views/items/_form.html.erb"))
+        .to include(%(form.file_field :document, accept: "application/pdf", direct_upload: true))
+      # The display still branches — the template is one shape for every
+      # accept list.
+      expect(generated("app/views/items/_document_upload.html.erb")).to include("attachment.blob.variable?")
+      expect(output).not_to include("image_processing")
+      expect(output).to include("ActiveStorage.start()")
+      expect_valid_generated_sources(@destination)
+    end
+
+    it "joins tokens in order, passing a type/subtype or .ext straight through" do
+      output = generate(%w[Item document --accept=doc,image,.zip,application/x-foo --css=daisyui])
+
+      expect(generated("app/views/items/_document_upload.html.erb"))
+        .to include(%(accept: ".doc,.docx,image/*,.zip,application/x-foo"))
+      expect(output).to include("image_processing")
+    end
+
+    it "reaches the --phlex pair" do
+      scaffold(%w[Item --phlex --css=daisyui])
+      generate(%w[Item document --accept=pdf,xls --css=daisyui])
+
+      expect(generated("app/views/items/document_upload.rb")).to include(%(accept: "application/pdf,.xls,.xlsx"))
+      expect(generated("app/views/items/form.rb")).to include(%(accept: "application/pdf,.xls,.xlsx"))
+      expect_valid_generated_sources(@destination)
+    end
+
+    it "refuses an unknown token, writing nothing" do
+      output = generate(%w[Item document --accept=pdf,bogus --css=daisyui])
+
+      expect(output).to include(%(unknown --accept token "bogus"))
+      expect(exists?("app/channels/concerns/items_channel/document_upload.rb")).to be(false)
+      expect(generated("app/models/item.rb")).not_to include("has_one_attached")
     end
   end
 

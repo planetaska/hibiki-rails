@@ -16,11 +16,20 @@ Description:
     super. Both channel queries are preloaded with with_attached_<name>,
     and one shared upload_field_controller.js is emitted per app.
 
+    --accept=pdf,doc narrows the file inputs (image by default; tokens
+    image, audio, video, pdf, csv, text, doc, xls, ppt, or a raw
+    type/subtype or .ext). Images render as thumbnails, anything else as
+    its filename and size — decided per blob at render time, so mixed
+    lists work and a wrong-typed file never breaks the page.
+
     Prerequisites (warned about, never installed): the Active Storage
-    tables, the image_processing gem for thumbnails, and
-    ActiveStorage.start() in the JS entrypoint for the classic form.
+    tables, the image_processing gem for thumbnails (when images are
+    accepted), and ActiveStorage.start() in the JS entrypoint for the
+    classic form.
 
 Examples:
     bin/rails g hibiki:rails:upload_field Album cover
+
+    bin/rails g hibiki:rails:upload_field Report document --accept=pdf,doc
 
     bin/rails g hibiki:rails:upload_field Album cover --css=tailwind --phlex

@@ -142,7 +142,7 @@ module Hibiki
         def inject_row_display
           if phlex?
             inject_component_display
-            inject_image_tag_include(view_path("row.rb"), :row)
+            inject_helper_includes(view_path("row.rb"), :row, "ImageTag", "NumberToHumanSize", "LinkTo")
           else
             inject_partial_display
           end
@@ -156,16 +156,25 @@ module Hibiki
           insert_into_file path, "#{partial_display_snippet}\n", before: ROW_ACTIONS_ANCHOR_ERB
         end
 
+        # Every display site binds the attachment to a local and branches nil /
+        # variable? / else: an image gets a thumbnail, anything else its
+        # filename — decided per blob, so mixed accept lists and wrong-typed
+        # files both render.
         def partial_display_snippet
+          reader = attachment_reader
           <<~ERB.indent(4)
             <div>
               <strong>#{attachment_human}:</strong>
-              <%# #{attachment_reader}, never the #{attachment_name} proxy: channel rows are
+              <%# #{reader}, never the #{attachment_name} proxy: channel rows are
                   frozen and the proxy memoizes into an ivar (FrozenError). %>
-              <% if #{singular_name}.#{attachment_reader} %>
-                <%= image_tag #{singular_name}.#{attachment_reader}.blob.variant(resize_to_limit: [ 80, 80 ])#{arg_css(:thumb)} %>
-              <% else %>
+              <% #{reader} = #{singular_name}.#{reader} %>
+              <% if #{reader}.nil? %>
                 —
+              <% elsif #{reader}.blob.variable? %>
+                <%= image_tag #{reader}.blob.variant(resize_to_limit: [ 80, 80 ])#{arg_css(:thumb)} %>
+              <% else %>
+                <%= link_to #{reader}.blob.filename, rails_blob_path(#{reader})#{arg_css(:file_link)} %>
+                <span#{css_attr(:muted_inline)}>(<%= number_to_human_size(#{reader}.blob.byte_size) %>)</span>
               <% end %>
             </div>
           ERB
@@ -180,30 +189,43 @@ module Hibiki
         end
 
         def component_display_snippet
+          reader = attachment_reader
           <<~RUBY.indent(4)
             div do
               strong { "#{attachment_human}:" }
               whitespace
-              # #{attachment_reader}, never the #{attachment_name} proxy: channel rows are
+              # #{reader}, never the #{attachment_name} proxy: channel rows are
               # frozen and the proxy memoizes into an ivar (FrozenError).
-              if @#{singular_name}.#{attachment_reader}
-                image_tag#{arg_list("@#{singular_name}.#{attachment_reader}.blob.variant(resize_to_limit: [ 80, 80 ])", *css_args(:thumb))}
-              else
+              #{reader} = @#{singular_name}.#{reader}
+              if #{reader}.nil?
                 plain "—"
+              elsif #{reader}.blob.variable?
+                image_tag#{arg_list("#{reader}.blob.variant(resize_to_limit: [ 80, 80 ])", *css_args(:thumb))}
+              else
+                link_to#{arg_list("#{reader}.blob.filename", "rails_blob_path(#{reader})", *css_args(:file_link))}
+                whitespace
+                span#{arg_list(*css_args(:muted_inline))} { "(\#{number_to_human_size(#{reader}.blob.byte_size)})" }
               end
             end
           RUBY
         end
 
-        # The injected thumbnails need the helper the scaffold's components
-        # never did; anchored on the class line, exactly once by construction.
-        def inject_image_tag_include(path, view)
-          return if wired?(path, "Phlex::Rails::Helpers::ImageTag")
+        # The injected display needs helpers the scaffold's components never
+        # did; anchored on the class line, exactly once by construction, one
+        # guarded insert per module so an earlier run's file gains only what
+        # it lacks.
+        def inject_helper_includes(path, view, *helpers)
+          helpers.each { inject_helper_include(path, view, it) }
+        end
+
+        def inject_helper_include(path, view, helper)
+          line = "  include Phlex::Rails::Helpers::#{helper}\n"
+          return if wired?(path, line.strip)
 
           anchor = "class #{view_class_name(view)} < Views::Base\n"
-          return manual_wiring(path, "  include Phlex::Rails::Helpers::ImageTag") unless wired?(path, anchor)
+          return manual_wiring(path, line) unless wired?(path, anchor)
 
-          insert_into_file path, "  include Phlex::Rails::Helpers::ImageTag\n", after: anchor
+          insert_into_file path, line, after: anchor
         end
 
         # ---- the classic page form -------------------------------------------
@@ -225,21 +247,25 @@ module Hibiki
         end
 
         def erb_page_snippet
-          record = singular_name
-          thumb = "#{record}.#{attachment_reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
-          field = "form.file_field :#{attachment_name}, accept: \"image/*\", " \
+          reader = attachment_reader
+          thumb = "#{reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
+          size = "number_to_human_size(#{reader}.blob.byte_size)"
+          field = "form.file_field :#{attachment_name}, accept: \"#{accept_attr}\", " \
                   "direct_upload: true#{arg_css(:file_input)}"
           [
             "  <%= form.label :#{attachment_name}#{arg_css(:label)} %>",
+            "  <% #{reader} = #{singular_name}.#{reader} %>",
             "  <div#{css_attr(:upload_row)}>",
-            "    <% if #{record}.#{attachment_reader} %>",
+            "    <% if #{reader} && #{reader}.blob.variable? %>",
             "      <%= image_tag #{thumb}#{arg_css(:thumb)} %>",
+            "    <% elsif #{reader} %>",
+            "      <span#{css_attr(:muted_inline)}><%= #{reader}.blob.filename %> (<%= #{size} %>)</span>",
             "    <% end %>",
             "    <%# direct_upload: ActiveStorage.start()'s form machinery uploads on",
             "        submit and swaps in the signed id. %>",
             "    <%= #{field} %>",
             "  </div>",
-            "  <% if #{record}.#{attachment_reader} %>",
+            "  <% if #{reader} %>",
             "    <%= form.label :#{remove_attr}#{arg_css(:label)} do %>",
             "      <%= form.checkbox :#{remove_attr}#{arg_css(:checkbox_sm)} %>",
             "      Remove #{attachment_human.downcase}",
@@ -257,27 +283,31 @@ module Hibiki
           insert_into_file page_form_view, "      #{upload_partial}_fields(form)\n",
                            after: PHLEX_PAGE_FIELDS_CALL
           insert_into_file page_form_view, "\n#{phlex_page_method}", before: FILE_END
-          inject_image_tag_include(page_form_view, :form)
+          inject_helper_includes(page_form_view, :form, "ImageTag", "NumberToHumanSize")
         end
 
         def phlex_page_method
-          record = "@#{singular_name}"
-          thumb = "#{record}.#{attachment_reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
-          field = "form.file_field :#{attachment_name}, accept: \"image/*\", " \
+          reader = attachment_reader
+          thumb = "#{reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
+          label = "\"\#{#{reader}.blob.filename} (\#{number_to_human_size(#{reader}.blob.byte_size)})\""
+          field = "form.file_field :#{attachment_name}, accept: \"#{accept_attr}\", " \
                   "direct_upload: true#{arg_css(:file_input)}"
           [
             "  # The classic #{attachment_name} path: a NAMED field with direct_upload —",
             "  # ActiveStorage.start()'s form machinery uploads on submit and swaps in",
             "  # the signed id.",
             "  def #{upload_partial}_fields(form)",
+            "    #{reader} = @#{singular_name}.#{reader}",
             "    form.label :#{attachment_name}#{arg_css(:label)}",
             "    div#{arg_list(*css_args(:upload_row))} do",
-            "      if #{record}.#{attachment_reader}",
+            "      if #{reader} && #{reader}.blob.variable?",
             "        image_tag #{thumb}#{arg_css(:thumb)}",
+            "      elsif #{reader}",
+            "        span#{arg_list(*css_args(:muted_inline))} { #{label} }",
             "      end",
             "      #{field}",
             "    end",
-            "    if #{record}.#{attachment_reader}",
+            "    if #{reader}",
             "      form.label :#{remove_attr}#{arg_css(:label)} do",
             "        form.checkbox :#{remove_attr}#{arg_css(:checkbox_sm)}",
             "        whitespace",

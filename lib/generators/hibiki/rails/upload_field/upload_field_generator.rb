@@ -46,12 +46,16 @@ module Hibiki
                            desc: "Markup variant for the generated view (default: detect)"
         class_option :phlex, type: :boolean,
                              desc: "Emit a Phlex component (default: detect from the scaffold)"
+        class_option :accept, type: :string,
+                              desc: "Comma-separated file types the inputs accept: image (default), " \
+                                    "audio, video, pdf, csv, text, doc, xls, ppt, a type/subtype, or an .ext"
 
         # Everything that can refuse, before anything is written.
         def preflight
           owner_class
           check_scaffolded!
           check_attachment!
+          accept_attr
           @concerns_dir_new = !exists?("app/channels/concerns")
         end
 
@@ -122,7 +126,7 @@ module Hibiki
             say_status :migrate, "no Active Storage tables — run bin/rails active_storage:install " \
                                  "and bin/rails db:migrate before uploading.", :yellow
           end
-          unless wired?("Gemfile", /^\s*gem ["']image_processing/)
+          if image_accepted? && !wired?("Gemfile", /^\s*gem ["']image_processing/)
             say_status :gem, "thumbnails need image_processing — uncomment it in the Gemfile " \
                              "and bundle install.", :yellow
           end

@@ -7,7 +7,7 @@
 # the input direct-uploads on change and hands the signed id to <%= set_action %>;
 # the badges are the graph echoing that state back.
 class <%= component_class_name %> < Views::Base
-<%= phlex_includes(:image_tag, :label_tag, hibiki: true) %>
+<%= phlex_includes(:image_tag, :label_tag, :number_to_human_size, hibiki: true) %>
 
   def initialize(form:, dom:, extras: {})
     @form = form
@@ -21,11 +21,16 @@ class <%= component_class_name %> < Views::Base
 
     label_tag "#{@dom}_<%= attachment_name %>", "<%= attachment_human %>"<%= arg_css(:label) %>
     div<%= arg_list(*css_args(:upload_row)) %> do
+      # variable? — an image gets a thumbnail, anything else its filename.
       if attachment && !pending&.dig(:remove)
-        image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %>
+        if attachment.blob.variable?
+          image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %>
+        else
+          span<%= arg_list(*css_args(:muted_inline)) %> { "#{attachment.blob.filename} (#{number_to_human_size(attachment.blob.byte_size)})" }
+        end
       end
       input(
-        type: "file", accept: "image/*", id: "#{@dom}_<%= attachment_name %>",
+        type: "file", accept: "<%= accept_attr %>", id: "#{@dom}_<%= attachment_name %>",
 <% if css? -%>
         class: "<%= css(:file_input_sm) %>",
 <% end -%>

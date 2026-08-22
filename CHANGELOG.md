@@ -24,6 +24,19 @@ join the permitted params, and one shared
 parameterized by Stimulus values, so a second attachment reuses it. One
 attachment per run; `has_one_attached` only.
 
+**`--accept` — non-image formats.** `--accept=pdf,doc` narrows both file
+inputs (image by default; tokens `image`, `audio`, `video`, `pdf`, `csv`,
+`text`, `doc`, `xls`, `ppt`, plus any raw `type/subtype` or `.ext` passed
+through; an unknown token refuses before anything is written). Every display
+site — the inline form, the classic form, and the row on the index and show
+page — branches per blob at render time on `variable?`: an image gets its
+variant thumbnail, anything else its filename and size, with a
+`rails_blob_path` link on the row. That is one template for every accept
+list, so mixed lists work and a wrong-typed file past the advisory `accept`
+no longer breaks the index at `variant`. The image_processing notice fires
+only when an image type is accepted. The accept list stays advisory — the
+app owns any server-side content-type validation.
+
 The packaged client did not change — the emitted Stimulus controller imports
 `@rails/activestorage` from the app's own dependencies.
 
