@@ -60,6 +60,8 @@ module Hibiki
         # Two independently guarded pieces, so a model that hand-declares the
         # attachment still gains the remove machinery.
         def model_attachment_lines
+          return model_gallery_lines if many?
+
           lines = []
           unless wired?(model_path, /^\s*has_one_attached :#{attachment_name}\b/)
             lines << "has_one_attached :#{attachment_name}"
@@ -71,6 +73,27 @@ module Hibiki
             lines << "attribute :#{remove_attr}, :boolean, default: false"
             lines << "after_save(if: -> { #{remove_attr} && " \
                      "attachment_changes[\"#{attachment_name}\"].nil? }) { #{attachment_name}.purge }"
+          end
+          lines
+        end
+
+        # The classic form's two virtuals. before_save for the attach: there
+        # the record is still dirty, so attach doesn't recurse into save;
+        # attach APPENDS where the writer would replace the collection.
+        def model_gallery_lines
+          lines = []
+          unless wired?(model_path, /^\s*has_many_attached :#{attachment_name}\b/)
+            lines << "has_many_attached :#{attachment_name}"
+          end
+          unless wired?(model_path, /attribute :#{add_attr}\b/)
+            lines << "# The classic form's #{attachment_name}: new files APPEND (assigning " \
+                     "#{attachment_name}= would"
+            lines << "# replace the collection) and checked ids purge — both virtual."
+            lines << "attribute :#{add_attr}"
+            lines << "attribute :#{remove_ids_attr}, default: -> { [] }"
+            lines << "before_save(if: -> { #{add_attr}.present? }) { #{attachment_name}.attach(*#{add_attr}) }"
+            lines << "after_save(if: -> { #{remove_ids_attr}.present? }) " \
+                     "{ #{attachment_reader}.where(id: #{remove_ids_attr}).each(&:purge) }"
           end
           lines
         end
@@ -161,6 +184,8 @@ module Hibiki
         # filename — decided per blob, so mixed accept lists and wrong-typed
         # files both render.
         def partial_display_snippet
+          return partial_gallery_snippet if many?
+
           reader = attachment_reader
           <<~ERB.indent(4)
             <div>
@@ -180,6 +205,34 @@ module Hibiki
           ERB
         end
 
+        # The gallery: the same per-blob branch, once per attachment.
+        def partial_gallery_snippet
+          reader = attachment_reader
+          <<~ERB.indent(4)
+            <div>
+              <strong>#{attachment_human}:</strong>
+              <%# #{reader}, never the #{attachment_name} proxy: channel rows are
+                  frozen and the proxy memoizes into an ivar (FrozenError). %>
+              <% #{reader} = #{singular_name}.#{reader} %>
+              <% if #{reader}.empty? %>
+                —
+              <% end %>
+              <div#{css_attr(:upload_row)}>
+                <% #{reader}.each do |attachment| %>
+                  <span#{css_attr(:gallery_item)}>
+                    <% if attachment.blob.variable? %>
+                      <%= image_tag attachment.blob.variant(resize_to_limit: [ 80, 80 ])#{arg_css(:thumb)} %>
+                    <% else %>
+                      <%= link_to attachment.blob.filename, rails_blob_path(attachment)#{arg_css(:file_link)} %>
+                      <span#{css_attr(:muted_inline)}>(<%= number_to_human_size(attachment.blob.byte_size) %>)</span>
+                    <% end %>
+                  </span>
+                <% end %>
+              </div>
+            </div>
+          ERB
+        end
+
         def inject_component_display
           path = view_path("row.rb")
           return if wired?(path, /\.#{attachment_reader}\b/)
@@ -189,6 +242,8 @@ module Hibiki
         end
 
         def component_display_snippet
+          return component_gallery_snippet if many?
+
           reader = attachment_reader
           <<~RUBY.indent(4)
             div do
@@ -205,6 +260,33 @@ module Hibiki
                 link_to#{arg_list("#{reader}.blob.filename", "rails_blob_path(#{reader})", *css_args(:file_link))}
                 whitespace
                 span#{arg_list(*css_args(:muted_inline))} { "(\#{number_to_human_size(#{reader}.blob.byte_size)})" }
+              end
+            end
+          RUBY
+        end
+
+        def component_gallery_snippet
+          reader = attachment_reader
+          <<~RUBY.indent(4)
+            div do
+              strong { "#{attachment_human}:" }
+              whitespace
+              # #{reader}, never the #{attachment_name} proxy: channel rows are
+              # frozen and the proxy memoizes into an ivar (FrozenError).
+              #{reader} = @#{singular_name}.#{reader}
+              plain "—" if #{reader}.empty?
+              div#{arg_list(*css_args(:upload_row))} do
+                #{reader}.each do |attachment|
+                  span#{arg_list(*css_args(:gallery_item))} do
+                    if attachment.blob.variable?
+                      image_tag#{arg_list('attachment.blob.variant(resize_to_limit: [ 80, 80 ])', *css_args(:thumb))}
+                    else
+                      link_to#{arg_list('attachment.blob.filename', 'rails_blob_path(attachment)', *css_args(:file_link))}
+                      whitespace
+                      span#{arg_list(*css_args(:muted_inline))} { "(\#{number_to_human_size(attachment.blob.byte_size)})" }
+                    end
+                  end
+                end
               end
             end
           RUBY
@@ -235,7 +317,7 @@ module Hibiki
         # the signed id, and the params pass it straight to the writer.
 
         def inject_page_form
-          return if wired?(page_form_view, /file_field[ (]:#{attachment_name}\b/)
+          return if wired?(page_form_view, /file_field[ (]:#{many? ? add_attr : attachment_name}\b/)
 
           phlex? ? inject_page_form_phlex : inject_page_form_erb
         end
@@ -247,6 +329,8 @@ module Hibiki
         end
 
         def erb_page_snippet
+          return erb_gallery_snippet if many?
+
           reader = attachment_reader
           thumb = "#{reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
           size = "number_to_human_size(#{reader}.blob.byte_size)"
@@ -275,6 +359,41 @@ module Hibiki
           ].join("\n")
         end
 
+        # The gallery's classic path: a remove checkbox per attached file
+        # (multiple, no hidden "" — remove_<x>_ids stays an id list) and one
+        # `multiple` direct-upload field that APPENDS through add_<name>.
+        def erb_gallery_snippet
+          reader = attachment_reader
+          size = "number_to_human_size(attachment.blob.byte_size)"
+          checkbox = "form.checkbox :#{remove_ids_attr}, { multiple: true, include_hidden: false" \
+                     "#{arg_css(:checkbox_sm)} }, attachment.id, nil"
+          field = "form.file_field :#{add_attr}, multiple: true, accept: \"#{accept_attr}\", " \
+                  "direct_upload: true#{arg_css(:file_input)}"
+          [
+            "  <%= form.label :#{add_attr}, \"#{attachment_human}\"#{arg_css(:label)} %>",
+            "  <% #{reader} = #{singular_name}.#{reader} %>",
+            "  <div#{css_attr(:upload_row)}>",
+            "    <% #{reader}.each do |attachment| %>",
+            "      <span#{css_attr(:gallery_item)}>",
+            "        <% if attachment.blob.variable? %>",
+            "          <%= image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])#{arg_css(:thumb)} %>",
+            "        <% else %>",
+            "          <span#{css_attr(:muted_inline)}><%= attachment.blob.filename %> (<%= #{size} %>)</span>",
+            "        <% end %>",
+            "        <%= form.label :#{remove_ids_attr}, value: attachment.id#{arg_css(:label)} do %>",
+            "          <%= #{checkbox} %>",
+            "          Remove",
+            "        <% end %>",
+            "      </span>",
+            "    <% end %>",
+            "    <%# direct_upload: ActiveStorage.start()'s form machinery uploads on",
+            "        submit and swaps in the signed ids; the model's #{add_attr} appends them. %>",
+            "    <%= #{field} %>",
+            "  </div>",
+            ""
+          ].join("\n")
+        end
+
         def inject_page_form_phlex
           unless wired?(page_form_view, PHLEX_PAGE_FIELDS_CALL) && wired?(page_form_view, FILE_END)
             return manual_wiring(page_form_view, phlex_page_method)
@@ -287,6 +406,8 @@ module Hibiki
         end
 
         def phlex_page_method
+          return phlex_gallery_method if many?
+
           reader = attachment_reader
           thumb = "#{reader}.blob.variant(resize_to_limit: [ 48, 48 ])"
           label = "\"\#{#{reader}.blob.filename} (\#{number_to_human_size(#{reader}.blob.byte_size)})\""
@@ -319,16 +440,53 @@ module Hibiki
           ].join("\n")
         end
 
+        def phlex_gallery_method
+          reader = attachment_reader
+          label = "\"\#{attachment.blob.filename} (\#{number_to_human_size(attachment.blob.byte_size)})\""
+          checkbox = "form.checkbox :#{remove_ids_attr}, { multiple: true, include_hidden: false" \
+                     "#{arg_css(:checkbox_sm)} }, attachment.id, nil"
+          field = "form.file_field :#{add_attr}, multiple: true, accept: \"#{accept_attr}\", " \
+                  "direct_upload: true#{arg_css(:file_input)}"
+          [
+            "  # The classic #{attachment_name} path: a remove checkbox per attached file and",
+            "  # one `multiple` direct-upload field — ActiveStorage.start()'s form machinery",
+            "  # swaps in the signed ids and the model's #{add_attr} APPENDS them.",
+            "  def #{upload_partial}_fields(form)",
+            "    #{reader} = @#{singular_name}.#{reader}",
+            "    form.label :#{add_attr}, \"#{attachment_human}\"#{arg_css(:label)}",
+            "    div#{arg_list(*css_args(:upload_row))} do",
+            "      #{reader}.each do |attachment|",
+            "        span#{arg_list(*css_args(:gallery_item))} do",
+            "          if attachment.blob.variable?",
+            "            image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])#{arg_css(:thumb)}",
+            "          else",
+            "            span#{arg_list(*css_args(:muted_inline))} { #{label} }",
+            "          end",
+            "          form.label :#{remove_ids_attr}, value: attachment.id#{arg_css(:label)} do",
+            "            #{checkbox}",
+            "            whitespace",
+            "            plain \"Remove\"",
+            "          end",
+            "        end",
+            "      end",
+            "      #{field}",
+            "    end",
+            "  end",
+            ""
+          ].join("\n")
+        end
+
         # ---- the controller --------------------------------------------------
 
-        # A scalar append — :cover, not cover: [] (that would be
-        # has_many_attached). The lazy /m middle rides past a nested
-        # *_attributes group another generator already added.
+        # A scalar append — :cover, not cover: [] — or, for a gallery, the two
+        # arrays as a BRACED group (nested's shape: a bare trailing hash would
+        # make a later scalar append a syntax error). The lazy /m middle rides
+        # past a nested *_attributes group another generator already added.
         def inject_permitted_params
           path = scaffold_controller_path
-          return if wired?(path, /:#{remove_attr}\b/)
+          return if wired?(path, many? ? /\b#{remove_ids_attr}:/ : /:#{remove_attr}\b/)
 
-          addition = ":#{attachment_name}, :#{remove_attr}"
+          addition = many? ? "{ #{add_attr}: [], #{remove_ids_attr}: [] }" : ":#{attachment_name}, :#{remove_attr}"
           anchor = /(params\.expect\(#{singular_table_name}: \[.*?)(\s*\]\))/m
           return manual_wiring(path, addition) unless wired?(path, anchor)
 

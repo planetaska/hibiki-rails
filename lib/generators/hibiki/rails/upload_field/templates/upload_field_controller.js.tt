@@ -1,4 +1,4 @@
-// Direct-uploads the chosen file the moment it's picked, then hands ONLY the
+// Direct-uploads each chosen file the moment it's picked, then hands ONLY the
 // signed blob id to the island's graph, via the action and dom the view
 // stamped on the input — one controller serves every upload field. A falsy
 // performOn return means the island is offline and nothing was queued, so
@@ -10,20 +10,32 @@ import { performOn } from "hibiki-rails"
 export default class extends Controller {
   static values = { url: String, action: String, dom: String }
 
-  upload() {
-    const file = this.element.files[0]
-    if (!file) return
+  // One file after another, so a gallery's pending list keeps the pick order.
+  async upload() {
+    const files = Array.from(this.element.files)
+    if (!files.length) return
 
-    new DirectUpload(file, this.urlValue).create((error, blob) => {
-      if (error) {
-        console.error("upload failed:", error)
+    for (const file of files) {
+      const blob = await this.directUpload(file)
+      const accepted = blob && performOn(this.element, this.actionValue, {
+        dom: this.domValue, signed_id: blob.signed_id, filename: file.name
+      })
+      if (!accepted) {
         this.element.value = ""
         return
       }
-      const accepted = performOn(this.element, this.actionValue, {
-        dom: this.domValue, signed_id: blob.signed_id, filename: file.name
+    }
+    // A gallery input is cleared once its pick is queued, so the next pick
+    // appends; a single-file input keeps showing its choice.
+    if (this.element.multiple) this.element.value = ""
+  }
+
+  directUpload(file) {
+    return new Promise(resolve => {
+      new DirectUpload(file, this.urlValue).create((error, blob) => {
+        if (error) console.error("upload failed:", error)
+        resolve(error ? null : blob)
       })
-      if (!accepted) this.element.value = ""
     })
   }
 }

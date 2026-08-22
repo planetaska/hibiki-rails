@@ -12,6 +12,9 @@ module Hibiki
       # helpers would override each other with bodies reading different ivars.
       module UploadFieldHelpers
         JS_CONTROLLER = "app/javascript/controllers/upload_field_controller.js"
+        JS_TEMPLATE = "upload_field_controller.js.tt"
+        # What a v1 (one file per pick) copy of the controller lacks.
+        JS_MANY_MARKER = "for (const file of"
 
         # The --accept tokens, css_variant-style: validated against this map,
         # with a raw type/subtype or .ext passing through untouched. Office
@@ -52,21 +55,49 @@ module Hibiki
         # arrive through the picker at all.
         def image_accepted? = accept_attr.split(",").any? { it.start_with?("image/") }
 
+        # ---- --many ----------------------------------------------------------
+
+        # Many-mode: explicit --many, or a has_many_attached the model already
+        # declares — read from the reflection AND the model file, because
+        # Active Storage may not be loaded where the generator runs.
+        def many?
+          return @many if defined?(@many)
+
+          @many = options[:many] || many_reflection? || declared?(:has_many_attached)
+        end
+
+        def auto_many? = many? && !options[:many]
+
+        def declared?(macro) = wired?(model_path, /^\s*#{macro} :#{attachment_name}\b/)
+
         # ---- the attachment --------------------------------------------------
 
         def attachment_name = @attachment_name ||= attachment.underscore
         def attachment_human = attachment_name.humanize
 
         # The reader that is safe on a frozen row — the bare proxy memoizes
-        # into an ivar and raises FrozenError there.
-        def attachment_reader = "#{attachment_name}_attachment"
+        # into an ivar and raises FrozenError there. Many-mode reads the
+        # has_many association (with_attached_* preloads it).
+        def attachment_reader
+          many? ? "#{attachment_name}_attachments" : "#{attachment_name}_attachment"
+        end
+
         def with_attached = "with_attached_#{attachment_name}"
 
         def set_action = "set_#{attachment_name}"
+        def add_action = "add_#{attachment_name}"
+        # What the inline input fires per picked file.
+        def upload_action = many? ? add_action : set_action
         def remove_action = "remove_#{attachment_name}"
         # Also the model's virtual attribute — one name, two independent
         # mechanisms (channel action / classic checkbox), like the prototype.
         def remove_attr = "remove_#{attachment_name}"
+        # Many-mode's classic-form virtuals: new files append through one,
+        # checked ids purge through the other — the collection is never
+        # assigned, which since Rails 7.1 would replace it.
+        def add_attr = "add_#{attachment_name}"
+        def remove_ids_attr = "remove_#{attachment_name.singularize}_ids"
+        def virtual_attrs = many? ? [add_attr, remove_ids_attr] : [remove_attr]
 
         def extras_key = "#{attachment_name}_upload"
 
@@ -121,39 +152,48 @@ module Hibiki
                   "#{class_name} already has a #{attachment_name} column — " \
                   "an attachment cannot share its name."
           end
-          return unless owner_class.columns_hash.key?(remove_attr)
+          taken = virtual_attrs.find { owner_class.columns_hash.key?(it) }
+          return unless taken
 
           raise ::Rails::Generators::Error,
-                "#{class_name} has a #{remove_attr} column, which the remove " \
-                "checkbox needs for its virtual attribute."
+                "#{class_name} has a #{taken} column, which the classic form " \
+                "needs for its virtual attribute."
         end
 
-        # A same-name has_one_attached does NOT refuse — that is the re-run
-        # (or hand-declared) case, and every injection is wired?-guarded.
+        # A same-name attachment of the SAME kind does NOT refuse — that is the
+        # re-run (or hand-declared) case, and every injection is wired?-guarded;
+        # an existing has_many_attached selects many-mode by itself.
         def check_reflection_collisions!
           if owner_class.reflect_on_association(attachment_name.to_sym)
             raise ::Rails::Generators::Error,
                   "#{class_name}##{attachment_name} is already an association."
           end
-          return unless many_attached?
+          return unless options[:many] && (one_reflection? || declared?(:has_one_attached))
 
           raise ::Rails::Generators::Error,
-                "#{class_name}##{attachment_name} is has_many_attached — " \
-                "hibiki:rails:upload_field only supports has_one_attached."
+                "#{class_name}##{attachment_name} is has_one_attached — run without --many."
         end
 
         # respond_to? guarded: Active Storage may not be loaded where the
         # generator runs (the spec dummy loads ActiveRecord alone).
-        def many_attached?
-          return false unless owner_class.respond_to?(:attachment_reflections)
+        def attachment_macro
+          return unless owner_class.respond_to?(:attachment_reflections)
 
-          owner_class.attachment_reflections[attachment_name]&.macro == :has_many_attached
+          owner_class.attachment_reflections[attachment_name]&.macro
         end
+
+        def many_reflection? = attachment_macro == :has_many_attached
+        def one_reflection? = attachment_macro == :has_one_attached
 
         # ---- the emitted names -----------------------------------------------
 
         def concern_name = "#{attachment_name.camelize}Upload"
         def concern_module_name = "#{collection_channel_class_name}::#{concern_name}"
+
+        # Separate many-mode templates, so single-mode output never moves.
+        def concern_template = many? ? "concern_many.rb.tt" : "concern.rb.tt"
+        def partial_template = many? ? "_upload_many.html.erb.tt" : "_upload.html.erb.tt"
+        def component_template = many? ? "upload_many_component.rb.tt" : "upload_component.rb.tt"
 
         def concern_path
           File.join("app/channels/concerns", "#{controller_file_path}_channel",

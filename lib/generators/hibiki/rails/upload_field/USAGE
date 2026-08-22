@@ -22,6 +22,15 @@ Description:
     its filename and size — decided per blob at render time, so mixed
     lists work and a wrong-typed file never breaks the page.
 
+    --many generates a has_many_attached gallery instead (implied when the
+    model already declares one): the inline input takes several files, each
+    attached file gets a graph-owned ✕ mark (toggle; purged on save) and
+    each pending file its own badge. The classic form appends through a
+    `multiple` field and purges checked remove_<singular>_ids — both
+    virtual attributes on the model, so the collection is never assigned
+    (which would replace it). --many against an existing has_one_attached
+    refuses.
+
     Prerequisites (warned about, never installed): the Active Storage
     tables, the image_processing gem for thumbnails (when images are
     accepted), and ActiveStorage.start() in the JS entrypoint for the
@@ -31,5 +40,7 @@ Examples:
     bin/rails g hibiki:rails:upload_field Album cover
 
     bin/rails g hibiki:rails:upload_field Report document --accept=pdf,doc
+
+    bin/rails g hibiki:rails:upload_field Album photos --many
 
     bin/rails g hibiki:rails:upload_field Album cover --css=tailwind --phlex

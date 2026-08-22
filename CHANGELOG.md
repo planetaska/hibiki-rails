@@ -37,6 +37,27 @@ no longer breaks the index at `variant`. The image_processing notice fires
 only when an image type is accepted. The accept list stays advisory — the
 app owns any server-side content-type validation.
 
+**`--many` — `has_many_attached` galleries.** `bin/rails g
+hibiki:rails:upload_field Album photos --many` (implied when the model
+already declares `has_many_attached :photos`; `--many` against an existing
+`has_one_attached` refuses) generates the gallery shape on both surfaces.
+The inline form's input takes several files — the shared
+`upload_field_controller.js` now uploads one file after another, so a
+gallery's pending list keeps the pick order; a single-file input behaves
+as before, and a many-mode run refreshes a copy from before the loop. Each
+attached file carries a graph-owned ✕ (toggle: ✕ marks, Undo unmarks) and
+each pending file its own badge with a ✕ to drop it; the pending state per
+form dom is `{ adds:, removes: }`, applied after a successful commit by
+APPENDING through `attach` and purging the marked ids — the collection is
+never assigned, which since Rails 7.1 replaces it. The classic form gets
+the same append/remove split as two virtual model attributes,
+`add_photos` (a `multiple` direct-upload field, attached in `before_save`)
+and `remove_photo_ids` (a checkbox per attached file, purged in
+`after_save`), riding `params.expect` as a braced group. The row and show
+page render the gallery with the same per-blob thumbnail-or-filename
+branch, so `--many --accept=pdf` is a document list. Two css tokens
+(`gallery_item`, `upload_status_list`).
+
 The packaged client did not change — the emitted Stimulus controller imports
 `@rails/activestorage` from the app's own dependencies.
 

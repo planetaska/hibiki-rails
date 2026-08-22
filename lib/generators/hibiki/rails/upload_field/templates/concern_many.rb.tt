@@ -1,0 +1,160 @@
+<%# GENERATION-time ERB only — this template emits plain Ruby. -%>
+# The <%= attachment_name %> gallery for <%= collection_channel_class_name %>.
+#
+# The graph owns the pending changes, keyed by the owning form's dom
+# ("<%= row_dom_id_prefix %>_5" / "<%= row_dom_id_prefix %>_new"), so they survive morph repaints and the
+# edit row and the inline create form stay independent. The record is only
+# touched at commit time, inside the save/create hooks: new files are
+# APPENDED and marked attachments purged — the collection is never assigned.
+#
+# NOTE: every PUBLIC method here becomes a client-invocable channel action.
+module <%= concern_module_name %>
+  extend ActiveSupport::Concern
+
+  included { prepend GraphHooks }
+
+  # Wraps the channel's own lifecycle with super rather than replacing it,
+  # so the `include` line is the only edit the channel needs.
+  module GraphHooks
+    def build_graph
+      super
+
+      # { "dom" => { adds: [{ signed_id:, filename: }], removes: [attachment_id] } }
+      # — written whole (merge/except) so the signal fires on every change.
+      @pending_<%= attachment_name %> = Hibiki::State.new({})
+    end
+
+    # A fresh edit starts with no pending changes. The id check keeps a
+    # failed find from clearing the form that is actually open.
+    def edit(data)
+      super
+      id = @editing_id.peek
+      update_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_#{id}", nil) if id && id.to_s == data["id"].to_s
+    end
+
+    def cancel(data)
+      id = @editing_id.peek
+      super
+      update_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_#{id}", nil) if id
+    end
+
+    # Attach and purge only after a successful commit — super clears
+    # @editing_id exactly then.
+    def save(data)
+      id = @editing_id.peek
+      super
+      return unless id && @editing_id.peek.nil?
+
+      apply_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_#{id}", <%= class_name %>.find_by(id: id))
+    end
+
+    # `super if defined?` — on a scaffold without inline create there is
+    # nothing to wrap and these hooks are inert.
+    def new_form(data)
+      super if defined?(super)
+      update_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_new", nil)
+    end
+
+    def cancel_new(data)
+      super if defined?(super)
+      update_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_new", nil)
+    end
+
+    def create(data)
+      creating = @creating&.peek
+      super if defined?(super)
+      return unless creating && !@creating.peek
+
+      record = @new_form.record
+      apply_pending_<%= attachment_name %>("<%= row_dom_id_prefix %>_new", record && <%= class_name %>.find_by(id: record.id))
+    end
+
+    def list_locals
+      locals = super
+      return locals unless locals[:editing_id] || locals[:creating]
+
+      extras = locals.fetch(:extras, {})
+      locals.merge(extras: extras.merge(<%= extras_key %>: @pending_<%= attachment_name %>.value))
+    end
+  end
+
+  # Fired by upload_field_controller.js once each direct upload finishes —
+  # only the signed blob id crosses the wire, the file went straight to
+  # storage. Appends to the form's pending adds; the graph echoing them back
+  # is what keeps the badges alive.
+  def <%= add_action %>(data)
+    dom = data["dom"].to_s
+    return unless <%= attachment_name %>_upload_form(dom)
+
+    signed_id = data["signed_id"].to_s
+    pending = pending_<%= attachment_name %>_for(dom)
+    return if signed_id.empty? || pending[:adds].any? { it[:signed_id] == signed_id }
+
+    adds = pending[:adds] + [ { signed_id: signed_id, filename: data["filename"].to_s } ]
+    update_pending_<%= attachment_name %>(dom, pending.merge(adds: adds))
+  end
+
+  # The ✕ buttons: a signed_id drops a pending add; an attachment_id toggles
+  # a removal mark on an attached file, purged at save. Marks live in the
+  # graph, so a repaint never loses them.
+  def <%= remove_action %>(data)
+    dom = data["dom"].to_s
+    form = <%= attachment_name %>_upload_form(dom)
+    return unless form
+
+    pending = pending_<%= attachment_name %>_for(dom)
+    if (signed_id = data["signed_id"].presence)
+      pending = pending.merge(adds: pending[:adds].reject { it[:signed_id] == signed_id.to_s })
+    elsif (id = data["attachment_id"].to_i).positive? && <%= attachment_name %>_attachment_ids(form).include?(id)
+      removes = pending[:removes]
+      pending = pending.merge(removes: removes.include?(id) ? removes - [ id ] : removes + [ id ])
+    end
+    update_pending_<%= attachment_name %>(dom, pending)
+  end
+
+  private
+
+  # Which open form the dom names; nil drops the write.
+  def <%= attachment_name %>_upload_form(dom)
+    if dom == "<%= row_dom_id_prefix %>_new"
+      @new_form if @creating&.peek
+    elsif (id = @editing_id.peek) && dom == "<%= row_dom_id_prefix %>_#{id}"
+      @form
+    end
+  end
+
+  def pending_<%= attachment_name %>_for(dom)
+    @pending_<%= attachment_name %>.peek.fetch(dom, { adds: [], removes: [] })
+  end
+
+  # nil or an empty change set clears the dom's entry, so the badges hide.
+  def update_pending_<%= attachment_name %>(dom, value)
+    value = nil if value && value[:adds].empty? && value[:removes].empty?
+    pending = @pending_<%= attachment_name %>.peek
+    @pending_<%= attachment_name %>.value = value ? pending.merge(dom => value) : pending.except(dom)
+  end
+
+  # The attachment ids the form's record actually carries, freshly read — a
+  # mark on anything else is dropped.
+  def <%= attachment_name %>_attachment_ids(form)
+    record = form.record
+    return [] unless record&.persisted?
+
+    <%= class_name %>.find_by(id: record.id)&.<%= attachment_reader %>&.pluck(:id) || []
+  end
+
+  # attach accepts the direct uploads' signed blob ids as-is and APPENDS —
+  # assigning <%= attachment_name %>= would replace the collection. Pending is
+  # cleared even when the record vanished — the form it belonged to closed.
+  def apply_pending_<%= attachment_name %>(dom, record)
+    pending = @pending_<%= attachment_name %>.peek[dom]
+    return unless pending
+
+    update_pending_<%= attachment_name %>(dom, nil)
+    return unless record
+
+    record.<%= attachment_name %>.attach(*pending[:adds].map { it[:signed_id] }) if pending[:adds].any?
+    record.<%= attachment_reader %>.where(id: pending[:removes]).each(&:purge) if pending[:removes].any?
+    invalidate
+  end
+end

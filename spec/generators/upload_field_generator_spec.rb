@@ -256,7 +256,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       expect(component).to include("if attachment.blob.variable?")
       expect(component).to include(%(div(class: "flex flex-wrap items-center gap-3") do))
       expect(component).to include(%(      div(class: "w-full") do\n        if pending&.dig(:remove)))
-      expect(component).to include(%({ "#{pending[:filename].truncate(12)} — attaches on save" }))
+      expect(component).to include(%({ "\#{pending[:filename].truncate(12)} — attaches on save" }))
       expect(component.index("**on(:remove_photo")).to be < component.index("attaches on save")
       row = generated("app/views/items/row.rb")
       expect(row).to include("photo_attachment = @item.photo_attachment")
@@ -332,6 +332,246 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
     end
   end
 
+  describe "--many" do
+    def js_controller = "app/javascript/controllers/upload_field_controller.js"
+
+    def seed_many_model
+      write("app/models/item.rb", <<~RUBY)
+        class Item < ApplicationRecord
+          belongs_to :shelf
+          has_many_attached :photos
+        end
+      RUBY
+    end
+
+    describe "on an ERB scaffold" do
+      before do
+        scaffold
+        seed_model
+        @output = generate(%w[Item photos --many --css=daisyui])
+      end
+
+      it "emits the gallery concern — adds and marks per dom, append + purge at commit" do
+        concern = generated("app/channels/concerns/items_channel/photos_upload.rb")
+
+        expect(concern).to include("module ItemsChannel::PhotosUpload")
+        expect(concern).to include("included { prepend GraphHooks }")
+        expect(concern).to include("@pending_photos = Hibiki::State.new({})")
+        expect(concern).to include("def add_photos(data)")
+        expect(concern).to include("def remove_photos(data)")
+        expect(concern).not_to include("def set_photos")
+        # ✕ routes on the payload: a signed_id drops a pending add, an
+        # attachment_id toggles a mark — on ids the record actually carries.
+        expect(concern).to include('if (signed_id = data["signed_id"].presence)')
+        expect(concern).to include('elsif (id = data["attachment_id"].to_i).positive? && ' \
+                                   "photos_attachment_ids(form).include?(id)")
+        expect(concern).to include("removes.include?(id) ? removes - [ id ] : removes + [ id ]")
+        expect(concern).to include("def pending_photos_for(dom)")
+        expect(concern).to include("def update_pending_photos(dom, value)")
+        expect(concern).to include("def apply_pending_photos(dom, record)")
+        # Append, never assign; purge only the marked ids.
+        expect(concern).to include("record.photos.attach(*pending[:adds].map { it[:signed_id] }) " \
+                                   "if pending[:adds].any?")
+        expect(concern).to include("record.photos_attachments.where(id: pending[:removes]).each(&:purge) " \
+                                   "if pending[:removes].any?")
+        expect(concern).not_to match(/\.photos = /)
+        expect(concern.scan(/^\s*(?:locals = )?super$/).size).to eq(5)
+        expect(concern.scan("super if defined?(super)").size).to eq(3)
+      end
+
+      it "injects has_many_attached and the append/purge virtuals into the model" do
+        model = generated("app/models/item.rb")
+
+        expect(model).to include("has_many_attached :photos")
+        expect(model).not_to include("has_one_attached")
+        expect(model).to include("attribute :add_photos")
+        expect(model).to include("attribute :remove_photo_ids, default: -> { [] }")
+        # before_save: the record is still dirty there, so attach never
+        # recurses into save — and attach appends where photos= replaces.
+        expect(model).to include("before_save(if: -> { add_photos.present? }) { photos.attach(*add_photos) }")
+        expect(model).to include("after_save(if: -> { remove_photo_ids.present? }) " \
+                                 "{ photos_attachments.where(id: remove_photo_ids).each(&:purge) }")
+      end
+
+      it "emits the gallery partial: a multiple input, ✕ per file, per-file pending badges" do
+        partial = generated("app/views/items/_photos_upload.html.erb")
+
+        expect(partial).to include("<%# locals: (form:, dom:, extras: {}) -%>")
+        expect(partial).to include("extras.fetch(:photos_upload, {})[dom] || { adds: [], removes: [] }")
+        expect(partial).to include("form.record&.photos_attachments || []")
+        expect(partial).to include(%(tag.input type: "file", multiple: true, accept: "image/*"))
+        expect(partial).not_to include("file_field_tag")
+        expect(partial).to include(%(upload_field_action_value: "add_photos"))
+        expect(partial).to include("**on(:remove_photos, with: { dom: dom, attachment_id: attachment.id })")
+        expect(partial).to include("**on(:remove_photos, with: { dom: dom, signed_id: add[:signed_id] })")
+        expect(partial).to include("<% if pending[:removes].include?(attachment.id) %>")
+        expect(partial).to include("removed on save")
+        expect(partial).to include("<%= add[:filename].truncate(12) %> — attaches on save")
+        expect(partial).to include("<% if attachment.blob.variable? %>")
+        # The row wraps; the pending list is its own full-width line after
+        # the input.
+        expect(partial).to include(%(<div class="flex flex-wrap items-center gap-3">))
+        expect(partial).to include(%(<div class="w-full flex flex-wrap gap-2">))
+        expect(partial.index("change->upload-field#upload")).to be < partial.index("attaches on save")
+      end
+
+      it "renders the partial from the row form and a gallery on the row" do
+        row_form = generated("app/views/items/_item_form.html.erb")
+        row = generated("app/views/items/_item.html.erb")
+
+        expect(row_form.scan(%(<%= render "items/photos_upload", form: form, dom: dom, extras: extras %>)).size)
+          .to eq(1)
+        expect(row.scan("item.photos_attachments").size).to eq(1)
+        expect(row).not_to match(/item\.photos\.\w/)
+        expect(row).to include("<% if photos_attachments.empty? %>")
+        expect(row).to include("<% photos_attachments.each do |attachment| %>")
+        expect(row).to include("resize_to_limit: [ 80, 80 ]")
+        expect(row).to include("link_to attachment.blob.filename, rails_blob_path(attachment)")
+      end
+
+      it "extends both strict_loading preloads" do
+        expect(generated("app/models/item_query.rb")).to include(".with_attached_photos), page: @page")
+        expect(generated("app/channels/item_channel.rb"))
+          .to include(".with_attached_photos.strict_loading.find_by(id: record_id)")
+      end
+
+      it "injects the classic gallery: a remove checkbox per file and one multiple append field" do
+        form = generated("app/views/items/_form.html.erb")
+
+        field = %(form.file_field :add_photos, multiple: true, accept: "image/*", direct_upload: true)
+        expect(form.scan(field).size).to eq(1)
+        expect(form).not_to include("file_field :photos")
+        # multiple + no hidden "": remove_photo_ids stays a clean id list.
+        expect(form).to include("form.checkbox :remove_photo_ids, { multiple: true, include_hidden: false, " \
+                                'class: "checkbox checkbox-sm" }, attachment.id, nil')
+        expect(form).to include("form.label :remove_photo_ids, value: attachment.id")
+        expect(form.scan("<% photos_attachments = item.photos_attachments %>").size).to eq(1)
+        expect(form.index("form.checkbox :remove_photo_ids")).to be < form.index("file_field :add_photos")
+        expect(form.index("file_field :add_photos")).to be < form.index("form.submit")
+      end
+
+      it "appends the two arrays to params.expect as a braced group" do
+        controller = generated("app/controllers/items_controller.rb")
+
+        expect(controller.scan(", { add_photos: [], remove_photo_ids: [] } ])").size).to eq(1)
+        expect(controller).not_to match(/[ ,]:photos\b/)
+      end
+
+      it "emits the per-file-looping Stimulus controller and compiling sources" do
+        js = generated(js_controller)
+
+        expect(js).to include("for (const file of files)")
+        expect(js).to include("performOn(this.element, this.actionValue")
+        expect(js).to include(%(if (this.element.multiple) this.element.value = ""))
+        expect(@output).not_to include("predates --many")
+        expect_valid_generated_sources(@destination)
+      end
+
+      it "is idempotent — a re-run changes nothing" do
+        before_state = Dir[File.join(@destination, "app/**/*")].to_h { [it, (File.read(it) if File.file?(it))] }
+        generate(%w[Item photos --many --css=daisyui])
+
+        after_state = Dir[File.join(@destination, "app/**/*")].to_h { [it, (File.read(it) if File.file?(it))] }
+        expect(after_state).to eq(before_state)
+      end
+    end
+
+    it "selects many-mode from a has_many_attached the model already declares, and says so" do
+      scaffold
+      seed_many_model
+      output = generate(%w[Item photos --css=daisyui])
+
+      expect(output).to include("already declares has_many_attached :photos")
+      expect(generated("app/models/item.rb").scan("has_many_attached :photos").size).to eq(1)
+      expect(generated("app/models/item.rb")).to include("attribute :add_photos")
+      expect(generated("app/channels/concerns/items_channel/photos_upload.rb")).to include("def add_photos(data)")
+      expect(generated("app/views/items/_form.html.erb")).to include("file_field :add_photos, multiple: true")
+    end
+
+    it "refuses --many against an existing has_one_attached, writing nothing" do
+      scaffold
+      write("app/models/item.rb",
+            "class Item < ApplicationRecord\n  belongs_to :shelf\n  has_one_attached :photo\nend\n")
+      output = generate(%w[Item photo --many --css=daisyui])
+
+      expect(output).to include("Item#photo is has_one_attached — run without --many")
+      expect(exists?("app/channels/concerns/items_channel/photo_upload.rb")).to be(false)
+      expect(exists?(js_controller)).to be(false)
+    end
+
+    it "refreshes a pre-many copy of the shared controller — in many-mode only, and once" do
+      scaffold
+      seed_model
+      write(js_controller, "// v1\nconst file = this.element.files[0]\n")
+
+      expect(generate(%w[Item badge --css=daisyui])).to include("identical")
+      expect(generated(js_controller)).to include("// v1")
+
+      expect(generate(%w[Item photos --many --css=daisyui])).to include("predates --many")
+      expect(generated(js_controller)).to include("for (const file of files)")
+      expect(generate(%w[Item photos --many --css=daisyui])).to include("identical")
+    end
+
+    it "coexists with a has_one attachment added after it — the scalars still append" do
+      scaffold
+      seed_model
+      generate(%w[Item photos --many --css=daisyui])
+      generate(%w[Item cover --css=daisyui])
+
+      expect(generated("app/controllers/items_controller.rb"))
+        .to include("{ add_photos: [], remove_photo_ids: [] }, :cover, :remove_cover ])")
+      expect(generated("app/models/item_query.rb")).to include(".with_attached_photos.with_attached_cover")
+      expect(generated("app/channels/items_channel.rb"))
+        .to include("  include Hibiki::Rails::Channel\n  include CoverUpload\n  include PhotosUpload\n")
+      expect_valid_generated_sources(@destination)
+    end
+
+    it "composes with --accept" do
+      scaffold
+      seed_model
+      output = generate(%w[Item documents --many --accept=pdf --css=daisyui])
+
+      expect(generated("app/views/items/_documents_upload.html.erb"))
+        .to include(%(multiple: true, accept: "application/pdf"))
+      expect(generated("app/views/items/_form.html.erb"))
+        .to include(%(file_field :add_documents, multiple: true, accept: "application/pdf"))
+      expect(generated("app/models/item.rb")).to include("attribute :remove_document_ids")
+      expect(output).not_to include("image_processing")
+    end
+
+    describe "--phlex" do
+      before do
+        scaffold(%w[Item --phlex --css=daisyui])
+        seed_model
+        generate(%w[Item photos --many --css=daisyui])
+      end
+
+      it "emits the gallery component and the row/form pair, compiling and resolving" do
+        component = generated("app/views/items/photos_upload.rb")
+        row = generated("app/views/items/row.rb")
+        form = generated("app/views/items/form.rb")
+
+        expect(component).to include("class Views::Items::PhotosUpload < Views::Base")
+        expect(component).to include("@form.record&.photos_attachments || []")
+        expect(component).to include(%(type: "file", multiple: true, accept: "image/*"))
+        expect(component).to include("**on(:remove_photos, with: { dom: @dom, attachment_id: attachment.id })) " \
+                                     '{ "Undo" }')
+        expect(component).to include('**on(:remove_photos, with: { dom: @dom, signed_id: add[:signed_id] })) { "✕" }')
+        expect(component).to include(%({ "\#{add[:filename].truncate(12)} — attaches on save" }))
+        expect(generated("app/views/items/row_form.rb"))
+          .to include("render Views::Items::PhotosUpload.new(form: @form, dom: @dom, extras: @extras)")
+        expect(row).to include("photos_attachments = @item.photos_attachments")
+        expect(row).to include("photos_attachments.each do |attachment|")
+        expect(row).to include("link_to(attachment.blob.filename, rails_blob_path(attachment)")
+        expect(form.scan("photos_upload_fields(form)").size).to eq(2)
+        expect(form).to include(%(form.file_field :add_photos, multiple: true, accept: "image/*", direct_upload: true))
+        expect(form).to include("form.checkbox :remove_photo_ids, { multiple: true, include_hidden: false")
+        expect_valid_generated_sources(@destination)
+        expect_zeitwerk_resolvable_views(@destination)
+      end
+    end
+  end
+
   describe "a pre-extras scaffold" do
     before do
       scaffold
@@ -364,6 +604,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
           scaffold(["Item", *layer, "--css=#{variant}"])
           seed_model
           generate(["Item", "photo", *layer, "--css=#{variant}"])
+          generate(["Item", "photos", "--many", *layer, "--css=#{variant}"])
 
           expect_valid_generated_sources(dir)
         end

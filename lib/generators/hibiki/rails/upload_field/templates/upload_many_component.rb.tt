@@ -1,0 +1,64 @@
+<%#- ESCAPING: none — plain Ruby out, every <% is generation time. #{...}
+     inside a quoted string is runtime Ruby and passes through untouched. -%>
+# frozen_string_literal: true
+
+# The <%= attachment_name %> gallery. The file input carries NO name on purpose: the save
+# submit serializes the form with FormData and a File can't ride the channel —
+# the input direct-uploads each pick on change and hands the signed ids to
+# <%= add_action %>; the badges and ✕ marks are the graph echoing that state back.
+class <%= component_class_name %> < Views::Base
+<%= phlex_includes(:image_tag, :label_tag, :number_to_human_size, hibiki: true) %>
+
+  def initialize(form:, dom:, extras: {})
+    @form = form
+    @dom = dom
+    @extras = extras
+  end
+
+  def view_template
+    pending = @extras.fetch(:<%= extras_key %>, {})[@dom] || { adds: [], removes: [] }
+    attachments = @form.record&.<%= attachment_reader %> || []
+
+    label_tag "#{@dom}_<%= attachment_name %>", "<%= attachment_human %>"<%= arg_css(:label) %>
+    div<%= arg_list(*css_args(:upload_row)) %> do
+      attachments.each do |attachment|
+        span<%= arg_list(*css_args(:gallery_item)) %> do
+          # variable? — an image gets a thumbnail, anything else its filename.
+          if attachment.blob.variable?
+            image_tag attachment.blob.variant(resize_to_limit: [ 48, 48 ])<%= arg_css(:thumb) %>
+          else
+            span<%= arg_list(*css_args(:muted_inline)) %> { "#{attachment.blob.filename} (#{number_to_human_size(attachment.blob.byte_size)})" }
+          end
+          if pending[:removes].include?(attachment.id)
+            span<%= arg_list(*css_args(:badge_warning)) %> { "removed on save" }
+            button(type: "button"<%= arg_css(:btn_ghost_sm) %>,
+                   **on(:<%= remove_action %>, with: { dom: @dom, attachment_id: attachment.id })) { "Undo" }
+          else
+            button(type: "button", aria: { label: "Remove" }<%= arg_css(:btn_ghost_sm) %>,
+                   **on(:<%= remove_action %>, with: { dom: @dom, attachment_id: attachment.id })) { "✕" }
+          end
+        end
+      end
+      input(
+        type: "file", multiple: true, accept: "<%= accept_attr %>", id: "#{@dom}_<%= attachment_name %>",
+<% if css? -%>
+        class: "<%= css(:file_input_sm) %>",
+<% end -%>
+        data: { controller: "upload-field",
+                upload_field_url_value: rails_direct_uploads_path,
+                upload_field_action_value: "<%= add_action %>",
+                upload_field_dom_value: @dom,
+                action: "change->upload-field#upload" }
+      )
+      div<%= arg_list(*css_args(:upload_status_list)) %> do
+        pending[:adds].each do |add|
+          span<%= arg_list(*css_args(:gallery_item)) %> do
+            span<%= arg_list(*css_args(:badge_info)) %> { "#{add[:filename].truncate(12)} — attaches on save" }
+            button(type: "button", aria: { label: "Drop" }<%= arg_css(:btn_ghost_sm) %>,
+                   **on(:<%= remove_action %>, with: { dom: @dom, signed_id: add[:signed_id] })) { "✕" }
+          end
+        end
+      end
+    end
+  end
+end

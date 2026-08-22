@@ -15,12 +15,13 @@ require_relative "../upload_field_injections"
 module Hibiki
   module Rails
     module Generators
-      # A has_one_attached upload on both edit surfaces of a resource
+      # A has_one_attached upload (or, with --many, a has_many_attached
+      # gallery) on both edit surfaces of a resource
       # hibiki:rails:scaffold_controller already generated. The classic form
-      # gets a direct-upload file field plus a remove checkbox; the inline
+      # gets a direct-upload file field plus remove checkboxes; the inline
       # channel form gets an upload-on-change input whose pending state the
-      # graph owns, keyed by the form's dom — only the signed blob id ever
-      # rides the channel.
+      # graph owns, keyed by the form's dom — only the signed blob ids ever
+      # ride the channel.
       #
       # The owner must exist and be migrated; one attachment per run.
       class UploadFieldGenerator < ::Rails::Generators::NamedBase
@@ -36,9 +37,9 @@ module Hibiki
 
         source_root File.expand_path("templates", __dir__)
 
-        desc "Adds a has_one_attached upload onto a hibiki:rails scaffold: " \
-             "direct upload on the classic form, upload-on-change with " \
-             "graph-owned pending state on the inline form."
+        desc "Adds a has_one_attached upload (--many: a has_many_attached gallery) " \
+             "onto a hibiki:rails scaffold: direct upload on the classic form, " \
+             "upload-on-change with graph-owned pending state on the inline form."
 
         argument :attachment, type: :string, banner: "Attachment"
 
@@ -49,6 +50,9 @@ module Hibiki
         class_option :accept, type: :string,
                               desc: "Comma-separated file types the inputs accept: image (default), " \
                                     "audio, video, pdf, csv, text, doc, xls, ppt, a type/subtype, or an .ext"
+        class_option :many, type: :boolean,
+                            desc: "has_many_attached — a gallery that appends " \
+                                  "(implied when the model already declares one)"
 
         # Everything that can refuse, before anything is written.
         def preflight
@@ -60,15 +64,19 @@ module Hibiki
         end
 
         def create_concern
-          template "concern.rb.tt", concern_path
+          template concern_template, concern_path
         end
 
         # ONE controller file per app — every upload field shares it, routed
-        # by the action/dom Stimulus values the view stamps on the input.
+        # by the action/dom Stimulus values the view stamps on the input. A
+        # gallery needs the per-file loop, so many-mode refreshes a copy from
+        # before it (single-mode leaves any existing file alone).
         def create_stimulus_controller
-          return say_status :identical, JS_CONTROLLER, :blue if exists?(JS_CONTROLLER)
+          return template(JS_TEMPLATE, JS_CONTROLLER) unless exists?(JS_CONTROLLER)
+          return say_status :identical, JS_CONTROLLER, :blue if !many? || wired?(JS_CONTROLLER, JS_MANY_MARKER)
 
-          template "upload_field_controller.js.tt", JS_CONTROLLER
+          say_status :js, "#{JS_CONTROLLER} predates --many (one file per pick) — refreshed", :yellow
+          template JS_TEMPLATE, JS_CONTROLLER, force: true
         end
 
         # Importmap apps eager-load the controllers directory; jsbundling apps
@@ -83,9 +91,9 @@ module Hibiki
 
         def create_view
           if phlex?
-            template "upload_component.rb.tt", view_path("#{upload_partial}.rb")
+            template component_template, view_path("#{upload_partial}.rb")
           else
-            template "_upload.html.erb.tt", view_path("_#{upload_partial}.html.erb")
+            template partial_template, view_path("_#{upload_partial}.html.erb")
           end
         end
 
@@ -122,6 +130,10 @@ module Hibiki
         end
 
         def post_install
+          if auto_many?
+            say_status :many, "#{class_name} already declares has_many_attached :#{attachment_name} — " \
+                              "generated the gallery (as with --many).", :blue
+          end
           unless active_storage_ready?
             say_status :migrate, "no Active Storage tables — run bin/rails active_storage:install " \
                                  "and bin/rails db:migrate before uploading.", :yellow

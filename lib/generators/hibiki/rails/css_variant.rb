@@ -131,6 +131,10 @@ module Hibiki
           # utilities, so the tailwind variant inherits them.
           upload_row: "flex flex-wrap items-center gap-3",
           upload_status: "w-full",
+          # --many: one chip per attached file (thumb + ✕) and the pending
+          # list, which wraps like the row.
+          gallery_item: "inline-flex items-center gap-1",
+          upload_status_list: "w-full flex flex-wrap gap-2",
           thumb: "rounded",
           file_link: "link link-hover",
           file_input: "file-input w-full",
