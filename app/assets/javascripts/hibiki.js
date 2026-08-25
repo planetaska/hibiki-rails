@@ -1,17 +1,16 @@
 // The packaged client for hibiki_rails. Two shapes, one plumbing:
 //
-// 1. The generic controller (HibikiController, register as "hibiki"):
+// 1. The generic controller (HibikiController, registered as "hibiki"):
 //    drives any island stamped by the Hibiki::Rails::Helpers Ruby
-//    helpers. Stimulus is the lifecycle host only (connect/disconnect
+//    helpers. Stimulus is only the lifecycle host (connect/disconnect
 //    across Turbo navigation, morphs, and dynamic insertion); the wire
 //    protocol is hibiki-owned data attributes, so server-side components
-//    never write Stimulus vocabulary and a non-Stimulus client can speak
-//    the same attributes (toy-phlex's vanilla driver is the proof).
-// 2. The subclassable base (ChannelController): for apps that prefer the
+//    never write Stimulus vocabulary.
+// 2. The subclassable base (ChannelController): for apps that prefer
 //    familiar Stimulus structure (data-controller="counter",
 //    data-action="counter#increment"). The base owns the consumer, the
-//    subscription lifecycle, and transport handling; plain actions are
-//    auto-forwarded to the channel, so a subclass only declares a method
+//    subscription lifecycle, and transport handling. Plain actions are
+//    auto-forwarded to the channel; a subclass declares a method only
 //    when it needs something custom:
 //
 //      import { ChannelController } from "hibiki-rails"
@@ -27,18 +26,17 @@
 // Both shapes speak both transports. Transmit: the server's render
 // effects `transmit({ html: })` fragments that are swapped in by their
 // root DOM id, and `transmit_value` messages that update every
-// data-hibiki-value placeholder; `received` is registered at subscribe
-// time — before the
-// server runs build_graph — so the effects' first transmits always land
-// (the server-rendered initial HTML is only a paint-avoidance
-// placeholder). Turbo broadcasts: when the controller's element contains
-// its own <turbo-cable-stream-source> (turbo_stream_from), the graph's
-// first broadcast is lost unless that stream has already confirmed ITS
-// subscription — so connect awaits it (streamConnected) before
-// subscribing, and rendering flows back over the Turbo stream while
-// `received` stays idle.
+// data-hibiki-value placeholder. `received` is registered at subscribe
+// time, before the server runs build_graph, so the effects' first
+// transmits always land; the server-rendered HTML fills the space only
+// until they do. Turbo broadcasts: when the controller's element
+// contains its own <turbo-cable-stream-source> (turbo_stream_from), the
+// graph's first broadcast is lost unless that stream has already
+// confirmed ITS subscription — so connect awaits it (streamConnected)
+// before subscribing, and rendering flows back over the Turbo stream
+// while `received` stays idle.
 //
-// The attribute contract of the generic controller (private to this gem —
+// The generic controller's attribute contract (private to this gem —
 // emitted by the Ruby helpers, interpreted here, versioned together):
 //
 //   island root   data-controller="hibiki"
@@ -60,25 +58,24 @@
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
 //
-// The protocol also has a client-written half — the first attributes in it
-// that no Ruby helper emits. These are stamped here at runtime and are
-// read-only to app code; app CSS is their whole audience:
+// The client writes the protocol's other half at runtime — read-only to
+// app code, addressed to app CSS:
 //
 //   island root   data-hibiki-busy       present while an action is in flight
 //                 aria-busy="true"       the same fact, for assistive tech
 //                 data-hibiki-state      connecting | ready | offline | stalled
 //   firing control data-hibiki-busy      on the control that started it
 //
-// Everything the app wants out of that is a descendant selector —
-// `[data-hibiki-busy] .spinner { display: inline-block }` — so per-row and
-// per-button feedback needs no server state and no `{#if loading}` branch.
-// Content is stale during a round trip, never absent.
+// App CSS reaches all of it with descendant selectors —
+// `[data-hibiki-busy] .spinner { display: inline-block }` — so per-row
+// and per-button feedback needs no server state. Content is stale during
+// a round trip, never absent.
 //
-// The left side of `->` is a hibiki event name, of which DOM events are a
-// subset: click, change, input, submit are delegated listeners, and
-// `visible` is a pseudo-event backed by an IntersectionObserver (the
-// element entering the viewport). Everything that is not "which event"
-// is a sibling attribute, so the token grammar never has to grow.
+// The left side of `->` is a hibiki event name: click, change, input,
+// and submit are delegated DOM listeners; `visible` is a pseudo-event
+// backed by an IntersectionObserver (the element entering the viewport).
+// Everything that is not "which event" is a sibling attribute, so the
+// token grammar never has to grow.
 //
 // App JS reaching the graph — the ONE public seam. A gesture that needs
 // script (drag-and-drop, a third-party widget) fires its action through
@@ -96,19 +93,18 @@
 //   import { performOn } from "hibiki-rails"
 //   performOn(element, "nested_move", { path, to })
 //
-// The return value is the whole contract: truthy (the trip's seq) means
-// the action was ACCEPTED — sent live, or queued during the initial
-// connect window — so a repaint is coming and the caller should leave the
-// DOM as the user arranged it (the morph lands as a visual no-op). Falsy
-// (undefined) means it was DROPPED — the island is offline, or the socket
-// turned out to be dead at send — and the caller owns recovery: revert
-// the gesture, or stand back and let the next repaint self-heal. Nothing
-// queues across an offline gap on purpose (a reconnect builds a fresh
-// server-side graph, so replayed intent would land on state it was not
-// formed against). Everything else is NOT a seam: the data-hibiki-*
-// attributes are private, and subclassing ChannelController to reach an
-// existing island opens a SECOND subscription — a second server-side
-// graph nobody paints from.
+// The return value is the whole contract. Truthy (the trip's seq): the
+// action was ACCEPTED — sent live, or queued during the initial connect
+// window — a repaint is coming, so leave the DOM as the user arranged it
+// and let the morph land as a visual no-op. Falsy (undefined): it was
+// DROPPED — the island is offline, or the socket was dead at send — and
+// the caller owns recovery: revert the gesture, or let the next repaint
+// self-heal. Nothing queues across an offline gap, on purpose: a
+// reconnect builds a fresh server-side graph, so replayed intent would
+// land on state it was not formed against. Everything else is NOT a
+// seam: the data-hibiki-* attributes are private, and subclassing
+// ChannelController to reach an existing island opens a SECOND
+// subscription — a second server-side graph nobody paints from.
 //
 // Register the generic controller under the identifier "hibiki" (the
 // helpers hardcode it):
@@ -165,12 +161,12 @@ const formPayload = (form) => {
 }
 
 // Before a fallback form goes native, re-stamp its CSRF token from the
-// page's csrf-token meta — which is first-paint fresh and session-valid.
-// Server-side repaints render without a session (ApplicationController
-// .render has none), so a repainted form embeds a stale token or none at
-// all; and this only ever runs with scripts alive, which is exactly when
-// the DOM may have been repainted. A truly script-free page still holds
-// its first-paint token and never needed the help.
+// page's csrf-token meta tag, which is first-paint fresh and
+// session-valid. Server-side repaints render without a session
+// (ApplicationController.render has none), so a repainted form embeds a
+// stale token or none at all. This only runs with scripts alive —
+// exactly when the DOM may have been repainted; a script-free page
+// still holds its first-paint token.
 const freshenToken = (control) => {
   if (!(control instanceof HTMLFormElement)) return
   const meta = document.querySelector('meta[name="csrf-token"]')
@@ -191,21 +187,17 @@ export class ChannelController extends Controller {
   static values = { cid: String }
 
   // Transport-state timings. Class properties on purpose: not Stimulus
-  // values and not helper options, so the Ruby surface stays unchanged and
-  // an island stamps nothing about them. An app that wants different
+  // values and not helper options, so the Ruby surface stays unchanged
+  // and an island stamps nothing about them. An app that wants different
   // numbers subclasses and re-registers.
   //
-  // busyDelay   ms before a round trip is worth mentioning. A localhost
-  //             trip measures 18–25 ms, so 150 suppresses that flicker
-  //             outright while a 150 ms-RTT link crosses it about exactly.
-  //             Borrowed from Turbo's progress bar, which waits ~500 ms.
+  // busyDelay   ms before a round trip is worth mentioning — long enough
+  //             to swallow a localhost trip (18–25 ms) without flicker.
   // busyGrace   ms to wait after an ack for a Turbo render still in
-  //             flight. The ack travels the island's own socket; a
-  //             broadcast takes a pubsub hop, and measured against
-  //             generated output the direct frame beats the paint by
-  //             3.3–3.6 ms. That gap belongs to the server and its
-  //             backend, so it does not shrink on a fast link — and Redis
-  //             widens it. Hence a bound in tens of ms, not single digits.
+  //             flight. The ack rides the island's own socket while the
+  //             broadcast takes a pubsub hop, so the ack routinely wins
+  //             by a few ms — a gap owned by the server's backend, which
+  //             no fast link shrinks. Hence tens of ms, not single digits.
   // busyCeiling ms before a trip is declared stalled rather than silently
   //             cleared. On a bad link "we lost it" beats "nothing
   //             happened".
@@ -220,11 +212,10 @@ export class ChannelController extends Controller {
 
   // The synchronous half of connect: everything a listener firing in the
   // next millisecond depends on. HibikiController attaches its delegated
-  // listeners before openSubscription is even called, and the window
-  // before the subscription confirms is ~3 serialised round trips on the
-  // Turbo-broadcast path (Turbo's own subscribe, a SECOND websocket
-  // handshake, then ours) — tens of ms on localhost, about a second on a
-  // real remote link. Clicks in it used to vanish without a trace.
+  // listeners before openSubscription is even called, and on the
+  // Turbo-broadcast path the subscription takes ~3 serialised round
+  // trips to confirm — up to a second on a real link. Clicks in that
+  // window used to vanish without a trace.
   prepareTransport() {
     this.aborted = false
     this.subscribed = false
@@ -274,24 +265,23 @@ export class ChannelController extends Controller {
   // can never overwrite it. (`hbk` is the second reserved payload key —
   // ActionCable's own Subscription#perform already writes `action`.)
   //
-  // Returns the seq so a caller that knows which control fired can attach
-  // it; nobody has to. Returns undefined instead when the payload went
-  // nowhere: the socket turned out to be closed under a subscription still
-  // believed live, or the island was already offline. Public API on the
-  // island controller (the header's "App JS reaching the graph") — truthy
-  // = accepted, falsy = dropped and the caller owns recovery.
+  // Public API on the island controller (the header's "App JS reaching
+  // the graph"). Returns the seq when the action was accepted, so a
+  // caller that knows which control fired can attach it; returns
+  // undefined when the payload went nowhere — the socket turned out to
+  // be closed, or the island was already offline — and the caller owns
+  // recovery.
   perform(action, payload = {}) {
     const seq = ++this.seq
     payload.hbk = seq
     if (this.subscribed) {
       this.beginBusy(seq)
-      // Action Cable's Subscription#perform returns false when the socket
-      // is not open — the gap between the socket dying and the connection
-      // monitor noticing, during which `subscribed` still says live. The
-      // frame went nowhere: settle rather than letting the trip stall out
-      // at the ceiling, and stamp `offline` now instead of when the
-      // monitor catches up. The monitor still owns reconnecting; its
-      // `connected` callback restores `ready` exactly as after a real gap.
+      // Subscription#perform returns false when the socket is not open —
+      // the gap between the socket dying and the connection monitor
+      // noticing, during which `subscribed` still says live. The frame
+      // went nowhere: settle the trip rather than let it stall out at
+      // the ceiling, and stamp `offline` now instead of when the monitor
+      // catches up. The monitor still owns reconnecting.
       if (this.subscription.perform(action, payload) === false) {
         this.settle(seq)
         this.linkClosed()
@@ -299,19 +289,17 @@ export class ChannelController extends Controller {
       }
       return seq
     }
-    // Queue rather than drop while the subscription is still coming up.
-    // ActionCable's Subscription#perform silently returns false on a socket
-    // that is not open yet, so this was a silent no-op for the whole
-    // connect window — and the trigger has to be the `connected` callback,
-    // not "the subscription object exists", because the second websocket's
-    // handshake sits between the two.
+    // Queue rather than drop while the subscription is still coming up:
+    // Subscription#perform silently returns false on a socket not open
+    // yet, so the whole connect window used to be a silent no-op. The
+    // gate must be the `connected` callback, not "the subscription
+    // object exists" — the second websocket's handshake sits between
+    // the two.
     //
-    // Only that first window. Once the link has been up, a gap means the
-    // socket dropped, and reconnecting builds a FRESH graph server-side
-    // with default state — so replaying intent formed against the old one
-    // is worse than dropping it. The island is stamped `offline` for the
-    // whole gap, which is the signal the connect window cannot give: there
-    // the page is painted and looks live.
+    // Only that first window. Once the link has been up, a gap means
+    // the socket dropped, and the island is stamped `offline` for the
+    // whole gap — the signal the connect window cannot give, where the
+    // page is painted and looks live.
     if (!this.connectedOnce) {
       this.beginBusy(seq)
       this.queued.push([action, payload])
@@ -336,10 +324,10 @@ export class ChannelController extends Controller {
   linkClosed() {
     this.subscribed = false
     this.setState("offline")
-    // Deliberately NOT queued across the gap. A reconnect builds a fresh
-    // graph server-side with default state, so replaying intent formed
-    // against the old one is worse than dropping it. Outstanding records
-    // settle for the same reason: their acks are never coming.
+    // Deliberately NOT queued across the gap: a reconnect builds a fresh
+    // graph server-side, so replayed intent would land on state it was
+    // not formed against. Outstanding records settle for the same
+    // reason — their acks are never coming.
     this.queued = []
     this.settleAll()
   }
@@ -505,10 +493,10 @@ export class ChannelController extends Controller {
   // Auto-forwarding: every data-action token addressed to this identifier
   // whose method the subclass did NOT declare gets a generated forwarder
   // that performs the underscored action with no payload — so plain
-  // forwards need zero code. Declared methods always win. Methods are
-  // defined at connect: action NAMES first appearing in later-inserted
-  // markup aren't discovered (names already seen keep working anywhere,
-  // Stimulus binds the elements itself).
+  // forwards need zero code. Declared methods always win. Forwarders are
+  // defined at connect, so an action NAME first appearing in
+  // later-inserted markup isn't discovered; a name already seen keeps
+  // working anywhere, because Stimulus binds the elements itself.
   defineForwarders() {
     for (const control of this.element.querySelectorAll("[data-action]")) {
       for (const token of control.dataset.action.trim().split(/\s+/)) {
@@ -563,9 +551,9 @@ export default class HibikiController extends ChannelController {
     islands.set(this.element, this)
     // Before the listeners, not after: a click delegated in the next
     // millisecond reaches perform(), which needs the busy map and the
-    // queue to exist. This is also what stamps data-hibiki-state
-    // ="connecting" synchronously, so the island can be dimmed for the
-    // whole window rather than from the middle of it.
+    // queue to exist. This also stamps data-hibiki-state="connecting"
+    // synchronously, so the island can be dimmed for the whole window
+    // rather than from the middle of it.
     this.prepareTransport()
 
     // Root-scoped delegation (bound to the island, not document): controls
@@ -674,13 +662,12 @@ export default class HibikiController extends ChannelController {
     // A fallback control's native behavior IS the degraded path: unless
     // the island is `ready`, stand aside — no perform, no queueing — and
     // the browser follows the href or submits the form to its own
-    // action=. Deliberately not the connect-window queue: a queued gesture
-    // renders nothing until the link comes up, while the control's
-    // destination answers immediately. Two touches before stepping back:
-    // a confirm: still gates the native behavior (scripts are running, so
-    // a destructive submit must not slip past the dialog), and a form's
-    // authenticity_token is freshened — server-rendered repaints carry no
-    // session, so their forms embed a stale token or none at all.
+    // action=. Deliberately not the connect-window queue: a queued
+    // gesture renders nothing until the link comes up, while the
+    // control's destination answers immediately. Two touches before
+    // stepping back: a confirm: still gates the native behavior
+    // (scripts are running, so a destructive submit must not slip past
+    // the dialog), and the form's CSRF token is freshened.
     const fallback = "hibikiFallback" in control.dataset
     if (fallback && this.state !== "ready") {
       const message = control.dataset.hibikiConfirm
