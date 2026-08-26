@@ -16,6 +16,8 @@ group :development do
   gem "rake", "~> 13.0"
   gem "rspec", "~> 3.0"
   gem "rspec-rails", "~> 8.0"
-  gem "rubocop", "~> 1.21"
+  # Pinned to the minor: every RuboCop minor adds cops, and NewCops: enable
+  # opts into them — floating would let CI break with no commit here.
+  gem "rubocop", "~> 1.90.0"
   gem "sqlite3"
 end

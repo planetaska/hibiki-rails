@@ -257,7 +257,7 @@ module Hibiki
       # #errors when validation fails (the Rails #save convention). On
       # success the form re-hydrates: callbacks and database defaults may
       # have moved values, and #persisted? flips after an INSERT.
-      # rubocop:disable Naming/PredicateMethod -- boolean without a ?, exactly like AR's #save
+      # rubocop:disable-next Naming/PredicateMethod -- boolean without a ?, exactly like AR's #save
       def commit
         record = __hibiki_record!
         if record.update(**to_h)
@@ -276,7 +276,6 @@ module Hibiki
           false
         end
       end
-      # rubocop:enable Naming/PredicateMethod
 
       # The raising half. Re-assigns and raises ActiveRecord::RecordInvalid
       # (no rescue, and no AR constant named here); the nested associations

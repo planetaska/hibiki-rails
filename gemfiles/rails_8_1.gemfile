@@ -16,6 +16,8 @@ group :development do
   gem "rake", "~> 13.0"
   gem "rspec", "~> 3.0"
   gem "rspec-rails", "~> 8.0"
-  gem "rubocop", "~> 1.21"
+  # Same pin as the root Gemfile — this leg has no committed lockfile, so a
+  # loose range would float to whatever RuboCop is newest on CI.
+  gem "rubocop", "~> 1.90.0"
   gem "sqlite3"
 end
