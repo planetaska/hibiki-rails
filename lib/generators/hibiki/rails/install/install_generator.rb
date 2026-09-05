@@ -18,7 +18,7 @@ module Hibiki
 
         desc "Wires the packaged hibiki client: registers the \"hibiki\" Stimulus " \
              "controller, includes Hibiki::Rails::Helpers in ApplicationHelper, " \
-             "creates the ApplicationCable boilerplate, and pins @rails/actioncable."
+             "and creates the ApplicationCable boilerplate."
 
         # Exactly the lines `stimulus:manifest:update` emits for the shim,
         # so a later manifest run converges instead of duplicating.
@@ -37,14 +37,6 @@ module Hibiki
           "channel.rb.tt" => "app/channels/application_cable/channel.rb",
           "connection.rb.tt" => "app/channels/application_cable/connection.rb"
         }.freeze
-
-        # Same event: the stock importmap has no @rails/actioncable pin
-        # until the first `rails g channel` adds it. The packaged client
-        # imports it, so pin it here (the asset ships in actioncable).
-        PIN = <<~RUBY
-
-          pin "@rails/actioncable", to: "actioncable.esm.js"
-        RUBY
 
         # The registration lives in a file-backed shim so that
         # `stimulus:manifest:update` (which rewrites index.js wholesale from
@@ -81,11 +73,9 @@ module Hibiki
           end
         end
 
-        def pin_actioncable
-          return bundler_note unless importmap?
-          return say_status :identical, IMPORTMAP, :blue if wired?(IMPORTMAP, "@rails/actioncable")
-
-          append_to_file IMPORTMAP, PIN
+        # Bundler apps get the client from npm, not from the engine's asset.
+        def note_npm_package
+          bundler_note unless importmap?
         end
 
         private

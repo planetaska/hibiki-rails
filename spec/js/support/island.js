@@ -23,8 +23,13 @@ export const sent = []
 // dead-but-undetected socket.
 export const cable = { autoConnect: true, sendResult: true }
 
-vi.mock("@rails/actioncable", () => ({
-  createConsumer: () => ({
+// The client takes turbo-rails' consumer (cable.getConsumer), so that is
+// the seam stubbed here; @rails/actioncable itself is never imported.
+vi.mock("@hotwired/turbo-rails", () => ({
+  cable: { getConsumer: async () => consumerStub }
+}))
+
+const consumerStub = ({
     subscriptions: {
       create(params, handlers) {
         const subscription = {
@@ -44,7 +49,6 @@ vi.mock("@rails/actioncable", () => ({
       }
     }
   })
-}))
 
 // The server confirmed (or re-confirmed) every live subscription.
 export const connectAll = async () => {

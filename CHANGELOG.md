@@ -4,6 +4,29 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Changed
+
+**The client rides turbo-rails' Action Cable consumer.** `hibiki.js` now
+takes its consumer from `cable.getConsumer()` (exported by
+`@hotwired/turbo-rails`) instead of importing `@rails/actioncable` itself.
+Islands and `turbo_stream_from` share ONE websocket where each page used to
+open two, an app's `cable.setConsumer(...)` applies to islands too, and the
+library stops reaching the page twice: bundler apps shed the second copy
+(~14.6 KB; turbo-rails imports `@rails/actioncable/src`, the client imported
+the package root, and a bundler cannot dedupe two specifiers), importmap apps
+stop fetching `actioncable.esm.js` next to the copy `turbo.min.js` already
+carries (~14.8 KB, one request).
+
+- npm: the `@rails/actioncable` peer dependency is gone; `@hotwired/turbo-rails
+  >= 8.0` is the peer instead (every Rails 8 app has it).
+- `hibiki:rails:install` no longer pins `@rails/actioncable`. An existing pin
+  is harmless — nothing imports it — and may be deleted.
+- Subscribing now awaits the consumer once (a microtask after the first
+  island); nothing observable changes, actions are still queued until the
+  subscription confirms.
+
 ## 0.10.0 — 2026-08-22
 
 ### Added

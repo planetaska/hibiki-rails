@@ -21,8 +21,8 @@ RSpec.describe Hibiki::Rails::Generators::InstallGenerator do
   let(:cable_connection) { File.join(@destination, "app/channels/application_cable/connection.rb") }
 
   # The stock Rails 8 importmap app shapes the wiring targets start in
-  # (no app/channels, no @rails/actioncable pin — both appear only after
-  # a first `rails g channel`, which most apps never run).
+  # (no app/channels — it appears only after a first `rails g channel`,
+  # which most apps never run).
   def seed_stock_app
     FileUtils.mkdir_p(File.dirname(index_js))
     File.write(index_js, <<~JS)
@@ -80,14 +80,24 @@ RSpec.describe Hibiki::Rails::Generators::InstallGenerator do
     expect(File.exist?(shim)).to be(true)
   end
 
-  it "creates the ApplicationCable boilerplate and pins @rails/actioncable" do
+  it "creates the ApplicationCable boilerplate" do
     seed_stock_app
     run_generator(described_class, destination: @destination)
 
     expect(File.read(cable_channel)).to include("class Channel < ActionCable::Channel::Base")
     expect(File.read(cable_connection)).to include("class Connection < ActionCable::Connection::Base")
-    expect(File.read(importmap)).to include('pin "@rails/actioncable", to: "actioncable.esm.js"')
     expect_valid_generated_sources(@destination)
+  end
+
+  # The client rides turbo-rails' consumer, so the importmap needs no
+  # @rails/actioncable pin (the Ruby gem could never serve the src/ tree
+  # turbo-rails imports anyway).
+  it "leaves config/importmap.rb alone" do
+    seed_stock_app
+    before = File.read(importmap)
+    run_generator(described_class, destination: @destination)
+
+    expect(File.read(importmap)).to eq(before)
   end
 
   it "is idempotent: a second run changes nothing" do
@@ -97,7 +107,6 @@ RSpec.describe Hibiki::Rails::Generators::InstallGenerator do
 
     expect(output).to include("identical")
     expect(File.read(application_helper).scan("Hibiki::Rails::Helpers").count).to eq(1)
-    expect(File.read(importmap).scan("@rails/actioncable").count).to eq(1)
   end
 
   it "is idempotent in jsbundling apps: the registration is appended once" do

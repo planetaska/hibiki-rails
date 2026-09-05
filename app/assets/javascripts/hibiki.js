@@ -112,11 +112,16 @@
 //   import HibikiController from "hibiki-rails"
 //   application.register("hibiki", HibikiController)
 import { Controller } from "@hotwired/stimulus"
-import { createConsumer } from "@rails/actioncable"
+import { cable } from "@hotwired/turbo-rails"
 
-// One consumer shared by every controller — ActionCable multiplexes
-// subscriptions over a single websocket. Never disconnected: islands come
-// and go with the DOM, the socket stays.
+// One consumer shared by every controller — and with Turbo Streams: it is
+// turbo-rails' own (`cable.getConsumer()`), so islands and
+// `turbo_stream_from` multiplex over ONE websocket, and an app's
+// `cable.setConsumer(...)` applies to both. Never disconnected: islands
+// come and go with the DOM, the socket stays. Importing turbo-rails'
+// consumer rather than @rails/actioncable also keeps the library out of
+// the page twice (turbo-rails bundles it by a subpath specifier that no
+// importmap can serve).
 let consumer
 
 // Live islands by root element, for performOn's ancestor walk — membership
@@ -228,15 +233,16 @@ export class ChannelController extends Controller {
   }
 
   async openSubscription() {
-    consumer ??= createConsumer()
     this.defineForwarders()
     // Turbo-broadcast transport: wait for the element's own stream source
     // to confirm before subscribing, so the graph's dependency-collecting
     // first run broadcasts into a live stream. No source (transmit
-    // transport) → this path is fully synchronous, exactly as before.
+    // transport) → only the consumer await below, a microtask once it
+    // exists (turbo-rails memoizes it).
     const source = this.streamSource()
     if (source) await streamConnected(source)
-    if (this.aborted) return // disconnected during the await
+    consumer ??= await cable.getConsumer()
+    if (this.aborted) return // disconnected during the awaits
     this.subscription = consumer.subscriptions.create(this.subscribeParams(), {
       received: (data) => this.handleMessage(data),
       connected: () => this.linkOpened(),

@@ -157,7 +157,7 @@ A few things that make a change easier to accept:
 
 The gem side needs nothing special: point an app's Gemfile at your clone with `gem "hibiki_rails", path: "../hibiki-rails"`.
 
-The npm side has one trap. `bun link` from an app resolves the linked package's own imports from the **symlink's realpath**, not from the app — so `hibiki.js` looks for `@rails/actioncable` inside your checkout rather than inside the app that linked it, and if the checkout has no `node_modules` the import fails at build time with nothing pointing at the cause.
+The npm side has one trap. `bun link` from an app resolves the linked package's own imports from the **symlink's realpath**, not from the app — so `hibiki.js` looks for `@hotwired/turbo-rails` and `@hotwired/stimulus` inside your checkout rather than inside the app that linked it, and if the checkout has no `node_modules` the import fails at build time with nothing pointing at the cause.
 
 ```sh
 cd hibiki-rails && bun install   # before linking, not after
