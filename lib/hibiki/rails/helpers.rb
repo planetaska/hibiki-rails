@@ -2,6 +2,7 @@
 
 require "cgi/escape"
 require "json"
+require "securerandom"
 
 module Hibiki
   module Rails
@@ -24,7 +25,8 @@ module Hibiki
     # Both helpers return a `{ data: { ... } }` hash: splat it into Phlex
     # element methods or Rails tag helpers (`tag.div(**hibiki_island(...))`).
     # When the element needs other attributes on the same `data:` key, merge
-    # the hashes yourself (Phlex's `mix` does this).
+    # the hashes yourself (Phlex's `mix` does this). In ERB, #island wraps
+    # the root, the cid, and the Turbo stream source into one block helper.
     #
     # The emitted attribute names are a private contract between these
     # helpers and the gem's JS — they version together; don't hand-write
@@ -53,7 +55,12 @@ module Hibiki
       # the emitted markup instead of being an invisible default.
       DEFAULT_INPUT_DEBOUNCE = 250
 
-      private_constant :VALUE_NAME, :VALUE_TAG, :EVENT_NAME
+      # How an island's channel sends HTML back: Turbo broadcasts to a named
+      # stream (the root needs a stream source inside), or transmit down the
+      # subscription itself (it does not).
+      TRANSPORTS = %i[broadcast transmit].freeze
+
+      private_constant :VALUE_NAME, :VALUE_TAG, :EVENT_NAME, :TRANSPORTS
 
       # The shared name validator for both halves of a reactive value (the
       # view-side data-hibiki-value placeholder and the channel's
@@ -65,6 +72,23 @@ module Hibiki
                 "reactive value name #{name.inspect} must match #{VALUE_NAME.inspect}"
         end
         name
+      end
+
+      # A tag name lands in raw markup, so it is allowlisted wherever a
+      # helper takes one.
+      def self.tag_name(name, of)
+        name = name.to_s
+        raise ArgumentError, "#{of} tag #{name.inspect} must match #{VALUE_TAG.inspect}" unless VALUE_TAG.match?(name)
+
+        name
+      end
+
+      # #island's transport option, allowlisted so a typo names itself.
+      def self.transport(value)
+        return value if TRANSPORTS.include?(value)
+
+        raise ArgumentError,
+              "island transport #{value.inspect} must be one of #{TRANSPORTS.map(&:inspect).join(', ')}"
       end
 
       # The shared validator for both halves of an `event->action` token.
@@ -103,6 +127,33 @@ module Hibiki
                  hibiki_cid_value: cid }
         data[:hibiki_params_value] = JSON.generate(params) unless params.nil?
         { data: }
+      end
+
+      # The ERB spelling of the island root: a fresh cid, the #hibiki_island
+      # root, and the channel's own `turbo_stream_from channel_name, cid`
+      # inside it, in one block. The block receives the cid.
+      #
+      #   <%= island CounterChannel do |cid| %>
+      #     ...
+      #   <% end %>
+      #
+      # `transport: :transmit` leaves the stream source out — for a channel
+      # that transmits, or one that overrides #stream_name and writes its own
+      # turbo_stream_from inside the block. Other keywords land on the root
+      # element; a `data:` hash is merged beneath the island's own keys.
+      # Class-only: a dynamic name is `"#{kind.camelize}Channel".constantize`
+      # at the call site, never taken from a request param. Phlex components
+      # keep `div(**hibiki_island(...))`.
+      def island(channel, cid: nil, params: nil, transport: :broadcast, tag_name: :div, **attributes,
+                 &block)
+        island_guards!(channel, block)
+        tag_name = Helpers.tag_name(tag_name, "island")
+        transport = Helpers.transport(transport)
+        cid ||= SecureRandom.uuid
+        attributes[:data] = attributes[:data].to_h.merge(hibiki_island(channel, cid:, params:)[:data])
+        content = capture(cid, &block)
+        content = island_stream(channel, cid, content) if transport == :broadcast
+        tag.public_send(tag_name, content, **attributes)
       end
 
       # Forward an event on this element as a channel action.
@@ -169,11 +220,7 @@ module Hibiki
       # channels. Only the placeholder text is server-rendered: each site
       # keeps its own tag, classes, and attributes across updates.
       def reactive(name, placeholder = "", tag_name: :span)
-        tag_name = tag_name.to_s
-        unless VALUE_TAG.match?(tag_name)
-          raise ArgumentError,
-                "reactive value tag #{tag_name.inspect} must match #{VALUE_TAG.inspect}"
-        end
+        tag_name = Helpers.tag_name(tag_name, "reactive value")
         html = %(<#{tag_name} data-hibiki-value="#{Helpers.value_name(name)}">) +
                %(#{CGI.escapeHTML(placeholder.to_s)}</#{tag_name}>)
         html.respond_to?(:html_safe) ? html.html_safe : html
@@ -184,6 +231,25 @@ module Hibiki
       def reactive_attrs(name) = { data: { hibiki_value: Helpers.value_name(name) } }
 
       private
+
+      # #island's preconditions: a block, an ActionView receiver, a channel
+      # class.
+      def island_guards!(channel, block)
+        raise ArgumentError, "island needs a block" unless block
+        unless respond_to?(:output_buffer) && respond_to?(:tag)
+          raise ArgumentError, "island is ERB-only; use div(**hibiki_island(...)) in a Phlex component"
+        end
+        return if channel.is_a?(Class) && channel.respond_to?(:channel_name)
+
+        raise ArgumentError,
+              "island takes a channel class, got #{channel.inspect}; " \
+              "constantize a dynamic name at the call site"
+      end
+
+      # The broadcast transport's stream source, ahead of the block's content.
+      def island_stream(channel, cid, content)
+        safe_join([turbo_stream_from(channel.channel_name, cid), content])
+      end
 
       # #on's per-control modifiers, kept out of the token grammar. Each is
       # omitted when it matches the client's own default, so the common call

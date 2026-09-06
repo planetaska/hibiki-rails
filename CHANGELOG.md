@@ -4,6 +4,38 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.12.0 — 2026-09-06
+
+### Added
+
+**`island` — the ERB block helper for the island root.** One call
+generates the cid, stamps the root with `hibiki_island`, and derives the
+channel's `turbo_stream_from` inside it:
+
+```erb
+<%= island CounterChannel do |cid| %>
+  ...
+<% end %>
+```
+
+- `cid:` defaults to a fresh UUID; the block receives it either way.
+- The stream source is derived from the channel class
+  (`turbo_stream_from channel.channel_name, cid`), so renaming the channel
+  cannot leave a hand-typed streamable behind. `transport: :transmit`
+  leaves it out: for a channel that transmits, or one that overrides
+  `stream_name` and writes its own line in the block. (`:broadcast` is the
+  default; the option is a named value rather than a boolean so it cannot
+  be mistaken for Turbo's own `data-turbo="false"`.)
+- `params:` passes through; `tag_name:` picks the root element; any other
+  keyword lands on it, with a `data:` hash merged beneath the island's own
+  keys.
+- Class-only (`constantize` a dynamic name at the call site) and ERB-only
+  (it needs ActionView's `capture`). Phlex components keep
+  `div(**hibiki_island(...))`, which remains the primitive.
+
+Generators are unchanged: their output keeps the explicit three-line form.
+No client change; the npm release is the lockstep bump.
+
 ## 0.11.0 — 2026-09-05
 
 ### Changed
