@@ -3,16 +3,14 @@
 <%%# locals: (<%= list_locals_signature %>) -%>
 <%%# The island's re-rendered fragment. Its root id is the broadcast target —
     deliberately not the island root, which carries the stream source. %>
-<% unless infinite? -%>
-<%%# Real pagination hrefs carrying the current query state — the channel
-    re-renders them with url_params fresh, so the fallback URLs stay
-    truthful as the live state moves. %>
+<%%# Real hrefs for the <%= infinite? ? "Load-more link" : "page links" %>, carrying the current query
+    state — the channel re-renders them with url_params fresh, so the
+    fallback URLs stay truthful as the live state moves. %>
 <%% page_url = ->(n) do
      query = url_params.except(:page)
      query[:page] = n unless n == 1
      <%= index_helper(type: :path) %>(**query)
    end %>
-<% end -%>
 <div id="<%= list_dom_id %>"<%= css_attr(:list) %>>
 <% if inline_create? -%>
   <%%# The inline create form — only the channel ever renders it (the New
@@ -44,20 +42,25 @@
   <%% end %>
 
 <% if infinite? -%>
-  <%%# `visible` is a pseudo-event backed by an IntersectionObserver, so this
-      button doubles as the infinite-scroll sentinel. The client stamps
-      data-hibiki-busy on it while the next page is in flight. %>
+  <%%# `visible` is a pseudo-event backed by an IntersectionObserver: the wrapper
+      is the scroll sentinel, the link inside it is the click path and its href
+      the fallback. A sentinel must never fall back — scrolling into view on a
+      dead socket would navigate. %>
   <%% if remaining.positive? %>
-    <div id="<%= load_more_dom_id %>"<%= css_attr(:load_more_wrap) %>>
-      <%%= tag.button(type: "button",
+    <%%= tag.div(id: "<%= load_more_dom_id %>",
 <% if css? -%>
-                     class: "<%= css(:btn_wide) %>",
+                class: "<%= css(:load_more_wrap) %>",
 <% end -%>
-                     **on(:go_to_page, event: %i[click visible],
-                                       with: { page: page + 1 })) do %>
+                **on(:go_to_page, event: :visible, with: { page: page + 1 })) do %>
+      <%%= link_to "#{page_url.(page + 1)}#<%= row_dom_id_prefix %>_#{<%= controller_file_name %>.last.id}",
+<% if css? -%>
+                  class: "<%= css(:btn_wide) %>",
+<% end -%>
+                  data: { turbo: false }.merge(on(:go_to_page, with: { page: page + 1 },
+                                                  fallback: true)[:data]) do %>
         Load more<span<%= css_attr(:muted_inline) %>>&nbsp;·&nbsp;<%%= remaining %> remaining</span>
       <%% end %>
-    </div>
+    <%% end %>
   <%% end %>
 <% else -%>
   <%%= render "shared/pagination", page: page, page_count: page_count, pages: pages,

@@ -271,7 +271,16 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       generate(%w[--phlex --infinite-scroll])
 
       expect(exists?("app/views/shared/pagination.rb")).to be(false)
-      expect(generated("app/views/items/list.rb")).to include("%i[click visible]")
+      list = generated("app/views/items/list.rb")
+      # The split control, Phlex spelling: the string "false" (Phlex omits
+      # false-valued attributes) and a bare `a`, so no LinkTo include.
+      expect(list).to include("**on(:go_to_page, event: :visible, with: { page: @page + 1 })")
+      expect(list).to include("a(href: load_more_href,")
+      expect(list).to include('data: { turbo: "false" }.merge(on(:go_to_page, with: { page: @page + 1 },')
+      expect(list).to include("fallback: true)[:data])")
+      expect(list.scan("fallback:").size).to eq(1)
+      expect(list).to include("def load_more_href = \"\#{page_url.(@page + 1)}#item_\#{@items.last.id}\"")
+      expect(list).not_to include("%i[click visible]")
     end
 
     it "emits sources that compile, in every variant and every pagination mode" do

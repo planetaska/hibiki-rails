@@ -260,7 +260,16 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       generate(["Book", *book_fields, "--infinite-scroll"])
 
       expect(generated("app/queries/book_query.rb")).to include("relation.limit(PAGE_SIZE && page * PAGE_SIZE)")
-      expect(generated("app/views/books/_list.html.erb")).to include("%i[click visible]")
+      list = generated("app/views/books/_list.html.erb")
+      # The split control: the wrapper is the visible-only sentinel (never a
+      # fallback), the link inside it is the click path with a real href.
+      expect(list).to include("**on(:go_to_page, event: :visible, with: { page: page + 1 })")
+      expect(list).to include("link_to \"\#{page_url.(page + 1)}#book_\#{books.last.id}\"")
+      expect(list).to include("data: { turbo: false }.merge(on(:go_to_page, with: { page: page + 1 },")
+      expect(list).to include("fallback: true)[:data])")
+      expect(list.scan("fallback:").size).to eq(1)
+      expect(list).to include("page_url = ->(n) do")
+      expect(list).not_to include("%i[click visible]")
       expect(exists?("app/views/shared/_pagination.html.erb")).to be(false)
       # The field-error line is not pagination-shaped and stays.
       expect(exists?("app/views/shared/_field_error.html.erb")).to be(true)
@@ -845,11 +854,13 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     expect_valid_generated_sources(@destination)
   end
 
-  it "generates valid sources for every css variant" do
-    Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
-      Dir.mktmpdir do |dir|
-        run_generator(described_class, ["Book", *book_fields, "--css=#{variant}"], destination: dir)
-        expect_valid_generated_sources(dir)
+  it "generates valid sources for every css variant and pagination mode" do
+    [[], %w[--infinite-scroll], %w[--skip-pagination]].each do |mode|
+      Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
+        Dir.mktmpdir do |dir|
+          run_generator(described_class, ["Book", *book_fields, *mode, "--css=#{variant}"], destination: dir)
+          expect_valid_generated_sources(dir)
+        end
       end
     end
   end

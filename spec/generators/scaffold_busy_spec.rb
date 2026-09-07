@@ -255,12 +255,13 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
 
     # The two sites that are free: the client stamps the control it fired
     # from, so one rule in the stylesheet dims them and no markup changes.
-    it "adds no markup to the destroy button or the load-more sentinel" do
+    it "adds no markup to the destroy button or the load-more control" do
       expect(generated("app/views/books/_book.html.erb")).not_to include("hbk-")
 
       run_generator(described_class, %w[Item --infinite-scroll], destination: @destination)
       list = generated("app/views/items/_list.html.erb")
-      expect(list).to include("%i[click visible]")
+      expect(list).to include("event: :visible")
+      expect(list).to include("fallback: true")
       expect(list).not_to include("hbk-")
     end
 

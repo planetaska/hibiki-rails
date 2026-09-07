@@ -4,6 +4,29 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.14.0 — 2026-09-07
+
+### Changed
+
+**The infinite-scroll Load-more control has a degraded path.** Under
+`--infinite-scroll` the scaffold emitted one button that answered both a
+click and the `visible` sentinel event, and gave it no `fallback:` on
+purpose: a sentinel that navigates on a dead socket would make scrolling
+navigate. Without JavaScript the button rendered and did nothing. The control
+is now two elements. The wrapper (`books_load_more`, the same id) is the
+sentinel and carries only `visible`. A link inside it is the click path, with
+`fallback: true` and a real href: the query already reads `?page=N` as a
+growing window, so a degraded click shows every window up to N, and the
+link's fragment lands on the last row the reader had already seen. The JS
+client is unchanged.
+
+- Both view layers. The Phlex component uses a bare `a`, so no `LinkTo`
+  include; `page_url` is now emitted in both pagination modes.
+- Regenerating an app changes only `_list.html.erb` / `list.rb`. A system
+  test that clicked `#books_load_more button` now clicks the `a`.
+- Docs: the fallback contract in [The JS client] gains the rule — never give
+  a `visible` control a `fallback:`; split it as the scaffold does.
+
 ## 0.13.0 — 2026-09-07
 
 ### Changed

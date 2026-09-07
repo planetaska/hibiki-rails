@@ -80,6 +80,23 @@ it("still answers a plain click on the same element", async () => {
   expect(performed).toEqual([["load_more", { shown: 20 }]])
 })
 
+// The scaffold's split control: a visible-only wrapper is the sentinel and
+// a fallback link inside it is the click path. Only the wrapper is observed;
+// the link never sees a visible-> token, so it can carry a fallback safely.
+const split = `<div id="load_more" data-hibiki-on="visible->load_more" data-hibiki-with='{"page":2}'>
+  <a id="more" href="/items?page=2" data-hibiki-on="click->load_more"
+     data-hibiki-with='{"page":2}' data-hibiki-fallback="true">Load more</a>
+</div>`
+
+it("observes a visible-only wrapper and answers the fallback link inside it", async () => {
+  const root = await mount(island(split))
+  expect([...observer().targets]).toEqual([root.querySelector("#load_more")])
+
+  observer().scrollIntoView(root.querySelector("#load_more"))
+  root.querySelector("#more").click()
+  expect(performed).toEqual([["load_more", { page: 2 }], ["load_more", { page: 2 }]])
+})
+
 // The server-side generation token absorbs a genuine double-fire; this is
 // the client's own brake, so a sentinel parked in the viewport does not
 // perform on every observer callback.
