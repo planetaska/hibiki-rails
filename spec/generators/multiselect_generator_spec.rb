@@ -122,7 +122,7 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
     end
 
     it "extends both strict_loading preloads" do
-      expect(generated("app/models/item_query.rb"))
+      expect(generated("app/queries/item_query.rb"))
         .to include("matched_scope.includes(:shelf, :parts)")
       expect(generated("app/channels/item_channel.rb"))
         .to include("Item.includes(:shelf, :parts).strict_loading")
@@ -271,6 +271,25 @@ RSpec.describe Hibiki::Rails::Generators::MultiselectGenerator do
           expect_valid_generated_sources(dir)
         end
       end
+    end
+  end
+
+  # Scaffolds before 0.13.0 wrote the query object to app/models; the preload
+  # goes wherever the file is, and nothing is created in app/queries.
+  describe "on a pre-0.13 scaffold" do
+    before do
+      scaffold
+      seed_models
+      FileUtils.mkdir_p(File.join(@destination, "app/models"))
+      FileUtils.mv(File.join(@destination, "app/queries/item_query.rb"),
+                   File.join(@destination, "app/models/item_query.rb"))
+      generate(%w[Item Part Fitting --css=daisyui])
+    end
+
+    it "injects the preload into the query object where it is" do
+      expect(generated("app/models/item_query.rb"))
+        .to include("matched_scope.includes(:shelf, :parts)")
+      expect(exists?("app/queries/item_query.rb")).to be(false)
     end
   end
 

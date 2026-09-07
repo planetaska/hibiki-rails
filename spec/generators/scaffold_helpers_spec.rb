@@ -25,7 +25,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
 
   # define_method, not def: `probe` is a block-local and a def body would not
   # close over it.
-  define_method(:helpers_for) { |name| probe.new([name]) }
+  define_method(:helpers_for) { |name, **config| probe.new([name], {}, config) }
 
   describe "the two grains" do
     it "names a collection at the plural grain and a record at the singular one" do
@@ -57,12 +57,30 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
 
       expect(admin.call(:collection_channel_path)).to eq("app/channels/admin/books_channel.rb")
       expect(admin.call(:member_channel_path)).to eq("app/channels/admin/book_channel.rb")
-      # app/models, not a new app/queries: Rails computes autoload paths from
-      # the app/* glob at boot, so a new top-level dir needs a restart.
-      expect(admin.call(:query_path)).to eq("app/models/admin/book_query.rb")
+      expect(admin.call(:query_path)).to eq("app/queries/admin/book_query.rb")
+      expect(admin.call(:legacy_query_path)).to eq("app/models/admin/book_query.rb")
       expect(admin.call(:form_path)).to eq("app/forms/admin/book_form.rb")
       expect(admin.call(:scaffold_controller_path)).to eq("app/controllers/admin/books_controller.rb")
       expect(admin.call(:view_dir)).to eq("app/views/admin/books")
+    end
+
+    # Scaffolds before 0.13.0 wrote the query object to app/models. The add-on
+    # generators read this rather than query_path, so a preload lands in the
+    # file the app actually loads.
+    it "finds the query object in either location, naming the new one when neither exists" do
+      Dir.mktmpdir do |dir|
+        helpers = helpers_for("book", destination_root: dir)
+
+        expect(helpers.call(:existing_query_path)).to eq("app/queries/book_query.rb")
+
+        FileUtils.mkdir_p(File.join(dir, "app/models"))
+        File.write(File.join(dir, "app/models/book_query.rb"), "")
+        expect(helpers.call(:existing_query_path)).to eq("app/models/book_query.rb")
+
+        FileUtils.mkdir_p(File.join(dir, "app/queries"))
+        File.write(File.join(dir, "app/queries/book_query.rb"), "")
+        expect(helpers.call(:existing_query_path)).to eq("app/queries/book_query.rb")
+      end
     end
 
     it "namespaces dom ids and reactive value names so two islands can share a page" do

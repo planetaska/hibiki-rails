@@ -103,13 +103,14 @@ module Hibiki
         # Rows are strict_loading and frozen, so the thumbnail raises without
         # these — on the index AND on show-page repaints (the member channel).
         def inject_query_preload
-          return if wired?(query_path, /\.#{with_attached}\b/)
+          path = existing_query_path
+          return if wired?(path, /\.#{with_attached}\b/)
 
-          unless wired?(query_path, QUERY_WINDOW_SCOPE)
-            return manual_wiring(query_path, "  # preload the attachment:\n  .#{with_attached}")
+          unless wired?(path, QUERY_WINDOW_SCOPE)
+            return manual_wiring(path, "  # preload the attachment:\n  .#{with_attached}")
           end
 
-          gsub_file(query_path, QUERY_WINDOW_SCOPE) do |match|
+          gsub_file(path, QUERY_WINDOW_SCOPE) do |match|
             head, scope, tail = match.match(QUERY_WINDOW_SCOPE).captures
             "#{head}#{scope}.#{with_attached}#{tail}"
           end

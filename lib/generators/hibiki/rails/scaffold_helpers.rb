@@ -49,18 +49,25 @@ module Hibiki
         def scaffold_controller_class_name = "#{controller_class_name}Controller"
 
         # ---- destinations ----------------------------------------------------
-        #
-        # The query object goes in app/models, NOT a new app/queries: Rails
-        # computes autoload paths from the app/* glob at boot, so a new
-        # top-level directory is not autoloadable until a server restart.
-        # app/forms already costs one restart; two would be gratuitous.
 
         def view_dir = File.join("app/views", controller_file_path)
         def collection_channel_path = File.join("app/channels", "#{controller_file_path}_channel.rb")
         def member_channel_path = File.join("app/channels", *class_path, "#{file_name}_channel.rb")
         def model_path = File.join("app/models", *class_path, "#{file_name}.rb")
-        def query_path = File.join("app/models", *class_path, "#{file_name}_query.rb")
+        def query_path = File.join("app/queries", *class_path, "#{file_name}_query.rb")
         def form_path = File.join("app/forms", *class_path, "#{file_name}_form.rb")
+
+        # Scaffolds before 0.13.0 wrote the query object to app/models. The
+        # add-on generators read existing_query_path so their injections land
+        # in the file the app loads; the scaffold itself always writes query_path.
+        def legacy_query_path = File.join("app/models", *class_path, "#{file_name}_query.rb")
+
+        def existing_query_path
+          return query_path if File.exist?(File.join(destination_root, query_path))
+          return legacy_query_path if File.exist?(File.join(destination_root, legacy_query_path))
+
+          query_path
+        end
 
         def scaffold_controller_path
           File.join("app/controllers", "#{controller_file_path}_controller.rb")

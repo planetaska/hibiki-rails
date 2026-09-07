@@ -86,7 +86,7 @@ module Hibiki
           # Captured BEFORE anything is written, so post_install can tell which
           # app/* directories are new — Rails computes autoload paths from that
           # glob at boot, and a new one needs a restart.
-          @new_app_dirs = %w[app/forms app/channels app/models app/views].reject { exists?(it) }
+          @new_app_dirs = %w[app/forms app/queries app/channels app/models app/views].reject { exists?(it) }
         end
 
         # One file per app, not per resource, and the only thing this generator

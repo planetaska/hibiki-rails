@@ -23,6 +23,7 @@ module Hibiki
         # stylesheet, a leftover file. None of them is about the resource.
         def app_notices
           restart_notice
+          stale_query_notice
           # These live with the code that chose their branch, like
           # parent_notices — the outcomes are those modules' vocabulary.
           stylesheet_notice
@@ -47,6 +48,16 @@ module Hibiki
 
           say_status :restart, "#{@new_app_dirs.join(', ')} #{@new_app_dirs.one? ? 'is' : 'are'} new. " \
                                "Please restart if the server is running.", :yellow
+        end
+
+        # Scaffolds before 0.13.0 wrote the query object to app/models, which
+        # autoloads ahead of app/queries: until the old copy goes, it is the one
+        # the app loads. A generator never deletes.
+        def stale_query_notice
+          return unless exists?(legacy_query_path)
+
+          say_status :stale, "#{legacy_query_path} has moved to #{query_path}. " \
+                             "Please delete the old file.", :yellow
         end
 
         def rebuild_css_notice

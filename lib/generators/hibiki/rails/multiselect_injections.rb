@@ -98,7 +98,7 @@ module Hibiki
 
         # Rows are strict_loading, so the display line raises without these.
         def inject_query_preload
-          inject_includes query_path,
+          inject_includes existing_query_path,
                           with_existing: /matched_scope\.includes\(([^)]*)\)/,
                           without: "apply_sort(matched_scope)",
                           wrapped: "apply_sort(matched_scope.includes(:#{association_name}))"

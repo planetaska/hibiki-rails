@@ -141,7 +141,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
     end
 
     it "extends both strict_loading preloads" do
-      expect(generated("app/models/item_query.rb"))
+      expect(generated("app/queries/item_query.rb"))
         .to include("apply_sort(matched_scope.includes(:shelf).with_attached_photo), page: @page")
       expect(generated("app/channels/item_channel.rb"))
         .to include("Item.includes(:shelf).with_attached_photo.strict_loading.find_by(id: record_id)")
@@ -202,7 +202,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       # first — harmless, every concern wraps via its own GraphHooks prepend.
       expect(generated("app/channels/items_channel.rb"))
         .to include("  include Hibiki::Rails::Channel\n  include BadgeArtUpload\n  include PhotoUpload\n")
-      expect(generated("app/models/item_query.rb"))
+      expect(generated("app/queries/item_query.rb"))
         .to include(".with_attached_photo.with_attached_badge_art")
       expect(generated("app/controllers/items_controller.rb"))
         .to include(":photo, :remove_photo, :badge_art, :remove_badge_art ])")
@@ -430,7 +430,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       end
 
       it "extends both strict_loading preloads" do
-        expect(generated("app/models/item_query.rb")).to include(".with_attached_photos), page: @page")
+        expect(generated("app/queries/item_query.rb")).to include(".with_attached_photos), page: @page")
         expect(generated("app/channels/item_channel.rb"))
           .to include(".with_attached_photos.strict_loading.find_by(id: record_id)")
       end
@@ -520,7 +520,7 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
 
       expect(generated("app/controllers/items_controller.rb"))
         .to include("{ add_photos: [], remove_photo_ids: [] }, :cover, :remove_cover ])")
-      expect(generated("app/models/item_query.rb")).to include(".with_attached_photos.with_attached_cover")
+      expect(generated("app/queries/item_query.rb")).to include(".with_attached_photos.with_attached_cover")
       expect(generated("app/channels/items_channel.rb"))
         .to include("  include Hibiki::Rails::Channel\n  include CoverUpload\n  include PhotosUpload\n")
       expect_valid_generated_sources(@destination)
@@ -656,6 +656,25 @@ RSpec.describe Hibiki::Rails::Generators::UploadFieldGenerator do
       output = generate(%w[Item photo --css=daisyui])
 
       expect(output).to include(%(pin "@rails/activestorage"))
+    end
+  end
+
+  # Scaffolds before 0.13.0 wrote the query object to app/models; the preload
+  # goes wherever the file is, and nothing is created in app/queries.
+  describe "on a pre-0.13 scaffold" do
+    before do
+      scaffold
+      seed_model
+      FileUtils.mkdir_p(File.join(@destination, "app/models"))
+      FileUtils.mv(File.join(@destination, "app/queries/item_query.rb"),
+                   File.join(@destination, "app/models/item_query.rb"))
+      generate(%w[Item photo --css=daisyui])
+    end
+
+    it "injects the preload into the query object where it is" do
+      expect(generated("app/models/item_query.rb"))
+        .to include("apply_sort(matched_scope.includes(:shelf).with_attached_photo), page: @page")
+      expect(exists?("app/queries/item_query.rb")).to be(false)
     end
   end
 end

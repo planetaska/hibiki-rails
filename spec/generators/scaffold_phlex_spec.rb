@@ -227,7 +227,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
         FileUtils.mkdir_p(File.join(dir, "config"))
         File.write(File.join(dir, "config/routes.rb"), "Rails.application.routes.draw do\nend\n")
         run_generator(described_class, %w[Item], destination: dir)
-        %w[app/models/item_query.rb app/forms/item_form.rb]
+        %w[app/queries/item_query.rb app/forms/item_form.rb]
           .to_h { [it, File.read(File.join(dir, it))] }
       end
 

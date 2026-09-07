@@ -53,7 +53,7 @@ RSpec.describe Hibiki::Rails::Generators::FormGenerator do
     it "leaves the rest of the scaffold's output alone" do
       expect(exists?("app/channels/items_channel.rb")).to be(false)
       expect(exists?("app/controllers/items_controller.rb")).to be(false)
-      expect(exists?("app/models/item_query.rb")).to be(false)
+      expect(exists?("app/queries/item_query.rb")).to be(false)
       expect(exists?("app/views/items/index.html.erb")).to be(false)
     end
 

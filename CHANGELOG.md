@@ -4,6 +4,25 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.13.0 — 2026-09-07
+
+### Changed
+
+**The scaffold's query object lives in `app/queries`.** `hibiki:rails:scaffold`
+and `scaffold_controller` write `app/queries/book_query.rb` where they wrote
+`app/models/book_query.rb`. The constant is unchanged. `app/queries` is the
+directory the query-object gems (ARQO, querifier, query_delegator) already
+generate into, so a query one of them writes for the same model meets ours as
+a file conflict instead of a second `BookQuery` that Rails loads first. The
+move costs no extra restart: the scaffold already creates `app/forms`, and one
+restart picks up both.
+
+- Apps scaffolded earlier need nothing. Move the file with `git mv` when
+  convenient; `hibiki:rails:multiselect` and `upload_field` find it in either
+  place.
+- A `--force` re-run writes `app/queries`. Rails autoloads `app/models` first,
+  so the post-install output asks you to delete the old file.
+
 ## 0.12.0 — 2026-09-06
 
 ### Added

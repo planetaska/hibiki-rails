@@ -112,8 +112,8 @@ once per app, shared by every generated resource, and wired into your stylesheet
 or layout automatically — the post-install output says which, or gives you the
 line to add when it cannot tell.
 
-Restart the server afterwards: `app/forms/` is new, and Rails works out its
-autoload paths at boot.
+Restart the server afterwards: `app/forms/` and `app/queries/` are new, and
+Rails works out its autoload paths at boot.
 
 ### Render the reactive component
 

@@ -17,7 +17,7 @@ Example:
     bin/rails generate hibiki:rails:scaffold_controller Book
 
     This will create:
-        app/models/book_query.rb
+        app/queries/book_query.rb
         app/channels/books_channel.rb
         app/channels/book_channel.rb
         app/forms/book_form.rb

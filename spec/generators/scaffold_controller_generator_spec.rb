@@ -43,7 +43,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     before { generate(["Book", *book_fields, "--css=daisyui"]) }
 
     it "derives the query object's allowlists from column types" do
-      query = generated("app/models/book_query.rb")
+      query = generated("app/queries/book_query.rb")
 
       expect(query).to include("SEARCHABLE = %i[title intro].freeze")
       expect(query).to include("FILTERABLE = %i[available].freeze")
@@ -72,7 +72,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     end
 
     it "freezes the window's records at the query boundary" do
-      expect(generated("app/models/book_query.rb"))
+      expect(generated("app/queries/book_query.rb"))
         .to include("window_scope.strict_loading.map { it.readonly!; it.freeze }")
     end
 
@@ -110,7 +110,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     end
 
     it "carries neither pagination mode's discriminator — the mode is resolved here" do
-      query = generated("app/models/book_query.rb")
+      query = generated("app/queries/book_query.rb")
 
       expect(query).not_to include("MODE")
       expect(query).not_to include("INFINITE")
@@ -146,7 +146,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     before { generate(["Item"]) }
 
     it "reads columns, types and reflections off the model" do
-      query = generated("app/models/item_query.rb")
+      query = generated("app/queries/item_query.rb")
 
       expect(query).to include("SEARCHABLE = %i[title notes].freeze")
       expect(query).to include("FILTERABLE = %i[active].freeze")
@@ -183,7 +183,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
     it "emits the columns in the order the arguments asked for" do
       expect(generated("app/forms/item_form.rb")).to include("reactive_attributes Item, :title, :shelf_id, :count")
-      expect(generated("app/models/item_query.rb")).to include("SORTABLE = %i[id title count created_at].freeze")
+      expect(generated("app/queries/item_query.rb")).to include("SORTABLE = %i[id title count created_at].freeze")
     end
 
     it "still reads the validators the argument list cannot state" do
@@ -201,7 +201,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     it "omits a column the arguments left out, and every list derived from it" do
       # An explicit list is a subset filter as well as an ordering — that is
       # the point of the lever, so nothing may quietly put `notes` back.
-      expect(generated("app/models/item_query.rb")).to include("SEARCHABLE = %i[title].freeze")
+      expect(generated("app/queries/item_query.rb")).to include("SEARCHABLE = %i[title].freeze")
       expect(generated("app/views/items/_item.html.erb")).not_to include("notes")
       expect(generated("app/forms/item_form.rb")).not_to include("notes")
     end
@@ -250,7 +250,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     it "--skip-pagination degrades through a constant, not template conditionals" do
       generate(["Book", *book_fields, "--skip-pagination"])
 
-      expect(generated("app/models/book_query.rb")).to include("PAGE_SIZE = nil")
+      expect(generated("app/queries/book_query.rb")).to include("PAGE_SIZE = nil")
       # .limit(nil) and .offset(nil) are relation no-ops, so the page control
       # simply never renders and go_to_page short-circuits.
       expect(exists?("app/views/shared/_pagination.html.erb")).to be(true)
@@ -259,7 +259,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     it "--infinite-scroll swaps the window function and drops the page control" do
       generate(["Book", *book_fields, "--infinite-scroll"])
 
-      expect(generated("app/models/book_query.rb")).to include("relation.limit(PAGE_SIZE && page * PAGE_SIZE)")
+      expect(generated("app/queries/book_query.rb")).to include("relation.limit(PAGE_SIZE && page * PAGE_SIZE)")
       expect(generated("app/views/books/_list.html.erb")).to include("%i[click visible]")
       expect(exists?("app/views/shared/_pagination.html.erb")).to be(false)
       # The field-error line is not pagination-shaped and stays.
@@ -269,7 +269,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     it "--skip-search removes the box, the action and the LIKE terms together" do
       generate(["Book", *book_fields, "--skip-search"])
 
-      expect(generated("app/models/book_query.rb")).not_to include("SEARCHABLE")
+      expect(generated("app/queries/book_query.rb")).not_to include("SEARCHABLE")
       expect(generated("app/channels/books_channel.rb")).not_to include("def search(data)")
       expect(generated("app/views/books/_controls.html.erb")).not_to include("search_field_tag")
     end
@@ -277,7 +277,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     it "--page-size reaches the query object" do
       generate(["Book", *book_fields, "--page-size=5"])
 
-      expect(generated("app/models/book_query.rb")).to include("PAGE_SIZE = 5")
+      expect(generated("app/queries/book_query.rb")).to include("PAGE_SIZE = 5")
     end
 
     it "--skip-create drops the inline form and keeps New outside the island" do
@@ -303,7 +303,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     before { generate(["Book", *book_fields, "--css=daisyui"]) }
 
     it "gives the query object its URL half" do
-      query = generated("app/models/book_query.rb")
+      query = generated("app/queries/book_query.rb")
 
       expect(query).to include("def self.from_params(params)")
       expect(query).to include("def self.filters_from(params)")
@@ -713,9 +713,25 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       output = generate(["Item"])
 
       expect(output).to include("restart")
+      expect(output).to include("app/queries")
       expect(output).to include("Please restart if the server is running")
+      expect(output).not_to include("has moved to")
       expect(output).to include("using Shelf#name as the display label")
       expect(output).to include("bin/rails g hibiki:rails:install")
+    end
+
+    # Scaffolds before 0.13.0 wrote the query object to app/models. A re-run
+    # writes app/queries and, since app/models autoloads first, the old copy
+    # would silently win: the notice is what prevents that. A generator never
+    # deletes.
+    it "names a query object left in the pre-0.13 location" do
+      write("app/models/item_query.rb", "class ItemQuery\nend\n")
+      output = generate(["Item"])
+
+      expect(exists?("app/models/item_query.rb")).to be(true)
+      expect(exists?("app/queries/item_query.rb")).to be(true)
+      expect(output).to include("app/models/item_query.rb has moved to app/queries/item_query.rb")
+      expect(output).to include("Please delete the old file")
     end
 
     # This used to be skipped on the whole introspection path, on the
