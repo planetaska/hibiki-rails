@@ -223,6 +223,7 @@ DEPENDENCIES
   activerecord
   hibiki
   hibiki_rails!
+  json (< 3)
   rake (~> 13.0)
   rspec (~> 3.0)
   rspec-rails (~> 8.0)
