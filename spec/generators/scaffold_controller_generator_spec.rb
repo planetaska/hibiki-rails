@@ -854,8 +854,8 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
     expect_valid_generated_sources(@destination)
   end
 
-  it "generates valid sources for every css variant and pagination mode" do
-    [[], %w[--infinite-scroll], %w[--skip-pagination]].each do |mode|
+  it "generates valid sources for every css variant and pagination mode, with and without motion" do
+    [[], %w[--infinite-scroll], %w[--skip-pagination], %w[--skip-motion]].each do |mode|
       Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
         Dir.mktmpdir do |dir|
           run_generator(described_class, ["Book", *book_fields, *mode, "--css=#{variant}"], destination: dir)

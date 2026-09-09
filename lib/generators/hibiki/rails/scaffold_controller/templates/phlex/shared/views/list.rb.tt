@@ -48,8 +48,15 @@ class <%= view_class_name(:list) %> < Views::Base
 <% if inline_create? -%>
 
   def create_form
+<% if motion? -%>
+    # data-motion: the client holds the card while it slides shut; the slide
+    # itself is hbk-slide in hibiki_motion.css.
+    div<%= arg_list(%(id: "#{row_dom_id_prefix}_new"), "data: { motion: true }", *hbk_args("hbk-slide", token: :card)) %> do
+      div<%= arg_list(*hbk_args("hbk-slide-body", token: :card_body)) %> do
+<% else -%>
     div<%= arg_list(%(id: "#{row_dom_id_prefix}_new"), *css_args(:card)) %> do
       div<%= arg_list(*css_args(:card_body)) %> do
+<% end -%>
 <%= render_call(:row_form, create_form_render_args, indent: 8) %>
       end
     end

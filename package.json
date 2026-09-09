@@ -6,10 +6,12 @@
   "main": "app/assets/javascripts/hibiki.js",
   "module": "app/assets/javascripts/hibiki.js",
   "exports": {
-    ".": "./app/assets/javascripts/hibiki.js"
+    ".": "./app/assets/javascripts/hibiki.js",
+    "./motion": "./app/assets/javascripts/hibiki-motion.js"
   },
   "files": [
-    "app/assets/javascripts/hibiki.js"
+    "app/assets/javascripts/hibiki.js",
+    "app/assets/javascripts/hibiki-motion.js"
   ],
   "repository": {
     "type": "git",

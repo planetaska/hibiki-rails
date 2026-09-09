@@ -134,7 +134,8 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
 
     # CSS wants every @import above any other statement, so landing below a
     # @plugin line would emit an invalid entry. Directly under Tailwind's own
-    # import, and any hand-added lines below are the user's to order.
+    # import, the motion sheet below it, and any hand-added lines below are
+    # the user's to order.
     it "lands directly below Tailwind's import, above any @plugin line" do
       write("app/assets/stylesheets/application.tailwind.css",
             %(@import "tailwindcss";\n@plugin "daisyui";\n))
@@ -143,7 +144,8 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "loading 
       generate
 
       expect(generated("app/assets/stylesheets/application.tailwind.css"))
-        .to eq(%(@import "tailwindcss";\n@import "./hibiki_busy.css";\n@plugin "daisyui";\n))
+        .to eq(%(@import "tailwindcss";\n@import "./hibiki_busy.css";\n@import "./hibiki_motion.css";\n) +
+               %(@plugin "daisyui";\n))
     end
 
     # tailwindcss-rails keeps its entry in a directory of its own, so the

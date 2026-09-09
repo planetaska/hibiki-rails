@@ -12,6 +12,7 @@ require_relative "../scaffold_phlex_helpers"
 require_relative "../scaffold_post_install"
 require_relative "../scaffold_shared_views"
 require_relative "../scaffold_transport_stylesheet"
+require_relative "../scaffold_motion"
 require_relative "../scaffold_schema"
 require_relative "../css_variant"
 
@@ -39,6 +40,7 @@ module Hibiki
         include ScaffoldPostInstall
         include ScaffoldSharedViews
         include ScaffoldTransportStylesheet
+        include ScaffoldMotion
 
         TEMPLATE_ROOT = File.expand_path("templates", __dir__)
 
@@ -59,6 +61,8 @@ module Hibiki
                                    desc: "Omit the search box and the LIKE terms behind it"
         class_option :skip_create, type: :boolean, default: false,
                                    desc: "Omit the inline create form — New always navigates"
+        class_option :skip_motion, type: :boolean, default: false,
+                                   desc: "Omit the enter/leave motion — no hibiki_motion.css, no marks"
         class_option :page_size, type: :numeric, default: 20,
                                  desc: "Rows per page"
         class_option :skip_routes, type: :boolean,
@@ -89,12 +93,17 @@ module Hibiki
           @new_app_dirs = %w[app/forms app/queries app/channels app/models app/views].reject { exists?(it) }
         end
 
-        # One file per app, not per resource, and the only thing this generator
-        # writes outside app/{channels,models,forms,views,controllers}. It
-        # carries no model knowledge at all — the rules key on the client's
-        # attributes — so a second resource finds it already there.
+        # One file per app, not per resource (two under motion), and the only
+        # thing this generator writes outside app/{channels,models,forms,views,
+        # controllers} besides the motion import. They carry no model knowledge
+        # at all — the rules key on the client's attributes — so a second
+        # resource finds them already there.
         def create_stylesheet
           create_transport_stylesheet
+        end
+
+        def wire_motion
+          wire_motion_module
         end
 
         def create_channels
@@ -291,6 +300,10 @@ module Hibiki
 
         def css(token) = CssVariant.token(css_variant, token)
         def css? = css_variant != :none
+
+        # Motion rides the stylesheet: --css=none is a hand-styled app, and its
+        # views must stay byte-identical to a --skip-motion run.
+        def motion? = css? && !options[:skip_motion]
 
         # nil means "no window": .limit(nil) and .offset(nil) are both relation
         # no-ops, so one constant replaces template conditionals across five

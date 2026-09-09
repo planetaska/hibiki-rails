@@ -24,11 +24,17 @@ Example:
         app/controllers/books_controller.rb
         app/views/books/*
         app/assets/stylesheets/hibiki_busy.css
+        app/assets/stylesheets/hibiki_motion.css
     And modify:
         app/models/book.rb
         app/models/author.rb   # each model a belongs_to points at
+        app/javascript/application.js   # imports hibiki-rails/motion
         config/routes.rb
 
     Pass --phlex to emit Phlex components under app/views/books/*.rb instead of
     ERB templates. The view layer is the only thing it changes; it needs the
     phlex-rails gem and `bin/rails g phlex:install`.
+
+    Rows and inline forms slide open and shut. Pass --skip-motion to leave
+    that out: no motion stylesheet, no import, no marks in the views.
+    --css=none never emits it either.

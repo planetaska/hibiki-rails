@@ -27,6 +27,7 @@ module Hibiki
           # These live with the code that chose their branch, like
           # parent_notices — the outcomes are those modules' vocabulary.
           stylesheet_notice
+          motion_notice
           stale_erb_views_notice
           shared_views_notice
           stale_shared_views_notice

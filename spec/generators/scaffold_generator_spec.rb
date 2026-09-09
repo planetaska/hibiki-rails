@@ -58,6 +58,13 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldGenerator do
     expect(Dir[File.join(@destination, "app/views/**/*.erb")]).to be_empty
   end
 
+  it "forwards --skip-motion to the controller generator" do
+    run_generator(described_class, %w[Widget title:string --css=daisyui --skip-motion], destination: @destination)
+
+    expect(File.exist?(File.join(@destination, "app/assets/stylesheets/hibiki_motion.css"))).to be(false)
+    expect(generated("app/views/widgets/_widget.html.erb")).not_to include("data-motion")
+  end
+
   # 14 new .tt files is exactly when a spec.files glob miss bites: the gem
   # builds, installs, and then fails at `bin/rails g` on a template nobody
   # noticed was left out of the package.

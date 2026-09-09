@@ -57,6 +57,11 @@ module Hibiki
           card: "card bg-base-100 shadow-sm",
           card_body: "card-body",
           card_actions: "card-actions justify-end",
+          # The row under motion: card and body as ONE element, so the sliding
+          # wrapper above it adds no depth to the row's content. And the
+          # display wrapper, a swap unit with no box of its own.
+          row_card: "card bg-base-100 shadow-sm card-body",
+          contents: "contents",
           toggle: "toggle",
           toggle_sm: "toggle toggle-sm",
           btn: "btn",
@@ -149,6 +154,7 @@ module Hibiki
           card: "rounded-lg border border-gray-200 bg-white shadow-sm",
           card_body: "p-6 space-y-2",
           card_actions: "flex flex-wrap justify-end gap-2 pt-4",
+          row_card: "rounded-lg border border-gray-200 bg-white shadow-sm p-6 space-y-2",
           toggle: CHECKBOX,
           toggle_sm: CHECKBOX,
           btn: SECONDARY_BUTTON,

@@ -6,3 +6,5 @@
 # — both are part of the Rails 8 default stack. The client takes Action
 # Cable from turbo-rails' consumer, so no "@rails/actioncable" pin is needed.
 pin "hibiki-rails", to: "hibiki.js"
+# The opt-in motion module; it imports "hibiki-rails" by the pin above.
+pin "hibiki-rails/motion", to: "hibiki-motion.js"

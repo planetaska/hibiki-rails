@@ -283,8 +283,9 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       expect(list).not_to include("%i[click visible]")
     end
 
-    it "emits sources that compile, in every variant and every pagination mode" do
-      [%w[--phlex], %w[--phlex --infinite-scroll], %w[--phlex --skip-pagination]].each do |mode|
+    it "emits sources that compile, in every variant and every pagination mode, with and without motion" do
+      [%w[--phlex], %w[--phlex --infinite-scroll], %w[--phlex --skip-pagination],
+       %w[--phlex --skip-motion]].each do |mode|
         Hibiki::Rails::Generators::CssVariant::NAMES.each do |variant|
           FileUtils.rm_rf(Dir[File.join(@destination, "app")])
           generate([*mode, "--css=#{variant}"])

@@ -16,8 +16,15 @@
   <%%# The inline create form — only the channel ever renders it (the New
       link's action sets creating), so the first paint never carries it. %>
   <%% if creating %>
+<% if motion? -%>
+    <%%# data-motion: the client holds the card while it slides shut; the
+        slide itself is hbk-slide in hibiki_motion.css. %>
+    <div id="<%= row_dom_id_prefix %>_new" data-motion<%= hbk_attr("hbk-slide", token: :card) %>>
+      <div<%= hbk_attr("hbk-slide-body", token: :card_body) %>>
+<% else -%>
     <div id="<%= row_dom_id_prefix %>_new"<%= css_attr(:card) %>>
       <div<%= css_attr(:card_body) %>>
+<% end -%>
         <%%= render "<%= partial_path(row_form_partial) %>", <%= wrapped_list(create_form_render_locals, indent: render_indent(partial_path(row_form_partial)) + 4, width: 0).lstrip %> %>
       </div>
     </div>

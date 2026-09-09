@@ -19,18 +19,47 @@ class <%= view_class_name(:row) %> < Views::Base
   def view_template
     # The root id stays stable across display/edit, so idiomorph pairs the
     # subtrees instead of rebuilding them (and losing focus).
+<% if motion? -%>
+    # data-motion="own": the row slides out when its own Destroy removes it;
+    # rows that page or filter away go at once. The wrapper closes the gap
+    # while the card inside slides left (hbk-slide-x, hibiki_motion.css).
+    div<%= arg_list(%(id: "#{row_dom_id_prefix}_\#{#{record_ref}.id}"), %(data: { motion: "own" }), *hbk_args("hbk-slide-x")) %> do
+      div<%= arg_list(*hbk_args("hbk-slide-x-body", token: :row_card)) %> do
+        @editing ? edit_form : display
+      end
+    end
+<% else -%>
     div<%= arg_list(%(id: "#{row_dom_id_prefix}_\#{#{record_ref}.id}"), *css_args(:card)) %> do
       div<%= arg_list(*css_args(:card_body)) %> do
         @editing ? edit_form : fields
       end
     end
+<% end -%>
   end
 
   private
 
+<% if motion? -%>
+  # The edit and display wrappers carry distinct ids so idiomorph swaps them
+  # instead of morphing one into the other — starting: fires only on a real
+  # insertion. The client holds the edit wrapper while it slides shut.
+  def edit_form
+    div<%= arg_list(%(id: "#{row_dom_id_prefix}_\#{#{record_ref}.id}_edit"), "data: { motion: true }", *hbk_args("hbk-slide")) %> do
+      div<%= arg_list(*hbk_args("hbk-slide-body")) %> do
+<%= render_call(:row_form, row_form_render_args, indent: 8) %>
+      end
+    end
+  end
+
+  # contents: no box of its own, so the card's layout is unchanged.
+  def display
+    div<%= arg_list(%(id: "#{row_dom_id_prefix}_\#{#{record_ref}.id}_display"), *css_args(:contents)) %> { fields }
+  end
+<% else -%>
   def edit_form
 <%= render_call(:row_form, row_form_render_args, indent: 4) %>
   end
+<% end -%>
 
   def fields
 <% schema.columns.each do |column| -%>

@@ -71,6 +71,14 @@
 // and per-button feedback needs no server state. Content is stale during
 // a round trip, never absent.
 //
+// Motion is the one PUBLIC data-* contract, and it lives in the opt-in
+// module `hibiki-rails/motion`: an app marks an element `data-motion` (or
+// `data-motion="own"`), the module stamps `data-motion-leaving` /
+// `data-motion-entering` around a swap and holds the render while a
+// leaving element's transitions run. Its header carries the rules; this
+// file only gives it two seams — `islandFor` and the `hibiki:before-render`
+// event the transmit swap dispatches (the same shape Turbo gives streams).
+//
 // The left side of `->` is a hibiki event name: click, change, input,
 // and submit are delegated DOM listeners; `visible` is a pseudo-event
 // backed by an IntersectionObserver (the element entering the viewport).
@@ -130,6 +138,18 @@ let consumer
 // ChannelController subclasses have `this.perform`. WeakMap so a removed
 // island pins nothing even if disconnect never ran.
 const islands = new WeakMap()
+
+// The generic island CONTAINING element, or undefined. The walk performOn
+// uses, exported for the motion module's `own` policy — which reads the
+// island's trip records, so a ChannelController subclass (not in the map)
+// gets plain marks only.
+export function islandFor(element) {
+  for (let node = element; node; node = node.parentElement) {
+    const island = islands.get(node)
+    if (island) return island
+  }
+  return undefined
+}
 
 // camelCase Stimulus method name → snake_case Ruby channel action.
 const underscore = (name) => name.replace(/([A-Z])/g, "_$1").toLowerCase()
@@ -228,6 +248,7 @@ export class ChannelController extends Controller {
     this.seq = 0
     this.renders = 0
     this.busy = new Map()
+    this.lastControl = null
     this.queued = []
     this.setState("connecting")
   }
@@ -348,7 +369,11 @@ export class ChannelController extends Controller {
   // A depth counter, not a boolean: typing while a page loads is one island
   // with two actions outstanding. No requestAnimationFrame anywhere — it
   // never fires in a background tab, which is exactly when a stuck
-  // indicator goes unnoticed.
+  // indicator goes unnoticed. (The motion module is the one place a frame
+  // is waited for, and it waits for nothing in a hidden document.) An ack
+  // settles a trip even while that module is holding the render: the flag
+  // means the server has not answered, and a hold is motion after the
+  // answer.
 
   beginBusy(seq) {
     const record = {
@@ -373,6 +398,11 @@ export class ChannelController extends Controller {
   // has none); controls outside it — the search field — need the removal
   // in settle().
   trackControl(seq, control) {
+    // The most recent gesture, kept past its trip's settle for the motion
+    // module's `own` policy (a render can land after the ack's grace). Set
+    // before the record check: a send that died on the socket was still a
+    // gesture. A ChannelController subclass wanting `own` calls this itself.
+    this.lastControl = control
     const record = this.busy.get(seq)
     if (!record) return
     record.control = control
@@ -453,7 +483,13 @@ export class ChannelController extends Controller {
   //
   // { url } — mirror graph state into the address bar (transmit_url).
   //
-  // { html } — a fragment: swap it in by its root id.
+  // { html } — a fragment: swap it in by its root id. The swap is holdable
+  // the way Turbo's is: `hibiki:before-render` bubbles from the island
+  // first (detail { island, content, render }), and a listener may replace
+  // detail.render with one that waits — the motion module does, to let a
+  // leaving element's transition finish. Returns whatever that render
+  // returns: undefined when the swap ran synchronously, a promise when it
+  // was held, which is what a subclass reading the DOM afterwards awaits.
   //
   // Anything else is not ours to interpret. Subclasses may override, but
   // should call super (or handle `value`) to keep reactive values live.
@@ -469,9 +505,18 @@ export class ChannelController extends Controller {
     if (!html) return
     const template = document.createElement("template")
     template.innerHTML = html
-    for (const fragment of [...template.content.children]) {
-      document.getElementById(fragment.id)?.replaceWith(fragment)
+    const fragments = [...template.content.children]
+    const render = () => {
+      for (const fragment of fragments) {
+        document.getElementById(fragment.id)?.replaceWith(fragment)
+      }
     }
+    const event = new CustomEvent("hibiki:before-render", {
+      bubbles: true,
+      detail: { island: this, content: template.content, render }
+    })
+    this.element.dispatchEvent(event)
+    return event.detail.render()
   }
 
   // replaceState, never pushState: the URL is a mirror of graph state, not
@@ -629,10 +674,13 @@ export default class HibikiController extends ChannelController {
     super.disconnect()
   }
 
-  // The other swap point: hibiki's own transmit transport.
+  // The other swap point: hibiki's own transmit transport. A held swap
+  // hands back a promise; the replacement sentinel exists only after it.
   received(data) {
-    super.received(data)
-    if (data.html) this.scanSentinels()
+    const swapped = super.received(data)
+    if (!data.html) return
+    if (swapped?.then) swapped.then(() => this.scanSentinels())
+    else this.scanSentinels()
   }
 
   // Observe every `visible->` sentinel this island owns. observe() is a
@@ -771,10 +819,8 @@ export { HibikiController }
 // element (a structural mistake, hence the warn; the offline case stays
 // quiet because it is expected weather).
 export function performOn(element, action, payload = {}) {
-  for (let node = element; node; node = node.parentElement) {
-    const island = islands.get(node)
-    if (island) return island.perform(action, payload)
-  }
+  const island = islandFor(element)
+  if (island) return island.perform(action, payload)
   console.warn("hibiki: performOn found no island containing", element)
   return undefined
 }

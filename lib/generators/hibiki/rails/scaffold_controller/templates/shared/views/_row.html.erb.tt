@@ -9,11 +9,34 @@
     default. %>
 <%%# The root id stays stable across display/edit, so idiomorph pairs the
     subtrees instead of rebuilding them (and losing focus). %>
+<% if motion? -%>
+<%%# data-motion="own": the row slides out when its own Destroy removes it;
+    rows that page or filter away go at once. The wrapper closes the gap
+    while the card inside slides left (hbk-slide-x, hibiki_motion.css). %>
+<div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>" data-motion="own"<%= hbk_attr("hbk-slide-x") %>>
+  <div<%= hbk_attr("hbk-slide-x-body", token: :row_card) %>>
+<% else -%>
 <div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>"<%= css_attr(:card) %>>
   <div<%= css_attr(:card_body) %>>
+<% end -%>
     <%% if editing %>
+<% if motion? -%>
+    <%%# The edit and display wrappers carry distinct ids so idiomorph swaps
+        them instead of morphing one into the other — starting: fires only
+        on a real insertion. The client holds this one while it slides shut. %>
+    <div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>_edit" data-motion<%= hbk_attr("hbk-slide") %>>
+      <div<%= hbk_attr("hbk-slide-body") %>>
+        <%%= render "<%= partial_path(row_form_partial) %>", <%= wrapped_list(row_form_render_locals, indent: render_indent(partial_path(row_form_partial)) + 4).lstrip %> %>
+      </div>
+    </div>
+<% else -%>
     <%%= render "<%= partial_path(row_form_partial) %>", <%= wrapped_list(row_form_render_locals, indent: render_indent(partial_path(row_form_partial))).lstrip %> %>
+<% end -%>
     <%% else %>
+<% if motion? -%>
+    <%%# contents: no box of its own, so the card's layout is unchanged. %>
+    <div id="<%= row_dom_id_prefix %>_<%%= <%= singular_name %>.id %>_display"<%= css_attr(:contents) %>>
+<% end -%>
 <% schema.columns.each do |column| -%>
     <div>
       <strong><%= column.human_name %>:</strong>
@@ -53,6 +76,9 @@
                          confirm: "Are you sure?", fallback: true)[:data]) } %>
     </div>
     <%% end %>
+<% if motion? -%>
+    </div>
+<% end -%>
     <%% end %>
   </div>
 </div>

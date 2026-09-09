@@ -1,0 +1,70 @@
+<%#- ESCAPING: all of this is literal CSS. There is no runtime ERB here at all —
+     a .css file is never rendered — and no generation-time branch either: this
+     file is not installed under --css=none. -%>
+/* The app's half of the motion contract: the hibiki-rails/motion module
+   stamps data-motion-leaving / data-motion-entering on a marked element
+   around a swap, and these classes turn that into motion. Only ever READ
+   those attributes — never write them.
+
+   One file per app. Duration and easing are tuned HERE — the views carry the
+   class names only. @utility, not a plain class: that puts each one in the
+   utilities layer, above daisyUI's components (a .card would otherwise win
+   on display and transition), and Tailwind orders multi-property utilities
+   first, so a single utility on the element (duration-500) still wins.
+   Needs Tailwind >= 4.1 (the in-* variant). */
+
+/* Slide open on insertion, shut on removal. The body class goes on the grid
+   child: the collapsed height's floor is its padding, so that slides too.
+   mb-0 keeps a space-y-* list's margin from jumping at either end. */
+@utility hbk-slide {
+  @apply grid grid-rows-[1fr] transition-all duration-300 ease-out
+    starting:grid-rows-[0fr] starting:opacity-0 starting:mb-0
+    data-motion-leaving:grid-rows-[0fr] data-motion-leaving:opacity-0
+    data-motion-leaving:mb-0 data-motion-leaving:ease-in
+    data-motion-entering:overflow-hidden data-motion-leaving:overflow-hidden
+    motion-reduce:transition-none;
+}
+@utility hbk-slide-body {
+  @apply min-h-0 transition-[padding] duration-300 ease-out
+    starting:py-0 in-data-motion-leaving:py-0 in-data-motion-leaving:ease-in;
+}
+
+/* Slide out sideways, then close the gap — the swipe-to-delete shape, for a
+   removal only. Two boxes: the wrapper closes the gap on a delay, and the
+   body (the visible card) slides left and fades first. */
+@utility hbk-slide-x {
+  @apply grid grid-rows-[1fr] transition-[grid-template-rows,margin] duration-300 delay-200 ease-out
+    data-motion-leaving:grid-rows-[0fr] data-motion-leaving:mb-0 data-motion-leaving:overflow-hidden
+    motion-reduce:transition-none;
+}
+@utility hbk-slide-x-body {
+  @apply min-h-0 transition-[translate,opacity] duration-300 ease-in
+    in-data-motion-leaving:-translate-x-full in-data-motion-leaving:opacity-0;
+}
+
+/* The rest of the set. Only the slides animate height; these leave the
+   neighbours jumping. Parameters are custom properties, overridable on the
+   element: class="hbk-fly [--hbk-fly-y:2rem]". */
+@utility hbk-fade {
+  @apply transition-opacity duration-300
+    starting:opacity-0 data-motion-leaving:opacity-0
+    motion-reduce:transition-none;
+}
+@utility hbk-fly {
+  @apply [--hbk-fly-x:0px] [--hbk-fly-y:1rem] transition-[translate,opacity] duration-300 ease-out
+    starting:opacity-0 starting:translate-x-(--hbk-fly-x) starting:translate-y-(--hbk-fly-y)
+    data-motion-leaving:opacity-0 data-motion-leaving:translate-x-(--hbk-fly-x) data-motion-leaving:translate-y-(--hbk-fly-y)
+    motion-reduce:transition-none;
+}
+@utility hbk-scale {
+  @apply [--hbk-scale:0.95] transition-[scale,opacity] duration-300 ease-out
+    starting:opacity-0 starting:scale-(--hbk-scale)
+    data-motion-leaving:opacity-0 data-motion-leaving:scale-(--hbk-scale)
+    motion-reduce:transition-none;
+}
+@utility hbk-blur {
+  @apply [--hbk-blur:4px] transition-[filter,opacity] duration-300
+    starting:opacity-0 starting:blur-(--hbk-blur)
+    data-motion-leaving:opacity-0 data-motion-leaving:blur-(--hbk-blur)
+    motion-reduce:transition-none;
+}
