@@ -4,6 +4,62 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.15.0 — 2026-09-09
+
+### Added
+
+**Motion for generated pages, and the `hibiki-rails/motion` module.** A
+re-rendered fragment is merged into the page in place, so a removed element
+was gone before the browser could draw it leaving. The new opt-in module
+holds a render while a marked element's transitions finish: mark an element
+`data-motion` (it needs an id), give it a transition, and `import
+"hibiki-rails/motion"` once beside your controllers. The module writes
+`data-motion-leaving` on each marked element the incoming fragment lacks,
+waits for its transitions, then lets the render run; it brackets an inserted
+marked element with `data-motion-entering` so a clip can be scoped to the
+motion. `data-motion="own"` animates the leave only when the gesture that
+removed the element came from inside it, read from the island's own trip
+records. Renders queue in arrival order; a hidden tab waits for nothing;
+every wait races a one-second ceiling. Both transports hold. This is a
+client change: the four `data-motion*` attributes are public, unlike the
+private `data-hibiki-*` ones. Docs: [Motion].
+
+- The scaffold emits it by default under `--css=daisyui` and `tailwind`:
+  the inline create card and the row's edit form slide open and shut
+  (`hbk-slide` / `hbk-slide-body`), and a row you destroy slides out to the
+  left before the list closes the gap (`hbk-slide-x` / `hbk-slide-x-body`,
+  marked `own`). The row's display markup gains an id-bearing `contents`
+  wrapper, because the merge pairs an anonymous `div` with the edit wrapper
+  and rewrites it in place, and `@starting-style` fires only on a real
+  insertion; under motion the row's card and card-body are one element, so
+  the add-on generators' anchors still hold.
+- `app/assets/stylesheets/hibiki_motion.css`, once per app beside the busy
+  sheet and wired the same four ways: slide, slide-x, fade, fly, scale and
+  blur as Tailwind `@utility` rules (the utilities layer sits above daisyUI's
+  components, and a single utility on the element still wins), with duration
+  and easing tuned there. Needs Tailwind 4.1. The generator appends
+  `import "hibiki-rails/motion"` to `app/javascript/application.js` once
+  and prints a `motion` notice when it cannot.
+- `--skip-motion` on both scaffold commands leaves every trace out.
+  `--css=none` never emits it: the transitions are Tailwind utilities, and
+  its output is byte-identical to a `--skip-motion` run.
+- Packaging: the engine pins `hibiki-rails/motion`; the npm package exports
+  `./motion`. The module imports `"hibiki-rails"` by its bare name, which
+  the pin and the package self-reference both resolve.
+
+### Changed
+
+- `hibiki.js` gains three seams for the module: an exported `islandFor(element)`,
+  the island's `lastControl` (set in `trackControl`, kept past the trip's
+  settle), and a `hibiki:before-render` event dispatched from the island root
+  before a transmit swap, with `event.detail.render` replaceable the way
+  Turbo's `turbo:before-stream-render` is. `received` returns the render's
+  result: `undefined` for a synchronous swap, a promise for a held one. An ack
+  settles its trip even while a render is held.
+- `CssVariant` gains two tokens, `row_card` and `contents`.
+
+[Motion]: https://planetaska.github.io/hibiki/motion/
+
 ## 0.14.0 — 2026-09-07
 
 ### Changed
