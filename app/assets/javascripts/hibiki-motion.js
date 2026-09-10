@@ -44,6 +44,10 @@ const idsOf = (root) => new Set(marked(root).map((element) => element.id))
 // `own`: the island's trip records are the honest gesture signal — the
 // control of an in-flight trip, or the last control the island tracked
 // (kept past its trip's settle; a render can land after the ack's grace).
+// No island is no evidence, not a plain mark: an `own` element outside any
+// generic island (a ChannelController subclass over Turbo streams) never
+// animates its leave, since the policy exists to keep rows that paged or
+// filtered away from sliding. A plain mark is the way to always animate.
 const ownsGesture = (island, element) => {
   if (!island) return false
   for (const record of island.busy.values()) {

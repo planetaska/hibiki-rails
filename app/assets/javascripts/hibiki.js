@@ -142,7 +142,9 @@ const islands = new WeakMap()
 // The generic island CONTAINING element, or undefined. The walk performOn
 // uses, exported for the motion module's `own` policy — which reads the
 // island's trip records, so a ChannelController subclass (not in the map)
-// gets plain marks only.
+// yields no records: its `own` marks never animate a leave a Turbo stream
+// removes. (The transmit swap's event carries the subclass itself, so
+// `own` works there once the subclass tracks its controls.)
 export function islandFor(element) {
   for (let node = element; node; node = node.parentElement) {
     const island = islands.get(node)
@@ -401,7 +403,9 @@ export class ChannelController extends Controller {
     // The most recent gesture, kept past its trip's settle for the motion
     // module's `own` policy (a render can land after the ack's grace). Set
     // before the record check: a send that died on the socket was still a
-    // gesture. A ChannelController subclass wanting `own` calls this itself.
+    // gesture. A ChannelController subclass wanting `own` calls this itself —
+    // which serves the transmit swap only: a Turbo stream reaches the
+    // records through islandFor, and that walk lists generic islands alone.
     this.lastControl = control
     const record = this.busy.get(seq)
     if (!record) return

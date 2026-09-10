@@ -363,6 +363,33 @@ describe("data-motion=\"own\"", () => {
     await flush()
     expect(leaving($("r1"))).toBe(true)
   })
+
+  // No generic island contains the element — a ChannelController subclass
+  // drives it, or nothing does — so islandFor finds no trip records. That is
+  // no evidence of a gesture, not a plain mark: the element goes at once,
+  // even when something inside it was clicked.
+  it("never leaves outside any generic island, even after a click inside it", async () => {
+    await mount(list(row("r1", "own")))
+    animate($("r1"))
+    $("r1_destroy").click()
+    const { render } = destroyed()
+    await flush()
+    expect(render).toHaveBeenCalledTimes(1)
+    expect($("r1")).toBeNull()
+    expect(raf).not.toHaveBeenCalled()
+  })
+
+  it("still holds a plain mark outside any generic island", async () => {
+    await mount(list(row("r1")))
+    const finish = animate($("r1"))
+    destroyed()
+    await flush()
+    expect(leaving($("r1"))).toBe(true)
+    await frame()
+    finish()
+    await flush()
+    expect($("r1")).toBeNull()
+  })
 })
 
 describe("entering", () => {
