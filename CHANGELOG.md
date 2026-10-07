@@ -4,6 +4,52 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.16.0 — 2026-10-07
+
+### Added
+
+**`props`: DOM properties from the view.** Some state of a control has no
+HTML attribute, so no re-rendered fragment could carry it: a checkbox's
+`indeterminate`, a container's scroll position. A page that needed one
+brought JavaScript of its own. The new helper writes the wanted properties
+beside the element's other attributes, and the client assigns them when the
+island connects and after every render, on both transports.
+
+```erb
+<%= check_box_tag "all", "1", all_selected,
+      **on(:select_all, event: :change)
+          .deep_merge(props(indeterminate: some_selected)) %>
+<%= tag.div class: "list", **props(scroll_top: 0, key: page) do %>
+```
+
+- `indeterminate:` is assigned after every render, so the server's value wins
+  over a click (the browser clears the property when the box is clicked).
+- `scroll_top:` and `scroll_left:` are assigned to a new element, and again
+  only when the helper's output changes, so the visitor's own scrolling
+  survives unrelated renders. `key:` takes any JSON value and exists to change
+  the output: `scroll_top: 0, key: page` scrolls back to the top on each page
+  change, though the `0` never changes.
+- The list is an allowlist kept on both sides: an unknown name raises in Ruby
+  and is ignored by the client, so a fragment cannot reach `innerHTML` or an
+  event handler.
+- `props` returns a `{ data: }` hash like `on`. Two splats of the same key do
+  not merge, so combine them with `deep_merge` (or Phlex's `mix`).
+- The element must be inside an island. This is a client change: the scan that
+  re-observes `visible` sentinels after a render now assigns properties in the
+  same walk.
+
+Not covered, by design: properties that already have an attribute (`value`,
+`checked`, `disabled`, `open` on `<details>`) ride the fragment as before.
+Modal dialogs, focus and media playback are method calls, not properties, and
+are left for a later release.
+
+### Fixed
+
+- A `visible` sentinel inside a page that a refresh stream
+  (`broadcast_refresh_effect`) morphed was not re-observed: the page morph
+  runs after the stream's own render returns. The island now also rescans on
+  `turbo:render`.
+
 ## 0.15.0 — 2026-09-09
 
 ### Added
