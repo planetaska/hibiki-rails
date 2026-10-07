@@ -57,6 +57,10 @@
 //                 browser does what the markup says
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
+//   prop sites    data-hibiki-props='{"indeterminate":true}'  DOM properties
+//                 that have no attribute, assigned on connect and after each
+//                 render; only the names in PROPS below, an optional "key"
+//                 beside them existing to change the text
 //
 // The client writes the protocol's other half at runtime — read-only to
 // app code, addressed to app CSS:
@@ -582,6 +586,40 @@ export class ChannelController extends Controller {
   }
 }
 
+// The DOM properties a fragment may set (Helpers#props), and when. A
+// property has no attribute, so no swap or morph carries it: the client
+// assigns it after the fact. The table is the allowlist — a fragment must
+// never reach innerHTML or onclick — and a value of the wrong type is
+// skipped. `always` is re-assigned after every render (the browser clears
+// indeterminate on click; the server's value comes back). `changed` is
+// assigned only to a new element or when the attribute's text differs from
+// the text last applied, so the visitor's own scrolling survives unrelated
+// renders; the view's `key:` is how it says "again".
+const PROPS = {
+  indeterminate: ["boolean", "always"],
+  scrollTop: ["number", "changed"],
+  scrollLeft: ["number", "changed"]
+}
+const appliedProps = new WeakMap()
+
+function applyProps(element) {
+  const text = element.getAttribute("data-hibiki-props")
+  let wanted
+  try {
+    wanted = JSON.parse(text)
+  } catch {
+    return
+  }
+  if (!wanted || typeof wanted !== "object") return
+  const fresh = appliedProps.get(element) !== text
+  for (const [name, [type, policy]] of Object.entries(PROPS)) {
+    const value = wanted[name]
+    if (typeof value !== type || (type === "number" && !Number.isFinite(value))) continue
+    if (policy === "always" || fresh) element[name] = value
+  }
+  appliedProps.set(element, text)
+}
+
 // The generic controller: adds the data-hibiki-* wire protocol on top of
 // the base's plumbing.
 export default class HibikiController extends ChannelController {
@@ -610,6 +648,12 @@ export default class HibikiController extends ChannelController {
     // synchronously, so the island can be dimmed for the whole window
     // rather than from the middle of it.
     this.prepareTransport()
+
+    // First paint, so before the subscription: a property is right while
+    // the island is still connecting, and stays right if it never does.
+    for (const site of this.element.querySelectorAll("[data-hibiki-props]")) {
+      applyProps(site)
+    }
 
     // Root-scoped delegation (bound to the island, not document): controls
     // inside server-replaced fragments keep working with no rebinding.
@@ -643,7 +687,7 @@ export default class HibikiController extends ChannelController {
       }
     })
 
-    // Re-scan at the two points a fragment can be swapped under us, rather
+    // Re-scan at the points a fragment can be swapped under us, rather
     // than blanket-observing the document: a MutationObserver over the page
     // is a real per-mutation cost paid by every app on it.
     this.streamRender = (event) => {
@@ -656,14 +700,19 @@ export default class HibikiController extends ChannelController {
         // — which at worst settles an already-acked trip a few ms early,
         // never one that has not been acked at all.
         this.renders++
-        this.scanSentinels()
+        this.scan()
       }
     }
     document.addEventListener("turbo:before-stream-render", this.streamRender)
+    // A refresh stream morphs the page after its own render has returned,
+    // so the wrapper above scans too early for it; turbo:render follows
+    // the morph.
+    this.pageRender = () => this.scan()
+    document.addEventListener("turbo:render", this.pageRender)
 
     await this.openSubscription()
     if (this.aborted) return
-    this.scanSentinels()
+    this.scan()
   }
 
   disconnect() {
@@ -672,6 +721,7 @@ export default class HibikiController extends ChannelController {
       this.element.removeEventListener(type, handler)
     }
     document.removeEventListener("turbo:before-stream-render", this.streamRender)
+    document.removeEventListener("turbo:render", this.pageRender)
     for (const id of this.pending) clearTimeout(id)
     this.pending.clear()
     this.observer.disconnect()
@@ -683,17 +733,28 @@ export default class HibikiController extends ChannelController {
   received(data) {
     const swapped = super.received(data)
     if (!data.html) return
-    if (swapped?.then) swapped.then(() => this.scanSentinels())
-    else this.scanSentinels()
+    if (swapped?.then) swapped.then(() => this.scan())
+    else this.scan()
   }
 
-  // Observe every `visible->` sentinel this island owns. observe() is a
-  // no-op for an element already being observed, so re-scanning is cheap
-  // and cannot double-fire a sentinel that merely stayed put.
-  scanSentinels() {
-    for (const control of this.element.querySelectorAll('[data-hibiki-on*="visible->"]')) {
-      if (control.closest('[data-controller~="hibiki"]') === this.element) {
-        this.observer.observe(control)
+  // What a render leaves for the client to finish, in one walk of the
+  // island: assign every prop site's properties, and observe every
+  // `visible->` sentinel this island owns. observe() is a no-op for an
+  // element already being observed, so re-scanning is cheap and cannot
+  // double-fire a sentinel that merely stayed put. Props need no ownership
+  // check: assigning one twice, from a nested island and its parent, lands
+  // the same value.
+  scan() {
+    const found = this.element.querySelectorAll(
+      '[data-hibiki-on*="visible->"], [data-hibiki-props]'
+    )
+    for (const element of found) {
+      if (element.hasAttribute("data-hibiki-props")) applyProps(element)
+      if (
+        element.dataset.hibikiOn?.includes("visible->") &&
+        element.closest('[data-controller~="hibiki"]') === this.element
+      ) {
+        this.observer.observe(element)
       }
     }
   }

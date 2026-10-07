@@ -4,6 +4,8 @@ require "cgi/escape"
 require "json"
 require "securerandom"
 
+require_relative "dom_props"
+
 module Hibiki
   module Rails
     # Opt-in helpers that stamp the packaged client's attribute protocol
@@ -229,6 +231,34 @@ module Hibiki
       # The value's attributes, for stamping the placeholder yourself — the
       # Phlex form of #reactive: `span(**reactive_attrs(:doubled)) { "0" }`.
       def reactive_attrs(name) = { data: { hibiki_value: Helpers.value_name(name) } }
+
+      # DOM properties for this element — state that has no HTML attribute,
+      # so no fragment can carry it. The client assigns them when the island
+      # connects and after every render.
+      #
+      #   tag.input type: "checkbox", **props(indeterminate: some_selected)
+      #   tag.div class: "list", **props(scroll_top: 0, key: query)
+      #
+      #   indeterminate:  true/false. Assigned after every render, so the
+      #                   server's value wins over a click.
+      #   scroll_top:, scroll_left:  pixels, nil to leave alone. Assigned to
+      #                   a new element, and again only when this helper's
+      #                   output changes — the visitor's own scrolling is
+      #                   kept across unrelated renders.
+      #   key:            any JSON value, sent only to change the output:
+      #                   `scroll_top: 0, key: query` scrolls back to the top
+      #                   each time the query changes.
+      #
+      # The element must be inside an island. Returns a `{ data: }` hash
+      # like #on; two splats of one key do not merge, so on an element that
+      # has both: `**on(:select_all, event: :change).deep_merge(props(...))`.
+      def props(key: nil, **properties)
+        wanted = properties.filter_map { |name, value| DomProps.pair(name, value) }.to_h
+        return { data: {} } if wanted.empty?
+
+        wanted["key"] = key unless key.nil?
+        { data: { hibiki_props: JSON.generate(wanted) } }
+      end
 
       private
 

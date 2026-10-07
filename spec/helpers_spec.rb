@@ -169,4 +169,55 @@ RSpec.describe Hibiki::Rails::Helpers do
       expect { view.reactive_attrs("bad name") }.to raise_error(ArgumentError, /name/)
     end
   end
+
+  describe "#props" do
+    it "stamps the wanted DOM properties as JSON" do
+      expect(view.props(indeterminate: true))
+        .to eq({ data: { hibiki_props: '{"indeterminate":true}' } })
+    end
+
+    # Under a morph the element survives, so an omitted false would leave
+    # the property stuck at true.
+    it "emits a false boolean rather than omitting it" do
+      expect(view.props(indeterminate: false)[:data][:hibiki_props])
+        .to eq('{"indeterminate":false}')
+    end
+
+    it "coerces a boolean property from truthiness" do
+      expect(view.props(indeterminate: nil)[:data][:hibiki_props])
+        .to eq('{"indeterminate":false}')
+      expect(view.props(indeterminate: "some")[:data][:hibiki_props])
+        .to eq('{"indeterminate":true}')
+    end
+
+    it "spells a property by its DOM name on the wire" do
+      expect(view.props(scroll_top: 0, scroll_left: 12.5)[:data][:hibiki_props])
+        .to eq('{"scrollTop":0,"scrollLeft":12.5}')
+    end
+
+    it "omits a nil number" do
+      expect(view.props(scroll_top: nil, indeterminate: true)[:data][:hibiki_props])
+        .to eq('{"indeterminate":true}')
+    end
+
+    it "stamps nothing when no property is left" do
+      expect(view.props(scroll_top: nil)).to eq({ data: {} })
+    end
+
+    it "carries key: so the attribute text changes when the key does" do
+      expect(view.props(scroll_top: 0, key: ["jazz", 2])[:data][:hibiki_props])
+        .to eq('{"scrollTop":0,"key":["jazz",2]}')
+    end
+
+    it "rejects a property outside the allowlist, naming the allowed ones" do
+      expect { view.props(inner_html: "<b>") }
+        .to raise_error(ArgumentError, /inner_html.*indeterminate, scroll_top, scroll_left/)
+    end
+
+    it "rejects a number that is not one" do
+      expect { view.props(scroll_top: "12") }.to raise_error(ArgumentError, /scroll_top/)
+      expect { view.props(scroll_top: Float::NAN) }.to raise_error(ArgumentError, /scroll_top/)
+      expect { view.props(scroll_top: Float::INFINITY) }.to raise_error(ArgumentError, /scroll_top/)
+    end
+  end
 end
