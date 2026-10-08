@@ -4,7 +4,7 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
-## Unreleased
+## 0.17.0 — 2026-10-08
 
 ### Added
 
@@ -64,6 +64,25 @@ client now gives focus back to a control. Nothing more to write in the view.
   row is destroyed, focus is left where the browser put it.
 - It applies to any render, on both transports and after a page refresh, and
   never moves focus the visitor has since put somewhere else.
+
+### Fixed
+
+**Typed text is no longer lost to a render that lands inside the input
+debounce.** A debounced field holds text the server has not heard for a
+quarter second. Any render reaching the field in that wait was drawn without
+it, and the morph wrote the older value over what the visitor had typed. The
+render need not be theirs: another visitor's save of any row was enough.
+
+- A field with unsent input now wins over a render. The client records the
+  text and the caret as it is typed and puts them back after the render,
+  until the debounced send has fired. After that the server's value wins
+  again, so Reset and a failed save still overwrite the field.
+- Any action that is not debounced first sends the island's pending
+  debounced input, so gestures reach the server in the order they were made:
+  typing into a field and pressing Enter inside the wait no longer saves the
+  form without the last characters.
+- This covers fields wired with a debounce (`event: :input`). Checkboxes,
+  radios, file inputs and multi-selects are not recorded.
 
 ## 0.16.0 — 2026-10-07
 
