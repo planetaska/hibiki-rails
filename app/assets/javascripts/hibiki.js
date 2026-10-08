@@ -89,6 +89,13 @@
 // Everything that is not "which event" is a sibling attribute, so the
 // token grammar never has to grow.
 //
+// A debounced field holds text the server has not heard, and two rules keep
+// it. A render landing inside the wait is drawn without the text, so the
+// client records it at input time and puts it back after the render: a
+// field with unsent input wins, until its send fires. And any undebounced
+// action first flushes the island's pending debounces, so gestures reach
+// the server in the order they were made.
+//
 // App JS reaching the graph — the ONE public seam. A gesture that needs
 // script (drag-and-drop, a third-party widget) fires its action through
 // the island's OWN subscription: `perform(action, payload)` on the island
@@ -602,6 +609,12 @@ const PROPS = {
 }
 const appliedProps = new WeakMap()
 
+// Fields whose state is not their `value`, so there is no typed text to keep.
+const typed = (field) =>
+  typeof field.value === "string" &&
+  !field.multiple &&
+  !["checkbox", "radio", "file"].includes(field.type)
+
 function applyProps(element) {
   const text = element.getAttribute("data-hibiki-props")
   let wanted
@@ -665,10 +678,12 @@ export default class HibikiController extends ChannelController {
     })
 
     // Debounce bookkeeping: a WeakMap keyed by control (so detached
-    // elements don't pin memory) plus a flat set of live timeouts, which is
-    // what disconnect can actually iterate.
+    // elements don't pin memory) plus the live timeouts with what each
+    // will run, which is what disconnect and flush can actually iterate.
+    // `unsent` is the text those timeouts have yet to send, by field.
     this.timers = new WeakMap()
-    this.pending = new Set()
+    this.pending = new Map()
+    this.unsent = new Map()
 
     // `visible` is not a DOM event, so it needs its own observer beside the
     // delegated listeners. Always on, never a pluggable module: an
@@ -722,8 +737,9 @@ export default class HibikiController extends ChannelController {
     }
     document.removeEventListener("turbo:before-stream-render", this.streamRender)
     document.removeEventListener("turbo:render", this.pageRender)
-    for (const id of this.pending) clearTimeout(id)
+    for (const id of this.pending.keys()) clearTimeout(id)
     this.pending.clear()
+    this.unsent.clear()
     this.observer.disconnect()
     super.disconnect()
   }
@@ -737,14 +753,16 @@ export default class HibikiController extends ChannelController {
     else this.scan()
   }
 
-  // What a render leaves for the client to finish, in one walk of the
-  // island: assign every prop site's properties, and observe every
+  // What a render leaves for the client to finish: put back unsent text,
+  // then in one walk of the island assign every prop site's properties,
+  // and observe every
   // `visible->` sentinel this island owns. observe() is a no-op for an
   // element already being observed, so re-scanning is cheap and cannot
   // double-fire a sentinel that merely stayed put. Props need no ownership
   // check: assigning one twice, from a nested island and its parent, lands
   // the same value.
   scan() {
+    if (this.unsent.size) this.restoreUnsent()
     const found = this.element.querySelectorAll(
       '[data-hibiki-on*="visible->"], [data-hibiki-props]'
     )
@@ -807,8 +825,48 @@ export default class HibikiController extends ChannelController {
     // keystroke that started the timer.
     const wait = Number(control.dataset.hibikiDebounce)
     const fire = () => this.send(control, event, action)
-    if (wait > 0) this.debounce(control, action, wait, fire)
-    else fire()
+    if (wait > 0) {
+      const field = event.target
+      if (typed(field)) {
+        this.unsent.set(field, {
+          value: field.value,
+          start: field.selectionStart,
+          end: field.selectionEnd
+        })
+      }
+      this.debounce(control, action, wait, () => {
+        fire()
+        // Sent: from here the server's value for the field wins again.
+        if (!this.timers.get(control)?.size) this.unsent.delete(field)
+      })
+    } else {
+      this.flush()
+      fire()
+    }
+  }
+
+  // A render drew these fields without the text typed since their last
+  // send. A morph kept the element; a replace swapped in another with the
+  // same id (the pending send still reads the detached one, whose value is
+  // intact). The selection is the one the last keystroke left, restored
+  // because assigning a value moves the caret to the end.
+  restoreUnsent() {
+    for (const [field, { value, start, end }] of this.unsent) {
+      const live = field.isConnected ? field : field.id && document.getElementById(field.id)
+      if (!live || !typed(live) || live.value === value) continue
+      live.value = value
+      if (start != null && live === document.activeElement) live.setSelectionRange(start, end)
+    }
+  }
+
+  // Run every pending debounce now, oldest first.
+  flush() {
+    const runs = [...this.pending]
+    this.pending.clear()
+    for (const [id, run] of runs) {
+      clearTimeout(id)
+      run()
+    }
   }
 
   send(control, event, action) {
@@ -865,13 +923,14 @@ export default class HibikiController extends ChannelController {
       clearTimeout(previous)
       this.pending.delete(previous)
     }
-    const id = setTimeout(() => {
+    const run = () => {
       byAction.delete(action)
       this.pending.delete(id)
       fire()
-    }, wait)
+    }
+    const id = setTimeout(run, wait)
     byAction.set(action, id)
-    this.pending.add(id)
+    this.pending.set(id, run)
   }
 }
 
