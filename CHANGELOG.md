@@ -47,6 +47,24 @@ field before typing or pressing Escape.
 - `focus` returns a `{ data: }` hash like `on` and `props`:
   `**on(:set_field, event: :input).deep_merge(focus)`.
 
+**Focus comes back when a render removes the focused element.** After Save,
+Cancel or Escape the form is gone, and focus used to fall to `<body>`: a
+keyboard user lost their place, and the island stopped hearing keys. The
+client now gives focus back to a control. Nothing more to write in the view.
+
+- A form opened with `focus` returns to the control that opened it: the
+  row's Edit link, the New button. The client remembers which control's
+  action brought the marked field, and finds it again after a re-render by
+  its id, or by its action and `with:` payload.
+- A replaced element with the same id takes the focus, and the caret, its
+  predecessor had.
+- Failing both, focus goes to the first control inside the nearest ancestor
+  that has an id.
+- Only a control ever takes focus. When none of these is found, as after a
+  row is destroyed, focus is left where the browser put it.
+- It applies to any render, on both transports and after a page refresh, and
+  never moves focus the visitor has since put somewhere else.
+
 ## 0.16.0 — 2026-10-07
 
 ### Added

@@ -102,10 +102,21 @@
 // the server in the order they were made.
 //
 // A focus site takes focus once, on the render that brings it: marked now
-// and not at the scan before. Only a render this tab caused counts, one
-// that arrived while an action was in flight or just after its ack, so a
-// render nobody here asked for never moves the cursor. A mark in the page's
-// first HTML is `autofocus`'s business, and a refresh morph focuses nothing.
+// and not at the scan before, by element or by id. Only a render this tab
+// caused counts, one that arrived while an action was in flight or just
+// after its ack, so a render nobody here asked for never moves the cursor.
+// A mark in the page's first HTML is `autofocus`'s business, and a refresh
+// morph focuses nothing.
+//
+// Focus is also given back. When a render removes the element that had
+// focus, it would fall to <body>: a keyboard user loses their place, and
+// the island stops hearing keys. So the client looks, in order, for the
+// element now carrying the same id (a replaced field); for the control
+// whose gesture opened the focus site that render closed (the Edit button
+// of a form now gone), known again after a re-render by its id or by its
+// action and payload; and for the first control of the focused element's
+// nearest id-bearing ancestor. Only controls: when none of these is there,
+// focus is left where the browser put it. Any render, whoever caused it.
 //
 // App JS reaching the graph — the ONE public seam. A gesture that needs
 // script (drag-and-drop, a third-party widget) fires its action through
@@ -708,6 +719,11 @@ function keyAction(control, event, scope, typing = false) {
   }
 }
 
+// What focus return may land on inside a surviving ancestor.
+const FOCUSABLE =
+  'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), ' +
+  'select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+
 // Key events a window binding answered, so a second island declaring the
 // same key still fires where a key taken by anything else is left alone.
 const hotkeyed = new WeakSet()
@@ -788,14 +804,14 @@ export default class HibikiController extends ChannelController {
     this.timers = new WeakMap()
     this.pending = new Map()
     this.unsent = new Map()
-    // The focus sites seen at the last scan; one not among them is new.
+    // The focus sites seen at the last scan, each with the control whose
+    // gesture opened it, when one did; a site not among them is new.
     // Seeded now, so a render landing in the connect window finds the
     // page's own marks already seen.
-    this.marks = new Set(
-      [...this.element.querySelectorAll("[data-hibiki-focus]")].filter(
-        (site) => site.closest(ISLAND) === this.element
-      )
-    )
+    this.marks = new Map()
+    for (const site of this.element.querySelectorAll("[data-hibiki-focus]")) {
+      if (site.closest(ISLAND) === this.element) this.marks.set(site, undefined)
+    }
 
     // `visible` is not a DOM event, so it needs its own observer beside the
     // delegated listeners. Always on, never a pluggable module: an
@@ -819,7 +835,7 @@ export default class HibikiController extends ChannelController {
     // is a real per-mutation cost paid by every app on it.
     this.streamRender = (event) => {
       const render = event.detail.render
-      const own = this.own()
+      const arrival = this.arrival()
       event.detail.render = async (streamElement) => {
         await render(streamElement)
         // The Turbo transport's paint. Counting it here is what lets an ack
@@ -828,14 +844,23 @@ export default class HibikiController extends ChannelController {
         // — which at worst settles an already-acked trip a few ms early,
         // never one that has not been acked at all.
         this.renders++
-        this.scan(own)
+        this.scan(arrival)
       }
     }
     document.addEventListener("turbo:before-stream-render", this.streamRender)
     // A refresh stream morphs the page after its own render has returned,
     // so the wrapper above scans too early for it; turbo:render follows
     // the morph.
-    this.pageRender = () => this.scan()
+    // It is nobody's own render, so it brings no focus, but it can
+    // take the focused element away like any other.
+    this.pageBefore = () => {
+      this.paging = { trail: this.trail() }
+    }
+    this.pageRender = () => {
+      this.scan(this.paging)
+      this.paging = undefined
+    }
+    document.addEventListener("turbo:before-render", this.pageBefore)
     document.addEventListener("turbo:render", this.pageRender)
 
     await this.openSubscription()
@@ -849,6 +874,7 @@ export default class HibikiController extends ChannelController {
       this.element.removeEventListener(type, handler)
     }
     document.removeEventListener("turbo:before-stream-render", this.streamRender)
+    document.removeEventListener("turbo:before-render", this.pageBefore)
     document.removeEventListener("turbo:render", this.pageRender)
     window.removeEventListener("keydown", this.hotkeys)
     for (const id of this.pending.keys()) clearTimeout(id)
@@ -862,35 +888,100 @@ export default class HibikiController extends ChannelController {
   // The other swap point: hibiki's own transmit transport. A held swap
   // hands back a promise; the replacement sentinel exists only after it.
   received(data) {
-    const own = this.own()
+    const arrival = this.arrival()
     const swapped = super.received(data)
     if (!data.html) return
-    if (swapped?.then) swapped.then(() => this.scan(own))
-    else this.scan(own)
+    if (swapped?.then) swapped.then(() => this.scan(arrival))
+    else this.scan(arrival)
+  }
+
+  // What is only knowable as a render arrives: whether it answers this
+  // tab's action, the control that action came from (the motion module
+  // forgets it once a held render lands), and where focus was.
+  arrival() {
+    return { own: this.own(), control: this.lastControl, trail: this.trail() }
+  }
+
+  // The focused element, when it is this island's, with the ids from it
+  // upward, nearest first, and its caret.
+  trail() {
+    const element = document.activeElement
+    if (!element || element === this.element || element.closest?.(ISLAND) !== this.element) return
+    const ids = []
+    for (let node = element; node !== this.element; node = node.parentElement) {
+      if (node.id) ids.push(node.id)
+    }
+    if (this.element.id) ids.push(this.element.id)
+    return { element, ids, self: Boolean(element.id), start: element.selectionStart, end: element.selectionEnd }
+  }
+
+  // Give focus back after a render removed the element that had it; the
+  // header has the rule. `opener` is the control behind a focus site the
+  // same render closed. Left alone when focus has gone somewhere since.
+  refocus({ element, ids, self, start, end }, opener) {
+    if (element.isConnected) return
+    const active = document.activeElement
+    if ((active && active !== document.body && active.isConnected) || !this.element.isConnected) return
+    const found = (id) => {
+      const survivor = document.getElementById(id)
+      return survivor && this.element.contains(survivor) ? survivor : null
+    }
+    const index = ids.findIndex(found)
+    if (self && index === 0) {
+      const twin = found(ids[0])
+      twin.focus()
+      if (start != null && document.activeElement === twin) twin.setSelectionRange?.(start, end)
+      return
+    }
+    const candidates = [opener && this.twin(opener)]
+    if (index === (self ? 1 : 0)) candidates.push(...found(ids[index]).querySelectorAll(FOCUSABLE))
+    for (const control of candidates) {
+      control?.focus()
+      if (control && document.activeElement === control) return
+    }
+  }
+
+  // The control a gesture came from, or the one a render has put in its
+  // place: the same id, else the same action and payload.
+  twin({ element, id, on, payload }) {
+    if (element.isConnected) return element
+    const twin = id
+      ? document.getElementById(id)
+      : [...this.element.querySelectorAll("[data-hibiki-on]")].find(
+          (control) => control.dataset.hibikiOn === on && control.dataset.hibikiWith === payload
+        )
+    return twin?.closest(ISLAND) === this.element ? twin : null
   }
 
   // What a render leaves for the client to finish: put back unsent text,
   // then in one walk of the island assign every prop site's properties,
   // observe every `visible->` sentinel this island owns, listen on the
-  // window while a window key is declared, and, when the render was this
-  // tab's `own`, focus the first focus site it brought. observe() is a no-op for an
-  // element already being observed, so re-scanning is cheap and cannot
-  // double-fire a sentinel that merely stayed put; adding a listener twice
-  // is a no-op too. Props need no ownership check: assigning one twice,
+  // window while a window key is declared, and settle focus: on the first
+  // focus site the render brought when it was this tab's `own`, else back
+  // to a control when the render removed the focused element. Focus before
+  // the unsent text, whose caret goes only to the focused field. observe()
+  // is a no-op for an element already being observed, so re-scanning is
+  // cheap and cannot double-fire a sentinel that merely stayed put; adding
+  // a listener twice is a no-op too. Props need no ownership check: assigning one twice,
   // from a nested island and its parent, lands the same value. Nor does
   // the window listener, which finds nothing of its own to fire.
-  scan(own = false) {
-    if (this.unsent.size) this.restoreUnsent()
+  scan({ own = false, control, trail } = {}) {
     const found = this.element.querySelectorAll(
       `[data-hibiki-on*="visible->"], [data-hibiki-props], [data-hibiki-focus], ${HOTKEYED}`
     )
     let hotkeys = this.element.matches(HOTKEYED)
-    const marks = new Set()
+    // A site is the one seen before when it is that element or, after a
+    // replace, carries its id; it keeps the opener either way.
+    const seen = new Map()
+    for (const [was, opener] of this.marks) if (was.id) seen.set(was.id, opener)
+    const marks = new Map()
+    const ids = new Set()
     let site
     for (const element of found) {
       if (element.hasAttribute("data-hibiki-focus") && element.closest(ISLAND) === this.element) {
-        marks.add(element)
-        if (!this.marks.has(element)) site ??= element
+        marks.set(element, this.marks.get(element) ?? seen.get(element.id))
+        if (element.id) ids.add(element.id)
+        if (!this.marks.has(element) && !seen.has(element.id)) site ??= element
       }
       hotkeys ||= element.dataset.hibikiOn?.includes("@window")
       if (element.hasAttribute("data-hibiki-props")) applyProps(element)
@@ -903,12 +994,35 @@ export default class HibikiController extends ChannelController {
     }
     if (hotkeys) window.addEventListener("keydown", this.hotkeys)
     else window.removeEventListener("keydown", this.hotkeys)
+    // The opener of a site this render closed, for the focus it leaves.
+    let opener
+    for (const [was, its] of this.marks) {
+      if (its && !marks.has(was) && !ids.has(was.id)) opener = its
+    }
     this.marks = marks
     // Not from a field with unsent input: the visitor is typing there.
-    if (own && site && !this.unsent.has(document.activeElement)) {
-      site.focus()
-      if (site.dataset.hibikiFocus === "select") site.select?.()
+    if (own && site && !this.unsent.has(trail?.element)) {
+      if (control) {
+        const { id, dataset } = control
+        marks.set(site, { element: control, id, on: dataset.hibikiOn, payload: dataset.hibikiWith })
+      }
+      const take = () => {
+        site.focus()
+        if (site.dataset.hibikiFocus === "select") site.select?.()
+      }
+      take()
+      // Turbo hands focus back to the id that had it before a stream, one
+      // frame after appending it, which is just after this. Take it again.
+      const id = trail?.element.id
+      if (id) {
+        setTimeout(() => {
+          if (site.isConnected && document.activeElement?.id === id) take()
+        }, 0)
+      }
+    } else if (trail) {
+      this.refocus(trail, opener)
     }
+    if (this.unsent.size) this.restoreUnsent()
   }
 
   // A key pressed inside the island: the nearest control up from the

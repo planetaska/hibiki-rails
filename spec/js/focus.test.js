@@ -108,6 +108,19 @@ describe("a render this tab caused", () => {
     expect(document.activeElement).toBe(other)
   })
 
+  // The transmit swap replaces the field on every render; the same id is
+  // the same site, or each answer to a keystroke would select the text.
+  it("does not focus again when the marked field is replaced", async () => {
+    await mount(island(`${EDIT}<div id="row"></div><input id="other">`))
+    document.querySelector("#edit").click()
+    await receive({ html: row(field("select")) })
+
+    document.querySelector("#other").focus()
+    document.querySelector("#edit").click()
+    await receive({ html: row(field("select")) })
+    expect(document.activeElement).toBe(document.querySelector("#other"))
+  })
+
   it("leaves focus in a field with unsent input", async () => {
     const root = await mount(
       island(`${row(EDIT)}<input id="q" name="q" data-hibiki-on="input->search" data-hibiki-debounce="250">`)
@@ -120,6 +133,46 @@ describe("a render this tab caused", () => {
 
     await streamRender(open(root))
     expect(document.activeElement).toBe(q)
+  })
+})
+
+// Turbo restores focus to the id that had it before a stream render, a
+// frame after appending the stream: just after the client's own focus.
+describe("Turbo handing focus back", () => {
+  it("is overruled when the gesture came from an element with an id", async () => {
+    const root = await mount(
+      island(`<button id="new" data-hibiki-on="click->new_form">New</button>${row("")}`)
+    )
+    const button = root.querySelector("#new")
+    button.focus()
+    button.click()
+
+    const event = new CustomEvent("turbo:before-stream-render", {
+      bubbles: true,
+      detail: { render: open(root, field("select")) }
+    })
+    document.dispatchEvent(event)
+    await event.detail.render()
+    button.focus()
+    await flush()
+
+    const input = root.querySelector("#title")
+    expect(document.activeElement).toBe(input)
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4])
+  })
+
+  it("is left alone when the visitor moved focus somewhere else", async () => {
+    const root = await mount(
+      island(`<button id="new" data-hibiki-on="click->new_form">New</button>${row("")}<input id="q">`)
+    )
+    const button = root.querySelector("#new")
+    button.focus()
+    button.click()
+
+    await streamRender(open(root))
+    root.querySelector("#q").focus()
+    await flush()
+    expect(document.activeElement).toBe(root.querySelector("#q"))
   })
 })
 
