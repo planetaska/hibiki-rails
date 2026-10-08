@@ -127,6 +127,41 @@ RSpec.describe Hibiki::Rails::Helpers do
           .to eq("keydown.enter->submit_now")
       end
     end
+
+    describe "key events" do
+      it "emits a key combination in canonical form" do
+        expect(view.on(:save, event: "keydown.meta+ctrl+s")[:data][:hibiki_on])
+          .to eq("keydown.ctrl+meta+s->save")
+      end
+
+      it "emits a window-scoped key beside another event" do
+        expect(view.on(:new_row, event: ["click", "keydown.n@window"])[:data][:hibiki_on])
+          .to eq("click->new_row keydown.n@window->new_row")
+      end
+
+      it "adds no debounce" do
+        expect(view.on(:cancel, event: "keydown.esc")[:data]).not_to have_key(:hibiki_debounce)
+      end
+
+      it "rejects a bare keydown" do
+        expect { view.on(:x, event: :keydown) }.to raise_error(ArgumentError, /names no key/)
+      end
+
+      it "rejects an unknown key, alt, and shift with a digit" do
+        expect { view.on(:x, event: "keydown.f1") }.to raise_error(ArgumentError, /key "f1"/)
+        expect { view.on(:x, event: "keydown.alt+s") }.to raise_error(ArgumentError, /modifier "alt"/)
+        expect { view.on(:x, event: "keydown.shift+1") }.to raise_error(ArgumentError, /shift/)
+      end
+
+      it "rejects a scope on any other event" do
+        expect { view.on(:x, event: "click@window") }
+          .to raise_error(ArgumentError, /only a keydown/)
+      end
+
+      it "leaves an event that merely starts with keydown to the name check" do
+        expect(view.on(:x, event: "keydown-ish")[:data][:hibiki_on]).to eq("keydown-ish->x")
+      end
+    end
   end
 
   describe "#reactive" do

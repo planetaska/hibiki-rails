@@ -4,6 +4,31 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Added
+
+**Keys in `on`.** `event:` takes `keydown.<key>`, so a form's Escape or a
+list's arrow keys reach the channel with no JavaScript in the app.
+
+```erb
+<%= tag.div(**on(:cancel, event: "keydown.esc")) do %> ... <% end %>
+<%= link_to "New", new_song_path,
+      **on(:new_form, event: ["click", "keydown.n@window"]) %>
+```
+
+- A key is heard while focus is inside its element. With `@window` it is
+  heard anywhere on the page, for as long as the element is rendered.
+- Keys: `enter`, `tab`, `esc`, `space`, `up`, `down`, `left`, `right`,
+  `home`, `end`, `page_up`, `page_down`, a letter, or a digit. Modifiers go
+  in front: `keydown.ctrl+s`, `keydown.meta+shift+k`. They are `ctrl`, `meta`
+  and `shift`, and they match exactly.
+- A matched key's default is prevented. Keys pressed during IME composition
+  and a held key's repeats are ignored.
+- A window key with neither `ctrl` nor `meta` is ignored while the visitor is
+  typing in a field, except `esc`.
+- A bare `keydown` raises; `input` is the event for typed text.
+
 ## 0.16.0 — 2026-10-07
 
 ### Added

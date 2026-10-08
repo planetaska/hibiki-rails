@@ -45,7 +45,10 @@
 //                 data-hibiki-params-value='{"record_id":7}'  extra subscribe
 //                 params, merged UNDER channel/cid so they can't override them
 //   controls      data-hibiki-on="<event>-><action> ..."  whitespace-separated;
-//                 e.g. "click->load_more visible->load_more"
+//                 e.g. "click->load_more visible->load_more". A key is
+//                 "keydown.<key>" (heard inside the control) or
+//                 "keydown.<key>@window" (heard anywhere), with ctrl+ meta+
+//                 shift+ in front in that order; only the names in KEYS below
 //                 data-hibiki-with='{"index":3}'       optional JSON payload
 //                 data-hibiki-debounce="250"           ms to let the gesture settle
 //                 data-hibiki-confirm="Are you sure?"  window.confirm gate
@@ -615,6 +618,77 @@ const typed = (field) =>
   !field.multiple &&
   !["checkbox", "radio", "file"].includes(field.type)
 
+// The keys a `keydown.<key>` token may name, by the `event.key` each
+// reports; a single letter or digit names itself. The server keeps the same
+// list (Keys in the gem) and emits nothing outside it.
+const KEYS = {
+  enter: "Enter",
+  tab: "Tab",
+  esc: "Escape",
+  space: " ",
+  up: "ArrowUp",
+  down: "ArrowDown",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  home: "Home",
+  end: "End",
+  page_up: "PageUp",
+  page_down: "PageDown"
+}
+const KEYED = '[data-hibiki-on*="keydown."]'
+const HOTKEYED = '[data-hibiki-on*="@window"]'
+const ISLAND = '[data-controller~="hibiki"]'
+
+// A key press that is a gesture: not part of an IME composition (Safari
+// reports the Enter that ends one only as keyCode 229), not a held key's
+// repeat, and not Chrome's keyless autofill event.
+const heard = (event) =>
+  typeof event.key === "string" &&
+  !event.isComposing &&
+  event.keyCode !== 229 &&
+  !event.repeat
+
+// Where a plain key is text, or moves within it.
+const NOT_TEXT = new Set([
+  "checkbox", "radio", "file", "button", "submit", "reset", "image", "range", "color"
+])
+const entering = (target) =>
+  !!target.closest?.('textarea, select, [contenteditable]:not([contenteditable="false"])') ||
+  (target.localName === "input" && !NOT_TEXT.has(target.type))
+
+// The action of the control's first key token of this scope ("" or
+// "window") that the event matches. Modifiers match exactly, and Alt
+// matches nothing: on macOS it changes the character the key reports.
+// `typing` is a window key pressed in a text field, where only Escape and
+// ctrl or meta combinations are not the field's own.
+function keyAction(control, event, scope, typing = false) {
+  const pressed = event.key.length === 1 ? event.key.toLowerCase() : event.key
+  for (const token of (control.dataset.hibikiOn ?? "").split(/\s+/)) {
+    if (!token.startsWith("keydown.")) continue
+    const [bound, action] = token.slice(8).split("->")
+    const [combo, at = ""] = bound.split("@")
+    if (at !== scope) continue
+    const modifiers = combo.split("+")
+    const name = modifiers.pop()
+    if ((KEYS[name] ?? (name.length === 1 ? name : null)) !== pressed) continue
+    const ctrl = modifiers.includes("ctrl")
+    const meta = modifiers.includes("meta")
+    if (typing && !ctrl && !meta && name !== "esc") continue
+    if (
+      event.ctrlKey === ctrl &&
+      event.metaKey === meta &&
+      event.shiftKey === modifiers.includes("shift") &&
+      !event.altKey
+    ) {
+      return action
+    }
+  }
+}
+
+// Key events a window binding answered, so a second island declaring the
+// same key still fires where a key taken by anything else is left alone.
+const hotkeyed = new WeakSet()
+
 function applyProps(element) {
   const text = element.getAttribute("data-hibiki-props")
   let wanted
@@ -676,6 +750,13 @@ export default class HibikiController extends ChannelController {
       this.element.addEventListener(type, handler)
       return [type, handler]
     })
+    // Keys take their own path: a key names its control by a token, not by
+    // being the nearest one.
+    const keydown = (event) => this.key(event)
+    this.element.addEventListener("keydown", keydown)
+    this.listeners.push(["keydown", keydown])
+    // On the window only while the island has a window key; see scan().
+    this.hotkeys = (event) => this.hotkey(event)
 
     // Debounce bookkeeping: a WeakMap keyed by control (so detached
     // elements don't pin memory) plus the live timeouts with what each
@@ -737,6 +818,7 @@ export default class HibikiController extends ChannelController {
     }
     document.removeEventListener("turbo:before-stream-render", this.streamRender)
     document.removeEventListener("turbo:render", this.pageRender)
+    window.removeEventListener("keydown", this.hotkeys)
     for (const id of this.pending.keys()) clearTimeout(id)
     this.pending.clear()
     this.unsent.clear()
@@ -755,18 +837,21 @@ export default class HibikiController extends ChannelController {
 
   // What a render leaves for the client to finish: put back unsent text,
   // then in one walk of the island assign every prop site's properties,
-  // and observe every
-  // `visible->` sentinel this island owns. observe() is a no-op for an
+  // observe every `visible->` sentinel this island owns, and listen on the
+  // window while a window key is declared. observe() is a no-op for an
   // element already being observed, so re-scanning is cheap and cannot
-  // double-fire a sentinel that merely stayed put. Props need no ownership
-  // check: assigning one twice, from a nested island and its parent, lands
-  // the same value.
+  // double-fire a sentinel that merely stayed put; adding a listener twice
+  // is a no-op too. Props need no ownership check: assigning one twice,
+  // from a nested island and its parent, lands the same value. Nor does
+  // the window listener, which finds nothing of its own to fire.
   scan() {
     if (this.unsent.size) this.restoreUnsent()
     const found = this.element.querySelectorAll(
-      '[data-hibiki-on*="visible->"], [data-hibiki-props]'
+      `[data-hibiki-on*="visible->"], [data-hibiki-props], ${HOTKEYED}`
     )
+    let hotkeys = this.element.matches(HOTKEYED)
     for (const element of found) {
+      hotkeys ||= element.dataset.hibikiOn?.includes("@window")
       if (element.hasAttribute("data-hibiki-props")) applyProps(element)
       if (
         element.dataset.hibikiOn?.includes("visible->") &&
@@ -775,6 +860,46 @@ export default class HibikiController extends ChannelController {
         this.observer.observe(element)
       }
     }
+    if (hotkeys) window.addEventListener("keydown", this.hotkeys)
+    else window.removeEventListener("keydown", this.hotkeys)
+  }
+
+  // A key pressed inside the island: the nearest control up from the
+  // target whose key token matches. Not forward()'s nearest control, since
+  // a field wired for `input` sits inside the form that takes Escape. A
+  // key something else took (a nested island, the page's script) is left.
+  key(event) {
+    if (event.defaultPrevented || !heard(event)) return
+    let control = event.target.closest?.(KEYED)
+    while (control && this.element.contains(control)) {
+      const action = control.closest(ISLAND) === this.element && keyAction(control, event, "")
+      if (action) return this.press(control, event, action)
+      control = control.parentElement?.closest(KEYED)
+    }
+  }
+
+  // A key pressed anywhere: the island's first enabled control declaring
+  // it `@window`, the root included. One an inside control answered has
+  // its default prevented, and so is not heard here.
+  hotkey(event) {
+    if ((event.defaultPrevented && !hotkeyed.has(event)) || !heard(event)) return
+    const typing = entering(event.target)
+    for (const control of [this.element, ...this.element.querySelectorAll(HOTKEYED)]) {
+      if (control.closest(ISLAND) !== this.element || control.matches(":disabled")) continue
+      const action = keyAction(control, event, "window", typing)
+      if (!action) continue
+      hotkeyed.add(event)
+      return this.press(control, event, action)
+    }
+  }
+
+  // A matched key is the control's gesture, so its default goes. A fallback
+  // control on an island that is not ready stands aside: a key has no
+  // native destination, but its default may be the form's own submit.
+  press(control, event, action) {
+    if ("hibikiFallback" in control.dataset && this.state !== "ready") return
+    event.preventDefault()
+    this.run(control, event, action)
   }
 
   // DOM → server: forward a control's event as a channel action.
@@ -794,8 +919,11 @@ export default class HibikiController extends ChannelController {
       .split(/\s+/)
       .find((t) => t.startsWith(`${event.type}->`))
     if (!token) return
-    const action = token.slice(event.type.length + 2)
+    this.run(control, event, token.slice(event.type.length + 2))
+  }
 
+  // From a control's matched token to the wire.
+  run(control, event, action) {
     // A fallback control's native behavior IS the degraded path: unless
     // the island is `ready`, stand aside — no perform, no queueing — and
     // the browser follows the href or submits the form to its own
@@ -827,7 +955,7 @@ export default class HibikiController extends ChannelController {
     const fire = () => this.send(control, event, action)
     if (wait > 0) {
       const field = event.target
-      if (typed(field)) {
+      if (event.type !== "keydown" && typed(field)) {
         this.unsent.set(field, {
           value: field.value,
           start: field.selectionStart,

@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 
 require_relative "dom_props"
+require_relative "keys"
 
 module Hibiki
   module Rails
@@ -46,9 +47,8 @@ module Hibiki
 
       # Event and action names share the hibiki_on attribute, which is a
       # whitespace-separated token list — a name carrying a space or an
-      # arrow would silently change what the client dispatches. The dot is
-      # allowed so a future event qualifier (keydown.enter) needs no second
-      # grammar change.
+      # arrow would silently change what the client dispatches. Key events
+      # (keydown.enter) have their own grammar; see Keys.
       EVENT_NAME = /\A[a-z][a-z0-9_.-]*\z/i
 
       # Per-keystroke round trips are the failure mode #on exists to avoid,
@@ -101,6 +101,13 @@ module Hibiki
                 "event or action name #{name.inspect} must match #{EVENT_NAME.inspect}"
         end
         name
+      end
+
+      # The left side of a token. Keys validates a key event, and anything
+      # else that asks for a scope.
+      def self.event(name)
+        name = name.to_s
+        name.match?(Keys::EVENT) || name.include?("@") ? Keys.token(name) : event_name(name)
       end
 
       # The island root: one channel subscription per island, identified by
@@ -169,6 +176,13 @@ module Hibiki
       #
       #   on(:load_more, event: %i[click visible], with: { shown: rows.size })
       #
+      # A key is `keydown.<key>`, heard while focus is inside the element,
+      # or `keydown.<key>@window`, heard anywhere on the page while the
+      # element is rendered. Modifiers go in front; Keys lists both:
+      #
+      #   on(:cancel, event: "keydown.esc")
+      #   on(:new_row, event: ["click", "keydown.ctrl+n@window"])
+      #
       # `with:` is a hash sent as the action's payload. The client adds
       # event-derived data on top: a changed control contributes
       # `{ name => value }` — a checkbox its checked state, a multi-select
@@ -206,7 +220,7 @@ module Hibiki
       def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil,
              fallback: nil)
         action = Helpers.event_name(action)
-        events = Array(event).map { Helpers.event_name(it) }
+        events = Array(event).map { Helpers.event(it) }
         debounce = DEFAULT_INPUT_DEBOUNCE if debounce.nil? && events.include?("input")
         tokens = events.map { "#{it}->#{action}" }.join(" ")
         { data: { hibiki_on: tokens }
