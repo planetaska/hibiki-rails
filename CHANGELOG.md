@@ -29,6 +29,24 @@ list's arrow keys reach the channel with no JavaScript in the app.
   typing in a field, except `esc`.
 - A bare `keydown` raises; `input` is the event for typed text.
 
+**`focus`: the cursor in a field a render opens.** A row that turns into a
+form used to leave focus on the page, so the visitor had to click into the
+field before typing or pressing Escape.
+
+```erb
+<%= text_field_tag "title", form.title, **focus(select: true) %>
+```
+
+- The client focuses the marked element once, on the render that brings it.
+  `select: true` also selects its text.
+- Only a render this tab's own action caused counts. Another visitor's save
+  never moves the cursor, and neither does a page refresh.
+- A marked element in the page's first HTML is not focused; use `autofocus`
+  there.
+- Focus is not taken from a field whose typed text has yet to be sent.
+- `focus` returns a `{ data: }` hash like `on` and `props`:
+  `**on(:set_field, event: :input).deep_merge(focus)`.
+
 ## 0.16.0 — 2026-10-07
 
 ### Added

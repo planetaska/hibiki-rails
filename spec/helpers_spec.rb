@@ -255,4 +255,26 @@ RSpec.describe Hibiki::Rails::Helpers do
       expect { view.props(scroll_top: Float::INFINITY) }.to raise_error(ArgumentError, /scroll_top/)
     end
   end
+
+  describe "#focus" do
+    it "stamps the focus mark" do
+      expect(view.focus).to eq({ data: { hibiki_focus: "true" } })
+    end
+
+    it "asks for the text to be selected" do
+      expect(view.focus(select: true)).to eq({ data: { hibiki_focus: "select" } })
+    end
+
+    # Never the autofocus attribute: Turbo acts on it inside a stream, on
+    # renders the visitor did not cause.
+    it "emits nothing but its own data key" do
+      expect(view.focus(select: true).keys).to eq([:data])
+      expect(view.focus[:data].keys).to eq([:hibiki_focus])
+    end
+
+    it "merges with #on on one element" do
+      expect(view.on(:set_field, event: :input).deep_merge(view.focus)[:data])
+        .to include(hibiki_on: "input->set_field", hibiki_focus: "true")
+    end
+  end
 end

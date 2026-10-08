@@ -132,8 +132,7 @@ module Hibiki
       # override `channel` or `cid` through this hash.
       def hibiki_island(channel, cid:, params: nil)
         channel_name = channel.is_a?(Class) ? channel.name : channel.to_s
-        data = { controller: "hibiki", hibiki_channel_value: channel_name,
-                 hibiki_cid_value: cid }
+        data = { controller: "hibiki", hibiki_channel_value: channel_name, hibiki_cid_value: cid }
         data[:hibiki_params_value] = JSON.generate(params) unless params.nil?
         { data: }
       end
@@ -273,6 +272,18 @@ module Hibiki
         wanted["key"] = key unless key.nil?
         { data: { hibiki_props: JSON.generate(wanted) } }
       end
+
+      # Put the cursor in this element when a render opens it:
+      #
+      #   tag.input name: "title", value: form.title, **focus(select: true)
+      #
+      # The client focuses it once, on the render that brings it, and only
+      # when that render answers this tab's own action; another visitor's
+      # save never moves the cursor. `select: true` also selects its text.
+      # An element in the page's first HTML is not focused: that is the
+      # `autofocus` attribute's job. Returns a `{ data: }` hash, merged like
+      # #props: `**on(:set_field, event: :input).deep_merge(focus)`.
+      def focus(select: false) = { data: { hibiki_focus: select ? "select" : "true" } }
 
       private
 

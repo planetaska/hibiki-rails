@@ -64,6 +64,8 @@
 //                 that have no attribute, assigned on connect and after each
 //                 render; only the names in PROPS below, an optional "key"
 //                 beside them existing to change the text
+//   focus sites   data-hibiki-focus="true|select"      takes focus, and has its
+//                 text selected, when a render this tab caused inserts it
 //
 // The client writes the protocol's other half at runtime — read-only to
 // app code, addressed to app CSS:
@@ -98,6 +100,12 @@
 // field with unsent input wins, until its send fires. And any undebounced
 // action first flushes the island's pending debounces, so gestures reach
 // the server in the order they were made.
+//
+// A focus site takes focus once, on the render that brings it: marked now
+// and not at the scan before. Only a render this tab caused counts, one
+// that arrived while an action was in flight or just after its ack, so a
+// render nobody here asked for never moves the cursor. A mark in the page's
+// first HTML is `autofocus`'s business, and a refresh morph focuses nothing.
 //
 // App JS reaching the graph — the ONE public seam. A gesture that needs
 // script (drag-and-drop, a third-party widget) fires its action through
@@ -242,9 +250,15 @@ export class ChannelController extends Controller {
   // busyCeiling ms before a trip is declared stalled rather than silently
   //             cleared. On a bad link "we lost it" beats "nothing
   //             happened".
+  // focusGrace  ms after a trip settles in which a render still counts as
+  //             its answer (see own()). One action can broadcast twice: the
+  //             first render settles the trip with the ack and the second
+  //             trails both. Longer than busyGrace because a missed focus
+  //             costs more than a spinner's flicker.
   static busyDelay = 150
   static busyGrace = 60
   static busyCeiling = 10000
+  static focusGrace = 500
 
   async connect() {
     this.prepareTransport()
@@ -264,6 +278,7 @@ export class ChannelController extends Controller {
     this.seq = 0
     this.renders = 0
     this.busy = new Map()
+    this.settledAt = -Infinity
     this.lastControl = null
     this.queued = []
     this.setState("connecting")
@@ -457,6 +472,7 @@ export class ChannelController extends Controller {
     clearTimeout(record.ceiling)
     clearTimeout(record.grace)
     this.busy.delete(seq)
+    this.settledAt = performance.now()
     record.control?.removeAttribute("data-hibiki-busy")
     if (this.busy.size === 0) this.hideBusy()
   }
@@ -472,6 +488,13 @@ export class ChannelController extends Controller {
     this.busyShown = false
     this.element.removeAttribute("data-hibiki-busy")
     this.element.removeAttribute("aria-busy")
+  }
+
+  // Whether a render arriving now answers this tab's own action: one is in
+  // flight, or settled within the grace. Asked when the render arrives, not
+  // when it is applied, since the motion module may hold it for a second.
+  own() {
+    return this.busy.size > 0 || performance.now() - this.settledAt <= this.constructor.focusGrace
   }
 
   // Say so rather than clearing silently: on a bad link the honest report
@@ -765,6 +788,14 @@ export default class HibikiController extends ChannelController {
     this.timers = new WeakMap()
     this.pending = new Map()
     this.unsent = new Map()
+    // The focus sites seen at the last scan; one not among them is new.
+    // Seeded now, so a render landing in the connect window finds the
+    // page's own marks already seen.
+    this.marks = new Set(
+      [...this.element.querySelectorAll("[data-hibiki-focus]")].filter(
+        (site) => site.closest(ISLAND) === this.element
+      )
+    )
 
     // `visible` is not a DOM event, so it needs its own observer beside the
     // delegated listeners. Always on, never a pluggable module: an
@@ -788,6 +819,7 @@ export default class HibikiController extends ChannelController {
     // is a real per-mutation cost paid by every app on it.
     this.streamRender = (event) => {
       const render = event.detail.render
+      const own = this.own()
       event.detail.render = async (streamElement) => {
         await render(streamElement)
         // The Turbo transport's paint. Counting it here is what lets an ack
@@ -796,7 +828,7 @@ export default class HibikiController extends ChannelController {
         // — which at worst settles an already-acked trip a few ms early,
         // never one that has not been acked at all.
         this.renders++
-        this.scan()
+        this.scan(own)
       }
     }
     document.addEventListener("turbo:before-stream-render", this.streamRender)
@@ -822,6 +854,7 @@ export default class HibikiController extends ChannelController {
     for (const id of this.pending.keys()) clearTimeout(id)
     this.pending.clear()
     this.unsent.clear()
+    this.marks.clear()
     this.observer.disconnect()
     super.disconnect()
   }
@@ -829,28 +862,36 @@ export default class HibikiController extends ChannelController {
   // The other swap point: hibiki's own transmit transport. A held swap
   // hands back a promise; the replacement sentinel exists only after it.
   received(data) {
+    const own = this.own()
     const swapped = super.received(data)
     if (!data.html) return
-    if (swapped?.then) swapped.then(() => this.scan())
-    else this.scan()
+    if (swapped?.then) swapped.then(() => this.scan(own))
+    else this.scan(own)
   }
 
   // What a render leaves for the client to finish: put back unsent text,
   // then in one walk of the island assign every prop site's properties,
-  // observe every `visible->` sentinel this island owns, and listen on the
-  // window while a window key is declared. observe() is a no-op for an
+  // observe every `visible->` sentinel this island owns, listen on the
+  // window while a window key is declared, and, when the render was this
+  // tab's `own`, focus the first focus site it brought. observe() is a no-op for an
   // element already being observed, so re-scanning is cheap and cannot
   // double-fire a sentinel that merely stayed put; adding a listener twice
   // is a no-op too. Props need no ownership check: assigning one twice,
   // from a nested island and its parent, lands the same value. Nor does
   // the window listener, which finds nothing of its own to fire.
-  scan() {
+  scan(own = false) {
     if (this.unsent.size) this.restoreUnsent()
     const found = this.element.querySelectorAll(
-      `[data-hibiki-on*="visible->"], [data-hibiki-props], ${HOTKEYED}`
+      `[data-hibiki-on*="visible->"], [data-hibiki-props], [data-hibiki-focus], ${HOTKEYED}`
     )
     let hotkeys = this.element.matches(HOTKEYED)
+    const marks = new Set()
+    let site
     for (const element of found) {
+      if (element.hasAttribute("data-hibiki-focus") && element.closest(ISLAND) === this.element) {
+        marks.add(element)
+        if (!this.marks.has(element)) site ??= element
+      }
       hotkeys ||= element.dataset.hibikiOn?.includes("@window")
       if (element.hasAttribute("data-hibiki-props")) applyProps(element)
       if (
@@ -862,6 +903,12 @@ export default class HibikiController extends ChannelController {
     }
     if (hotkeys) window.addEventListener("keydown", this.hotkeys)
     else window.removeEventListener("keydown", this.hotkeys)
+    this.marks = marks
+    // Not from a field with unsent input: the visitor is typing there.
+    if (own && site && !this.unsent.has(document.activeElement)) {
+      site.focus()
+      if (site.dataset.hibikiFocus === "select") site.select?.()
+    }
   }
 
   // A key pressed inside the island: the nearest control up from the
