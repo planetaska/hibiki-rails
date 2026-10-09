@@ -4,6 +4,32 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.17.1 — 2026-10-09
+
+### Fixed
+
+**Renders sent over the broadcast transport could reach the page out of
+order.** Action Cable hands each broadcast to a pool of threads, so two
+renders a channel sent a millisecond apart could be delivered in either
+order. When both drew the same target, the page ended on the older one and
+stayed wrong until something rendered that target again: a Save button left
+enabled, a note that contradicted the server's state. It was always
+possible; since 0.17.0 sends a debounced field's text just ahead of a click
+or a submit, any form with one did it routinely.
+
+- `broadcast_replace` and `broadcast_morph` now number their renders, and
+  the client applies them in the order the channel sent them. Nothing changes
+  in the channel or the view.
+- A render that arrives ahead of an earlier one waits for it, for at most
+  100 ms. One that arrives later than that is still drawn, unless a newer
+  render has drawn the same target since.
+- `broadcast_refresh`, the transmit transport, and streams an app sends with
+  `Turbo::StreamsChannel` itself are not affected and not changed.
+- Both halves are needed, so update the gem and the npm package together. A
+  page on one side only behaves as 0.17.0 did.
+- `broadcast_replace` and `broadcast_morph` also accept `attributes:`, which
+  are kept on the stream beside the gem's own.
+
 ## 0.17.0 — 2026-10-08
 
 ### Added
