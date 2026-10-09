@@ -39,7 +39,9 @@ RSpec.describe Hibiki::Rails::Broadcasts do
 
       public :broadcast_replace, :broadcast_morph, :broadcast_refresh
 
+      def self.name = "BcChannel"
       def stream_name = %w[bc c1]
+      def params = { cid: "c1" }
     end.new
   end
 
@@ -74,6 +76,39 @@ RSpec.describe Hibiki::Rails::Broadcasts do
         .to have_broadcasted_to("bc:c1").with(a_string_including('action="refresh"'))
     end
   end
+
+  # Action Cable does not keep a stream's broadcasts in order, so each render
+  # says where it falls and the client applies them by number.
+  describe "the render stamp" do
+    def stamp(seq) = a_string_including(%(data-hibiki-seq="#{seq}")).and(including('data-hibiki-from="BcChannel/c1"'))
+
+    it "numbers replace and morph renders from 1, in the order sent" do
+      sent = ->(matcher) { have_broadcasted_to("bc:c1").with(matcher) }
+      first = sent[stamp(1).and(including("<p>1</p>"))]
+      second = sent[stamp(2).and(including("<p>2</p>")).and(including('method="morph"'))]
+      third = sent[stamp(3).and(including("<p>3</p>"))]
+
+      expect do
+        harness.broadcast_replace(target: "a", html: "<p>1</p>")
+        harness.broadcast_morph(target: "b", html: "<p>2</p>")
+        harness.broadcast_replace(target: "a", html: "<p>3</p>")
+      end.to first.and(second).and(third)
+    end
+
+    it "keeps the caller's own stream attributes beside it" do
+      kept = stamp(1).and(including('data-note="mine"')).and(including('method="morph"'))
+
+      expect { harness.broadcast_morph(target: "a", html: "<p>x</p>", attributes: { "data-note": "mine" }) }
+        .to have_broadcasted_to("bc:c1").with(kept)
+    end
+
+    it "leaves a refresh unstamped, and uncounted" do
+      expect { harness.broadcast_refresh }
+        .to have_broadcasted_to("bc:c1").with(satisfy { |stream| !stream.include?("data-hibiki-seq") })
+      expect { harness.broadcast_replace(target: "a", html: "<p>x</p>") }
+        .to have_broadcasted_to("bc:c1").with(stamp(1))
+    end
+  end
 end
 
 RSpec.shared_context "with an actor drain barrier" do
@@ -97,6 +132,24 @@ RSpec.describe BroadcastTestChannel, type: :channel do
     end.to have_broadcasted_to("broadcast_test:c9")
       .with(a_string_including("Hello, hibiki"))
       .and have_broadcasted_to("broadcast_test:c9").with(a_string_including("Hello, world"))
+  end
+
+  it "stamps renders with its own class and cid, each subscription counting apart" do
+    expect do
+      subscribe(cid: "c9")
+      drain
+      perform :rename, name: "world"
+      drain
+    end.to have_broadcasted_to("broadcast_test:c9")
+      .with(a_string_including('data-hibiki-seq="1"').and(including('data-hibiki-from="BroadcastTestChannel/c9"')))
+      .and have_broadcasted_to("broadcast_test:c9").with(a_string_including('data-hibiki-seq="2"'))
+
+    unsubscribe
+    expect do
+      subscribe(cid: "c10")
+      drain
+    end.to have_broadcasted_to("broadcast_test:c10")
+      .with(a_string_including('data-hibiki-seq="1"').and(including('data-hibiki-from="BroadcastTestChannel/c10"')))
   end
 end
 

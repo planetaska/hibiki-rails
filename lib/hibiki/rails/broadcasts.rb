@@ -17,16 +17,16 @@ module Hibiki
 
       # Replace the element with DOM id `target` (accepts partial:/locals:,
       # html:, or anything Turbo's renderer takes).
-      def broadcast_replace(target:, **rendering)
-        Turbo::StreamsChannel.broadcast_replace_to(*stream_name, target:, **rendering)
+      def broadcast_replace(target:, attributes: {}, **rendering)
+        Turbo::StreamsChannel.broadcast_replace_to(
+          *stream_name, target:, attributes: attributes.merge(render_stamp), **rendering
+        )
       end
 
       # Replace via Turbo 8 morphing (<turbo-stream action="replace"
       # method="morph">): keeps focus/scroll where a plain replace resets.
-      def broadcast_morph(target:, **rendering)
-        Turbo::StreamsChannel.broadcast_replace_to(
-          *stream_name, target:, attributes: { method: :morph }, **rendering
-        )
+      def broadcast_morph(target:, attributes: {}, **rendering)
+        broadcast_replace(target:, attributes: { method: :morph }.merge(attributes), **rendering)
       end
 
       # Tell the page to refresh itself (Turbo 8 morph-everything style).
@@ -46,6 +46,17 @@ module Hibiki
           deps.call
           broadcast_refresh
         end
+      end
+
+      # The number each render carries, and the island it is for. Action
+      # Cable hands every broadcast to a worker pool, so two sent a
+      # millisecond apart can reach the page in either order; the client
+      # applies them by number. Counted per subscription from 1, on the
+      # graph thread alone. A refresh carries none: it fetches the page, so
+      # its order does not matter. Part of the private data-hibiki contract.
+      def render_stamp
+        @__hibiki_renders = @__hibiki_renders.to_i + 1
+        { "data-hibiki-seq": @__hibiki_renders, "data-hibiki-from": "#{self.class.name}/#{params[:cid]}" }
       end
     end
   end

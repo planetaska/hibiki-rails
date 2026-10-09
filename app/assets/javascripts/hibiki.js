@@ -66,6 +66,9 @@
 //                 beside them existing to change the text
 //   focus sites   data-hibiki-focus="true|select"      takes focus, and has its
 //                 text selected, when a render this tab caused inserts it
+//   turbo streams data-hibiki-seq="3"                  the render's number, and
+//                 data-hibiki-from="CounterChannel/<cid>" the island it is for;
+//                 see "Render order" below
 //
 // The client writes the protocol's other half at runtime — read-only to
 // app code, addressed to app CSS:
@@ -117,6 +120,16 @@
 // action and payload; and for the first control of the focused element's
 // nearest id-bearing ancestor. Only controls: when none of these is there,
 // focus is left where the browser put it. Any render, whoever caused it.
+//
+// Render order. Action Cable hands each broadcast to a worker pool, so two
+// renders the channel sent a millisecond apart can arrive in either order,
+// and the page would end on the older one. The channel numbers its Turbo
+// streams and the island applies them in that order: one that arrives ahead
+// of its turn is held until the missing ones come, or until `orderGrace`
+// runs out on one that never will. A render that turns up after it was
+// given up on is still drawn, unless a later one has drawn the same target
+// since. A stream with no number, or another island's, is left alone. The
+// transmit transport needs none of this: it writes to the socket in order.
 //
 // App JS reaching the graph — the ONE public seam. A gesture that needs
 // script (drag-and-drop, a third-party widget) fires its action through
@@ -753,6 +766,11 @@ export default class HibikiController extends ChannelController {
   // stamps no data-hibiki-params-value.
   static values = { channel: String, params: Object }
 
+  // ms a Turbo render that arrived ahead of its turn waits for the ones
+  // before it (see inOrder). Only a lost broadcast waits it out; a late one
+  // is a pool hop behind, a millisecond or two.
+  static orderGrace = 100
+
   // The island stamps its channel; no inference.
   channelName() {
     return this.channelValue
@@ -833,19 +851,23 @@ export default class HibikiController extends ChannelController {
     // Re-scan at the points a fragment can be swapped under us, rather
     // than blanket-observing the document: a MutationObserver over the page
     // is a real per-mutation cost paid by every app on it.
+    this.resetOrder()
     this.streamRender = (event) => {
       const render = event.detail.render
+      const stream = event.detail.newStream
+      // Taken now, not when the render's turn comes: see arrival().
       const arrival = this.arrival()
-      event.detail.render = async (streamElement) => {
-        await render(streamElement)
-        // The Turbo transport's paint. Counting it here is what lets an ack
-        // settle immediately instead of waiting out its grace window. The
-        // listener is on the document, so an unrelated broadcast counts too
-        // — which at worst settles an already-acked trip a few ms early,
-        // never one that has not been acked at all.
-        this.renders++
-        this.scan(arrival)
-      }
+      event.detail.render = (streamElement) =>
+        this.inOrder(stream, async () => {
+          await render(streamElement)
+          // The Turbo transport's paint. Counting it here is what lets an ack
+          // settle immediately instead of waiting out its grace window. The
+          // listener is on the document, so an unrelated broadcast counts too
+          // — which at worst settles an already-acked trip a few ms early,
+          // never one that has not been acked at all.
+          this.renders++
+          this.scan(arrival)
+        })
     }
     document.addEventListener("turbo:before-stream-render", this.streamRender)
     // A refresh stream morphs the page after its own render has returned,
@@ -882,7 +904,97 @@ export default class HibikiController extends ChannelController {
     this.unsent.clear()
     this.marks.clear()
     this.observer.disconnect()
+    this.resetOrder()
     super.disconnect()
+  }
+
+  // A reconnect builds a fresh graph, which numbers its renders from 1.
+  linkClosed() {
+    this.resetOrder()
+    super.linkClosed()
+  }
+
+  // ── Render order ──────────────────────────────────────────────────────
+  //
+  // `due` is the number of the next render to apply and `held` the renders
+  // waiting on it, by number. `missed` and `drawn` exist only after a gap
+  // was given up on: the numbers skipped, and the last number drawn into
+  // each target since, which is what tells a late render it is stale.
+
+  // Run `job` (the render and what follows it) when the stream's turn
+  // comes, or never when it is stale. Jobs are CALLED in order and not
+  // awaited: a call reaches the swap, or the motion module's queue, before
+  // it returns, and that queue keeps the order from there.
+  inOrder(stream, job) {
+    const seq = Number(stream?.getAttribute?.("data-hibiki-seq"))
+    if (!seq || stream.getAttribute("data-hibiki-from") !== `${this.channelValue}/${this.cidValue}`) {
+      return job()
+    }
+    const target = stream.getAttribute("target")
+    const run = () => {
+      this.drew(target, seq)
+      return job()
+    }
+    if (seq < this.due) {
+      // Late. A number never given up on is a repeat, or older than
+      // anything remembered.
+      const stale = !this.missed.delete(seq) || this.drawn.get(target) > seq
+      return stale ? Promise.resolve() : run()
+    }
+    if (seq > this.due) {
+      return new Promise((resolve) => {
+        this.held.set(seq, () => resolve(run()))
+        this.orderTimer ??= setTimeout(() => this.giveUp(), this.constructor.orderGrace)
+      })
+    }
+    const done = run()
+    this.due++
+    this.release()
+    return done
+  }
+
+  // Apply the held renders that now follow on. Any still held wait on a
+  // new gap, with a new grace.
+  release() {
+    for (let run; (run = this.held.get(this.due)); this.due++) {
+      this.held.delete(this.due)
+      run()
+    }
+    clearTimeout(this.orderTimer)
+    this.orderTimer = this.held.size
+      ? setTimeout(() => this.giveUp(), this.constructor.orderGrace)
+      : undefined
+  }
+
+  // The grace ran out: move past the missing numbers to the first held.
+  giveUp() {
+    const first = Math.min(...this.held.keys())
+    for (let seq = this.due; seq < first; seq++) this.missed.add(seq)
+    this.missedAt = performance.now()
+    this.due = first
+    this.release()
+  }
+
+  // Remember what was drawn while a missed render may still turn up, and
+  // no longer: one later than the ceiling is lost by the same measure a
+  // trip is.
+  drew(target, seq) {
+    if (performance.now() - this.missedAt > this.constructor.busyCeiling) this.missed.clear()
+    if (!this.missed.size) return this.drawn.clear()
+    if (!(this.drawn.get(target) > seq)) this.drawn.set(target, seq)
+  }
+
+  // Start counting again from 1. Renders still held are the old graph's
+  // last word, so they are applied first, in order.
+  resetOrder() {
+    clearTimeout(this.orderTimer)
+    this.orderTimer = undefined
+    const held = [...(this.held ?? [])].sort(([a], [b]) => a - b)
+    this.due = 1
+    this.held = new Map()
+    this.missed = new Set()
+    this.drawn = new Map()
+    for (const [, run] of held) run()
   }
 
   // The other swap point: hibiki's own transmit transport. A held swap
