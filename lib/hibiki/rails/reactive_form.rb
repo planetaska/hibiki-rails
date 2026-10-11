@@ -264,7 +264,7 @@ module Hibiki
       # have moved values, and #persisted? flips after an INSERT.
       # rubocop:disable-next Naming/PredicateMethod -- boolean without a ?, exactly like AR's #save
       def commit
-        record = __hibiki_record!
+        record = __hibiki_unloaded_record
         if record.update(**to_h)
           # Unload before re-hydrating, so the reload honors the
           # association's own scope and drops destroyed rows.
@@ -382,6 +382,14 @@ module Hibiki
           reflection = association.reflection
           record.association(reflection.through_reflection.name).reset if reflection.through_reflection?
         end
+      end
+
+      # The record to write to. Its ids associations are unloaded first, so
+      # the ids writer reads the table and not what this record remembers
+      # from an earlier commit or a preload: rows another session wrote
+      # since would otherwise be inserted twice, or silently left out.
+      def __hibiki_unloaded_record
+        __hibiki_record!.tap { __hibiki_reset_associations(it) }
       end
 
       def __hibiki_record!

@@ -348,6 +348,32 @@ RSpec.describe Hibiki::Rails::ReactiveForm do
       end
     end
 
+    # A form that has saved once holds a record with the association loaded.
+    describe "when another session saved while the form was open" do
+      let(:record) { Todo.find(Todo.create!(title: "milk", labels: [red]).id) }
+      let(:form) { labeled_form_class.from(record) }
+
+      before do
+        form.title = "oat milk"
+        expect(form.commit).to be(true)
+      end
+
+      it "saves an id the other session added as well" do
+        Todo.find(record.id).update!(labels: [red, blue])
+        form.label_ids = [red.id, blue.id]
+        expect(form.commit).to be(true)
+        expect(Labeling.where(todo_id: record.id).pluck(:label_id)).to contain_exactly(red.id, blue.id)
+      end
+
+      it "writes back an id the other session removed" do
+        Todo.find(record.id).update!(labels: [])
+        form.title = "soy milk"
+        expect(form.commit).to be(true)
+        expect(form.label_ids).to eq([red.id])
+        expect(Labeling.where(todo_id: record.id).pluck(:label_id)).to eq([red.id])
+      end
+    end
+
     describe "over other collection associations" do
       let(:klass) do
         Class.new do
