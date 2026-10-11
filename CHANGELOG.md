@@ -4,6 +4,44 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.17.2 — 2026-10-11
+
+### Fixed
+
+**A save the model refused could leave a `reactive_association` form unable
+to save.** The form keeps one record between attempts. When a `commit` was
+refused, the join rows were rolled back, but the record still remembered the
+selection that attempt had written, and the next `commit` was compared with
+that memory instead of the table. If the refused attempt had removed an id
+that the next one still held, the retry inserted a join row that was already
+there. With a unique index on the pair, which the `multiselect` generator
+writes, that raised `ActiveRecord::RecordNotUnique` and the visitor saw a
+Save that did nothing, every time, until the form was opened again. Without
+the index it wrote a duplicate row.
+
+- Any refused save could set it up, not only one about the association: a
+  blank name saved together with a removed tag was enough.
+- A refused `commit` or `commit!` now unloads the associations named in
+  `reactive_association`, and the join association behind a
+  `has_many :through` or a `has_and_belongs_to_many`. The form keeps the
+  visitor's selection; nothing changes in the channel or the view.
+- An app that calls `record.reload` before `commit` to get round this can
+  remove the call.
+- `hibiki_associations` on a form class lists the names it declared.
+
+**A form that had saved once could save its `reactive_association` wrongly
+after another session changed the same record.** The cause is the same
+memory. If the other session had added an id this form then added too, the
+commit raised `ActiveRecord::RecordNotUnique`. If it had removed an id this
+form still showed, the commit returned `true` and did not write it.
+
+- `commit` now reads the association from the table each time, at the cost
+  of one query per association when it was already loaded.
+- The later save still wins: the form's selection replaces the other
+  session's, as its other fields already did.
+- Nested forms (`reactive_nested`) are not changed.
+- The npm package is unchanged apart from its version.
+
 ## 0.17.1 — 2026-10-09
 
 ### Fixed
