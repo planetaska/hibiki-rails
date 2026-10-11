@@ -24,18 +24,45 @@ ActiveRecord::Schema.define do
   create_table :labelings, force: true do |t|
     t.references :todo, null: false
     t.references :label, null: false
+    t.index %i[todo_id label_id], unique: true
+  end
+
+  # A plain has_many and a has_and_belongs_to_many, for the associations
+  # reactive_association takes besides a has_many :through.
+  create_table :reminders, force: true do |t|
+    t.references :todo
+    t.string :note
+  end
+
+  create_table :contexts, force: true do |t|
+    t.string :name
+  end
+
+  create_table :contexts_todos, id: false, force: true do |t|
+    t.references :todo, null: false
+    t.references :context, null: false
+    t.index %i[todo_id context_id], unique: true
   end
 end
 
 class Todo < ActiveRecord::Base
   has_many :labelings, dependent: :destroy
   has_many :labels, through: :labelings
+  has_many :reminders
+  has_and_belongs_to_many :contexts
 
   validates :title, presence: true
   validates :priority, numericality: { greater_than: 0 }
 end
 
 class Label < ActiveRecord::Base
+end
+
+class Reminder < ActiveRecord::Base
+  belongs_to :todo, optional: true
+end
+
+class Context < ActiveRecord::Base
 end
 
 class Labeling < ActiveRecord::Base

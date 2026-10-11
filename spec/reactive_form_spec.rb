@@ -282,6 +282,133 @@ RSpec.describe Hibiki::Rails::ReactiveForm do
       expect(Todo.last.labels).to eq([red])
     end
 
+    # The form holds ONE record across attempts. A refused update rolls the
+    # join rows back but leaves the record's loaded associations holding the
+    # refused set, and the next ids write is diffed against that memory.
+    describe "after a refused commit" do
+      let(:record) { Todo.create!(title: "milk", labels: [red, blue]) }
+      let(:form) { labeled_form_class.from(record) }
+
+      def refuse(form, ids)
+        form.title = ""
+        form.label_ids = ids
+        expect(form.commit).to be(false)
+        form.title = "milk"
+      end
+
+      it "saves an id the refused attempt removed" do
+        refuse(form, [red.id])
+        form.label_ids = [red.id, blue.id]
+        expect(form.commit).to be(true)
+        expect(Labeling.where(todo_id: record.id).pluck(:label_id)).to contain_exactly(red.id, blue.id)
+      end
+
+      it "saves an id the refused attempt added, once" do
+        record.update!(labels: [red])
+        refuse(form, [red.id, blue.id])
+        form.label_ids = [red.id, blue.id]
+        expect(form.commit).to be(true)
+        expect(Labeling.where(todo_id: record.id).pluck(:label_id)).to contain_exactly(red.id, blue.id)
+      end
+
+      it "removes an id the refused attempt added and the retry dropped" do
+        record.update!(labels: [red])
+        refuse(form, [red.id, blue.id])
+        form.label_ids = []
+        expect(form.commit).to be(true)
+        expect(Labeling.where(todo_id: record.id)).to be_empty
+      end
+
+      it "starts clean after a rescued commit!, whichever way the selection moved" do
+        form.title = ""
+        form.label_ids = [red.id]
+        expect { form.commit! }.to raise_error(ActiveRecord::RecordInvalid)
+        form.label_ids = [blue.id]
+        expect { form.commit! }.to raise_error(ActiveRecord::RecordInvalid)
+        form.title = "milk"
+        form.label_ids = [red.id, blue.id]
+        expect(form.commit!).to be(true)
+        expect(Labeling.where(todo_id: record.id).pluck(:label_id)).to contain_exactly(red.id, blue.id)
+      end
+
+      it "keeps the visitor's selection in the form" do
+        refuse(form, [red.id])
+        expect(form.label_ids).to eq([red.id])
+        expect(form).to be_dirty
+      end
+
+      it "saves on the create path" do
+        form = labeled_form_class.from(Todo.new)
+        form.label_ids = [red.id]
+        expect(form.commit).to be(false)
+        form.title = "milk"
+        form.label_ids = [red.id, blue.id]
+        expect(form.commit).to be(true)
+        expect(Labeling.where(todo_id: form.record.id).pluck(:label_id)).to contain_exactly(red.id, blue.id)
+      end
+    end
+
+    describe "over other collection associations" do
+      let(:klass) do
+        Class.new do
+          include Hibiki::Rails::ReactiveForm
+
+          reactive_attributes Todo, :title
+          reactive_association :reminders, :contexts
+
+          def self.name = "FiledTodoForm"
+        end
+      end
+
+      before do
+        Reminder.delete_all
+        Context.delete_all
+        Todo.connection.execute("DELETE FROM contexts_todos")
+      end
+
+      it "retries a plain has_many after a refused commit" do
+        call = Reminder.create!(note: "call")
+        mail = Reminder.create!(note: "mail")
+        record = Todo.create!(title: "milk", reminders: [call, mail])
+        form = klass.from(record)
+        form.title = ""
+        form.reminder_ids = [call.id]
+        expect(form.commit).to be(false)
+        form.title = "milk"
+        form.reminder_ids = [call.id, mail.id]
+        expect(form.commit).to be(true)
+        expect(record.reload.reminder_ids).to contain_exactly(call.id, mail.id)
+      end
+
+      it "retries a has_and_belongs_to_many after a refused commit, removed or added" do
+        home = Context.create!(name: "home")
+        work = Context.create!(name: "work")
+        record = Todo.create!(title: "milk", contexts: [home, work])
+        form = klass.from(record)
+        form.title = ""
+        form.context_ids = [home.id]
+        expect(form.commit).to be(false)
+        form.title = "milk"
+        form.context_ids = [home.id, work.id]
+        expect(form.commit).to be(true)
+
+        form.title = ""
+        form.context_ids = [home.id]
+        expect(form.commit).to be(false)
+        form.context_ids = [home.id, work.id]
+        expect(form.commit).to be(false)
+        form.title = "milk"
+        expect(form.commit).to be(true)
+        expect(Todo.connection.select_value("SELECT COUNT(*) FROM contexts_todos")).to eq(2)
+        expect(record.reload.context_ids).to contain_exactly(home.id, work.id)
+      end
+    end
+
+    it "keeps the association names, and a subclass inherits them" do
+      expect(labeled_form_class.hibiki_associations).to eq([:labels])
+      expect(Class.new(labeled_form_class).hibiki_associations).to eq([:labels])
+    end
+
     it "raises a clear error for an association the model does not have" do
       klass = Class.new do
         include Hibiki::Rails::ReactiveForm

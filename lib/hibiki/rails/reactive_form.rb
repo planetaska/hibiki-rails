@@ -77,6 +77,7 @@ module Hibiki
         def reactive_association(*names)
           raise "#{self}: declare reactive_attributes before reactive_association" unless __hibiki_model_declared?
 
+          @hibiki_associations = [*hibiki_associations, *names.map(&:to_sym)]
           names.each { |name| __hibiki_ids_signal(name) }
         end
 
@@ -106,6 +107,10 @@ module Hibiki
 
         def hibiki_nested
           @hibiki_nested || __hibiki_inherited(:hibiki_nested) || {}
+        end
+
+        def hibiki_associations
+          @hibiki_associations || __hibiki_inherited(:hibiki_associations) || []
         end
 
         # The child form class, resolved on every use like hibiki_model so
@@ -272,13 +277,13 @@ module Hibiki
           # update APPENDS its built new children to the in-memory
           # association — a later success would insert them all again.
           # Unloading makes the next attempt start clean.
-          __hibiki_reset_nested(record)
+          __hibiki_unload(record)
           false
         end
       end
 
       # The raising half. Re-assigns and raises ActiveRecord::RecordInvalid
-      # (no rescue, and no AR constant named here); the nested associations
+      # (no rescue, and no AR constant named here); the record's associations
       # are unloaded even on the raise, so a rescued retry starts clean.
       def commit!
         return true if commit
@@ -287,7 +292,7 @@ module Hibiki
         begin
           record.update!(**to_h)
         ensure
-          __hibiki_reset_nested(record)
+          __hibiki_unload(record)
         end
       end
 
@@ -357,6 +362,26 @@ module Hibiki
       # reloads through the association's own scope.
       def __hibiki_reset_nested(record)
         self.class.hibiki_nested.each_key { |name| record.public_send(name).reset }
+      end
+
+      # What a refused attempt leaves behind on the record.
+      def __hibiki_unload(record)
+        __hibiki_reset_nested(record)
+        __hibiki_reset_associations(record)
+      end
+
+      # A refused update rolls the join rows back, but the ids writer has
+      # already left the association holding the refused set, and the join
+      # association behind a :through (or a has_and_belongs_to_many) holding
+      # the join records it built. The next ids write would be diffed
+      # against that memory instead of the table, so both are unloaded.
+      def __hibiki_reset_associations(record)
+        self.class.hibiki_associations.each do |name|
+          association = record.association(name)
+          association.reset
+          reflection = association.reflection
+          record.association(reflection.through_reflection.name).reset if reflection.through_reflection?
+        end
       end
 
       def __hibiki_record!
