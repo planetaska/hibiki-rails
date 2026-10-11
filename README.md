@@ -125,6 +125,52 @@ The generated components are just Rails partials (or Phlex components, if you us
 
 Congratulations! Now you have your first reactive component!
 
+## Instrumentation
+
+A channel publishes `ActiveSupport::Notifications` events. They are always
+on, and the gem subscribes to none of them.
+
+| Event | Duration covers | Payload |
+|---|---|---|
+| `subscribe.hibiki_rails` | building the graph and its first renders | `channel` |
+| `unsubscribe.hibiki_rails` | disposing the graph | `channel` |
+| `action.hibiki_rails` | the action and every effect it flushed | `channel`, `action`, `wait`, `renders` |
+| `render.hibiki_rails` | rendering and handing the stream to Action Cable | `channel`, `target`, `method` |
+| `trip.hibiki_rails` | nothing | `channel`, `action`, `ack`, `paint` |
+
+```ruby
+ActiveSupport::Notifications.subscribe("action.hibiki_rails") do |event|
+  Rails.logger.info "#{event.payload[:channel]}##{event.payload[:action]} #{event.duration.round(1)}ms"
+end
+```
+
+- `channel` is the class name. `wait` is the milliseconds the action queued
+  for the graph's thread. `renders` is how many renders it caused.
+- `method` is `:replace`, `:morph` or `:refresh`. A refresh has no `target`.
+- An action the channel does not have publishes nothing. A raising action
+  publishes, with the exception in the payload.
+- Action Cable's `broadcast.action_cable` fires inside the render event, on
+  the same thread, and carries the message if you want its size.
+- `Hibiki::Rails.registry.tally` returns the live subscriptions by channel
+  class, and `registry.size` the total.
+
+**A subscriber runs on the graph's thread.** Keep it to cheap work in
+memory; anything slow holds up that visitor's actions.
+
+A `trip` is the browser's own timing of one action: `ack` is the
+milliseconds until the server answered and `paint` the milliseconds until
+its first render arrived, or `nil` when nothing rendered. Reporting is off
+until the app turns it on:
+
+```js
+import HibikiController from "hibiki-rails"
+HibikiController.reportTrips = true
+```
+
+Each island then sends its last trips with its next action. The figures come
+from visitors' browsers, so treat them as reported: the gem bounds them (five
+per action, known action names, 0 to 60 000 ms) and cannot verify them.
+
 ## Documentation
 
 Documentation site: <https://planetaska.github.io/hibiki/rails-introduction/>

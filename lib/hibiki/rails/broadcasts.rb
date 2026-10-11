@@ -13,14 +13,19 @@ module Hibiki
     # All private — a public helper would become a client-invocable action
     # (see the NOTE on Hibiki::Rails::Channel).
     module Broadcasts
+      include Instrumentation
+
       private
 
       # Replace the element with DOM id `target` (accepts partial:/locals:,
       # html:, or anything Turbo's renderer takes).
       def broadcast_replace(target:, attributes: {}, **rendering)
-        Turbo::StreamsChannel.broadcast_replace_to(
-          *stream_name, target:, attributes: attributes.merge(render_stamp), **rendering
-        )
+        method = attributes[:method].to_s == "morph" ? :morph : :replace
+        instrument_render(target:, method:) do
+          Turbo::StreamsChannel.broadcast_replace_to(
+            *stream_name, target:, attributes: attributes.merge(render_stamp), **rendering
+          )
+        end
       end
 
       # Replace via Turbo 8 morphing (<turbo-stream action="replace"
@@ -32,7 +37,7 @@ module Hibiki
       # Tell the page to refresh itself (Turbo 8 morph-everything style).
       # Pair with Debounce when many writes should mean one refresh.
       def broadcast_refresh
-        Turbo::StreamsChannel.broadcast_refresh_to(*stream_name)
+        instrument_render(method: :refresh) { Turbo::StreamsChannel.broadcast_refresh_to(*stream_name) }
       end
 
       # The Morph-everything style as one call: an effect that tracks

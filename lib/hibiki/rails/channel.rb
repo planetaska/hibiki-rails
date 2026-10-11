@@ -77,13 +77,20 @@ module Hibiki
       # produces zero bytes, and "clear on the next render" would hang
       # forever. `delete`, not `[]`: the key must not reach the action
       # method's data. No `hbk`, no ack, so a 0.3.0 page keeps working.
+      #
+      # `hbt` is the third reserved key: the trips the browser timed since
+      # its last action (see Instrumentation#trips_from). Deleted whether or
+      # not anyone listens, for the same reason as `hbk`.
       def perform_action(data)
         seq = data.delete("hbk")
+        trips = trips_from(data.delete("hbt"))
+        asked = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         # A nil actor means the subscription was rejected or already torn
         # down; drop the action rather than blow up the cable thread.
         posted = @__hibiki_actor&.post do
-          Hibiki.batch { super(data) }
+          trips.each { instrument("trip", it) }
+          instrument_action(data, asked) { Hibiki.batch { super(data) } }
         ensure
           # Hibiki.batch flushes in its own ensure, so effects queued
           # before a raise have run by the time this does — the ack is
@@ -111,7 +118,9 @@ module Hibiki
         # The block runs owned + untracked (Hibiki.root); the effects it
         # creates do their dependency-collecting first run right here, on
         # the graph thread.
-        @__hibiki_actor.post { @__hibiki_root = Hibiki.root { build_graph } }
+        @__hibiki_actor.post do
+          instrument("subscribe") { @__hibiki_root = Hibiki.root { build_graph } }
+        end
         Hibiki::Rails.registry.register(self)
       end
 
@@ -123,7 +132,7 @@ module Hibiki
         return unless @__hibiki_actor
 
         Hibiki::Rails.registry.unregister(self)
-        @__hibiki_actor.post { @__hibiki_root.dispose }
+        @__hibiki_actor.post { instrument("unsubscribe") { @__hibiki_root.dispose } }
         @__hibiki_actor.stop
       end
 

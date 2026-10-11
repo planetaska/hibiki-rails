@@ -284,6 +284,10 @@ export class ChannelController extends Controller {
   static busyCeiling = 10000
   static focusGrace = 500
 
+  // Whether to tell the server how long each trip took (see "Trips"
+  // below). Off unless an app sets it, once, for every island.
+  static reportTrips = false
+
   async connect() {
     this.prepareTransport()
     await this.openSubscription()
@@ -302,6 +306,7 @@ export class ChannelController extends Controller {
     this.seq = 0
     this.renders = 0
     this.busy = new Map()
+    this.trips = []
     this.settledAt = -Infinity
     this.lastControl = null
     this.queued = []
@@ -345,7 +350,8 @@ export class ChannelController extends Controller {
   // a sequence number under the reserved `hbk` key and opens a busy record
   // that the matching ack closes; the seq is stamped LAST so a form field
   // can never overwrite it. (`hbk` is the second reserved payload key —
-  // ActionCable's own Subscription#perform already writes `action`.)
+  // ActionCable's own Subscription#perform already writes `action`. `hbt`
+  // is the third: the trips timed since the last perform.)
   //
   // Public API on the island controller (the header's "App JS reaching
   // the graph"). Returns the seq when the action was accepted, so a
@@ -356,8 +362,10 @@ export class ChannelController extends Controller {
   perform(action, payload = {}) {
     const seq = ++this.seq
     payload.hbk = seq
+    delete payload.hbt
     if (this.subscribed) {
-      this.beginBusy(seq)
+      this.sendTrips(payload)
+      this.beginBusy(seq, action)
       // Subscription#perform returns false when the socket is not open —
       // the gap between the socket dying and the connection monitor
       // noticing, during which `subscribed` still says live. The frame
@@ -383,7 +391,8 @@ export class ChannelController extends Controller {
     // whole gap — the signal the connect window cannot give, where the
     // page is painted and looks live.
     if (!this.connectedOnce) {
-      this.beginBusy(seq)
+      this.sendTrips(payload)
+      this.beginBusy(seq, action)
       this.queued.push([action, payload])
       return seq
     }
@@ -430,9 +439,11 @@ export class ChannelController extends Controller {
   // means the server has not answered, and a hold is motion after the
   // answer.
 
-  beginBusy(seq) {
+  beginBusy(seq, action) {
     const record = {
       control: null,
+      action,
+      at: performance.now(),
       // Which render the island was on when this started, so the ack can
       // ask "has anything painted since?" without consulting a clock.
       renders: this.renders,
@@ -486,6 +497,7 @@ export class ChannelController extends Controller {
     if (this.state === "stalled") this.setState("ready")
     const record = this.busy.get(ack)
     if (!record) return
+    if (!dropped) record.ack = Math.round(performance.now() - record.at)
     if (dropped || this.renders > record.renders) return this.settle(ack)
     record.grace = setTimeout(() => this.settle(ack), this.constructor.busyGrace)
   }
@@ -499,6 +511,7 @@ export class ChannelController extends Controller {
     this.settledAt = performance.now()
     record.control?.removeAttribute("data-hibiki-busy")
     if (this.busy.size === 0) this.hideBusy()
+    if (record.ack !== undefined && this.constructor.reportTrips) this.keepTrip(record)
   }
 
   settleAll() {
@@ -528,13 +541,49 @@ export class ChannelController extends Controller {
     this.setState("stalled")
   }
 
+  // ── Trips ─────────────────────────────────────────────────────────────
+  //
+  // Only the browser sees both halves of a trip land: the ack on the
+  // island's socket and the render after its pubsub hop. With reportTrips
+  // on, each acked trip is kept as its action, the ms to the ack and the ms
+  // to the first render of its own (null when nothing rendered), and the
+  // next perform carries the last five under `hbt`. A dropped or stalled
+  // trip is not reported, and the last trip on a page never is.
+
+  keepTrip({ action, at, ack, paint }) {
+    this.trips.push({ action, at, ack, paint, settled: this.settledAt })
+    if (this.trips.length > 5) this.trips.shift()
+  }
+
+  sendTrips(payload) {
+    if (!this.trips.length) return
+    payload.hbt = this.trips.map(({ action, ack, paint }) => [action, ack, paint ?? null])
+    this.trips = []
+  }
+
+  // A render of this island's own has arrived. Timed now, not when it is
+  // applied: the order and motion holds come after the answer. A trip that
+  // settled a moment ago still takes it, by the rule own() uses.
+  arrived() {
+    const now = performance.now()
+    for (const record of this.busy.values()) record.paint ??= Math.round(now - record.at)
+    for (const trip of this.trips) {
+      if (trip.paint === undefined && now - trip.settled <= this.constructor.focusGrace) {
+        trip.paint = Math.round(now - trip.at)
+      }
+    }
+  }
+
   // Every inbound frame lands here first. Acks are transport bookkeeping,
   // handled by the base and deliberately NOT routed through received() — so
   // a subclass that overrides received without calling super still clears
   // its pending state.
   handleMessage(data) {
     if (data && "ack" in data) return this.acknowledge(data)
-    if (data && data.html) this.renders++
+    if (data && data.html) {
+      this.renders++
+      this.arrived()
+    }
     this.received(data)
   }
 
@@ -855,6 +904,9 @@ export default class HibikiController extends ChannelController {
     this.streamRender = (event) => {
       const render = event.detail.render
       const stream = event.detail.newStream
+      if (stream?.getAttribute?.("data-hibiki-from") === `${this.channelValue}/${this.cidValue}`) {
+        this.arrived()
+      }
       // Taken now, not when the render's turn comes: see arrival().
       const arrival = this.arrival()
       event.detail.render = (streamElement) =>

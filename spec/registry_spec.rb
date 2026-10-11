@@ -32,6 +32,12 @@ RSpec.describe RegistryTestChannel, type: :channel do
     expect { unsubscribe }.to change { Hibiki::Rails.registry.size }.by(-1)
   end
 
+  it "tallies the live subscriptions by class" do
+    subscribe(cid: "c1")
+
+    expect(Hibiki::Rails.registry.tally).to include("RegistryTestChannel" => 1)
+  end
+
   it "does not register a rejected subscription" do
     expect { subscribe }.not_to(change { Hibiki::Rails.registry.size })
     expect(subscription).to be_rejected

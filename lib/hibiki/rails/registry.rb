@@ -28,6 +28,13 @@ module Hibiki
         @lock.synchronize { @channels.size }
       end
 
+      # The live subscriptions by channel class name. Count from this rather
+      # than from subscribe and unsubscribe events: a development reload
+      # drops sockets without running `unsubscribed`.
+      def tally
+        @lock.synchronize { @channels.map { it.class.name }.tally }
+      end
+
       # Close each distinct cable connection, which routes every one of
       # its channels through the normal unsubscribed path — dispose root,
       # stop actor, unregister — so teardown has exactly ONE code path and
