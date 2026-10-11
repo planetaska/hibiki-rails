@@ -4,6 +4,49 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.18.0 — 2026-10-11
+
+### Added
+
+**Instrumentation events.** A channel now publishes
+`ActiveSupport::Notifications` events, so an app can time what a graph does.
+Action Cable's own `perform_action.action_cable` covers only the hand-off to
+the graph's thread; the action, its effects and its renders run after it.
+
+| Event | Duration covers | Payload |
+|---|---|---|
+| `subscribe.hibiki_rails` | building the graph and its first renders | `channel` |
+| `unsubscribe.hibiki_rails` | disposing the graph | `channel` |
+| `action.hibiki_rails` | the action and every effect it flushed | `channel`, `action`, `wait`, `renders` |
+| `render.hibiki_rails` | one `broadcast_replace`, `broadcast_morph` or `broadcast_refresh` | `channel`, `target`, `method` |
+
+- The events are always on and need no configuration. The gem subscribes to
+  none of them. With no subscriber an action costs one to two microseconds
+  more than in 0.17.2.
+- A subscriber runs on the graph's thread, so keep it to cheap work in
+  memory.
+- An action the channel does not have publishes nothing. A raising action
+  publishes, with the exception in the payload.
+- `transmit_value` and `transmit_url` have no event of their own; Action
+  Cable's `transmit.action_cable` covers them.
+
+**`Hibiki::Rails.registry.tally`** returns the live subscriptions by channel
+class name.
+
+**Trips: how long a visitor waited.** With `HibikiController.reportTrips =
+true`, each island times its round trips and sends them with its next action.
+The channel publishes one `trip.hibiki_rails` event for each, with `channel`,
+`action`, `ack` (milliseconds until the server answered) and `paint`
+(milliseconds until the first render arrived, or `nil`).
+
+- Off by default. Set it once, on the class, for every island.
+- A dropped or stalled trip is not reported, and neither is the last trip on
+  a page, since no action follows it.
+- The figures come from the browser. The channel takes at most five per
+  action, only for its own actions, and clamps each to 0 to 60 000 ms.
+- `hbt` joins `hbk` as a reserved payload key. The channel removes it before
+  the action method sees its data.
+
 ## 0.17.2 — 2026-10-11
 
 ### Fixed
