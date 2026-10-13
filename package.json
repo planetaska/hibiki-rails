@@ -7,11 +7,13 @@
   "module": "app/assets/javascripts/hibiki.js",
   "exports": {
     ".": "./app/assets/javascripts/hibiki.js",
-    "./motion": "./app/assets/javascripts/hibiki-motion.js"
+    "./motion": "./app/assets/javascripts/hibiki-motion.js",
+    "./commands": "./app/assets/javascripts/hibiki-commands.js"
   },
   "files": [
     "app/assets/javascripts/hibiki.js",
-    "app/assets/javascripts/hibiki-motion.js"
+    "app/assets/javascripts/hibiki-motion.js",
+    "app/assets/javascripts/hibiki-commands.js"
   ],
   "repository": {
     "type": "git",

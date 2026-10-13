@@ -64,6 +64,11 @@
 //                 that have no attribute, assigned on connect and after each
 //                 render; only the names in PROPS below, an optional "key"
 //                 beside them existing to change the text
+//   command lists data-hibiki-on="click->*" with data-hibiki-do='[["hide",
+//                 {"to":"#panel"}],["push",{"action":"cancel"}]]': the browser
+//                 runs the list on the event; see `useCommands` below
+//   modal sites   data-hibiki-modal="true|false"       a <dialog> shown with
+//                 showModal() or closed, on connect and after each render
 //   focus sites   data-hibiki-focus="true|select"      takes focus, and has its
 //                 text selected, when a render this tab caused inserts it
 //   turbo streams data-hibiki-seq="3"                  the render's number, and
@@ -206,6 +211,36 @@ const pushers = new Map()
 window.addEventListener("popstate", (event) => {
   const key = event.state?.hibiki
   if (key && !pushers.get(key)?.pop?.(event)) window.location.reload()
+})
+
+// The command module's seam. A control whose token names `*` runs a list
+// of commands (data-hibiki-do) in place of one action; what runs them is
+// the opt-in module `hibiki-rails/commands`, which hands its interpreter
+// over here on import. Without it the list does nothing, and says so once.
+let commands
+let warned = false
+export function useCommands(interpreter) {
+  commands = interpreter
+}
+
+// A <dialog> the server declares open or closed (Helpers#modal): the state
+// is a method call away from any attribute, so it is made to match here,
+// on connect and after each render.
+const applyModal = (dialog) => {
+  if (typeof dialog.showModal !== "function") return
+  const open = dialog.dataset.hibikiModal === "true"
+  if (open && !dialog.open) dialog.showModal()
+  else if (!open && dialog.open) dialog.close()
+}
+
+// The browser writes `open` on a dialog it shows, and no server HTML has
+// it, so a morph would take it off and leave the dialog shown but closed.
+// Inside an island that attribute is the browser's.
+document.addEventListener("turbo:before-morph-attribute", (event) => {
+  const { target } = event
+  if (target.localName === "dialog" && event.detail?.attributeName === "open" && islandFor(target)) {
+    event.preventDefault()
+  }
 })
 
 // The generic island CONTAINING element, or undefined. The walk performOn
@@ -911,6 +946,9 @@ export default class HibikiController extends ChannelController {
     for (const site of this.element.querySelectorAll("[data-hibiki-props]")) {
       applyProps(site)
     }
+    for (const dialog of this.element.querySelectorAll("[data-hibiki-modal]")) {
+      applyModal(dialog)
+    }
 
     // Root-scoped delegation (bound to the island, not document): controls
     // inside server-replaced fragments keep working with no rebinding.
@@ -920,6 +958,13 @@ export default class HibikiController extends ChannelController {
       this.element.addEventListener(type, handler)
       return [type, handler]
     })
+    // A dialog's `cancel` (Escape, before it closes) and `close` do not
+    // bubble, so they are heard on the way down.
+    for (const type of ["cancel", "close"]) {
+      const handler = (event) => this.forward(event)
+      this.element.addEventListener(type, handler, true)
+      this.listeners.push([type, handler, true])
+    }
     // Keys take their own path: a key names its control by a token, not by
     // being the nearest one.
     const keydown = (event) => this.key(event)
@@ -941,7 +986,7 @@ export default class HibikiController extends ChannelController {
     // page's own marks already seen.
     this.marks = new Map()
     for (const site of this.element.querySelectorAll("[data-hibiki-focus]")) {
-      if (site.closest(ISLAND) === this.element) this.marks.set(site, undefined)
+      if (this.marked(site)) this.marks.set(site, undefined)
     }
 
     // `visible` is not a DOM event, so it needs its own observer beside the
@@ -1008,8 +1053,8 @@ export default class HibikiController extends ChannelController {
 
   disconnect() {
     islands.delete(this.element)
-    for (const [type, handler] of this.listeners) {
-      this.element.removeEventListener(type, handler)
+    for (const [type, handler, capture] of this.listeners) {
+      this.element.removeEventListener(type, handler, capture)
     }
     document.removeEventListener("turbo:before-stream-render", this.streamRender)
     document.removeEventListener("turbo:before-render", this.pageBefore)
@@ -1158,8 +1203,11 @@ export default class HibikiController extends ChannelController {
     if (self && index === 0) {
       const twin = found(ids[0])
       twin.focus()
-      if (start != null && document.activeElement === twin) twin.setSelectionRange?.(start, end)
-      return
+      // It may not have taken it: a field of a dialog now closed.
+      if (document.activeElement === twin) {
+        if (start != null) twin.setSelectionRange?.(start, end)
+        return
+      }
     }
     const candidates = [opener && this.twin(opener)]
     if (index === (self ? 1 : 0)) candidates.push(...found(ids[index]).querySelectorAll(FOCUSABLE))
@@ -1171,12 +1219,13 @@ export default class HibikiController extends ChannelController {
 
   // The control a gesture came from, or the one a render has put in its
   // place: the same id, else the same action and payload.
-  twin({ element, id, on, payload }) {
+  twin({ element, id, on, payload, ops }) {
     if (element.isConnected) return element
     const twin = id
       ? document.getElementById(id)
       : [...this.element.querySelectorAll("[data-hibiki-on]")].find(
-          (control) => control.dataset.hibikiOn === on && control.dataset.hibikiWith === payload
+          ({ dataset }) =>
+            dataset.hibikiOn === on && dataset.hibikiWith === payload && dataset.hibikiDo === ops
         )
     return twin?.closest(ISLAND) === this.element ? twin : null
   }
@@ -1193,9 +1242,17 @@ export default class HibikiController extends ChannelController {
   // a listener twice is a no-op too. Props need no ownership check: assigning one twice,
   // from a nested island and its parent, lands the same value. Nor does
   // the window listener, which finds nothing of its own to fire.
+  // A focus site this island counts as on the page: its own, and not
+  // inside a closed dialog. So a dialog's field is new on the render that
+  // opens the dialog, though its markup was there all along, and gone on
+  // the one that closes it, which is when focus goes back to the opener.
+  marked(site) {
+    return site.closest(ISLAND) === this.element && !site.closest("dialog:not([open])")
+  }
+
   scan({ own = false, control, trail } = {}) {
     const found = this.element.querySelectorAll(
-      `[data-hibiki-on*="visible->"], [data-hibiki-props], [data-hibiki-focus], ${HOTKEYED}`
+      `[data-hibiki-on*="visible->"], [data-hibiki-props], [data-hibiki-focus], [data-hibiki-modal], ${HOTKEYED}`
     )
     let hotkeys = this.element.matches(HOTKEYED)
     // A site is the one seen before when it is that element or, after a
@@ -1206,7 +1263,9 @@ export default class HibikiController extends ChannelController {
     const ids = new Set()
     let site
     for (const element of found) {
-      if (element.hasAttribute("data-hibiki-focus") && element.closest(ISLAND) === this.element) {
+      // First: a focus site inside the dialog is on the page once it opens.
+      if (element.hasAttribute("data-hibiki-modal")) applyModal(element)
+      if (element.hasAttribute("data-hibiki-focus") && this.marked(element)) {
         marks.set(element, this.marks.get(element) ?? seen.get(element.id))
         if (element.id) ids.add(element.id)
         if (!this.marks.has(element) && !seen.has(element.id)) site ??= element
@@ -1232,7 +1291,13 @@ export default class HibikiController extends ChannelController {
     if (own && site && !this.unsent.has(trail?.element)) {
       if (control) {
         const { id, dataset } = control
-        marks.set(site, { element: control, id, on: dataset.hibikiOn, payload: dataset.hibikiWith })
+        marks.set(site, {
+          element: control,
+          id,
+          on: dataset.hibikiOn,
+          payload: dataset.hibikiWith,
+          ops: dataset.hibikiDo
+        })
       }
       const take = () => {
         site.focus()
@@ -1357,7 +1422,9 @@ export default class HibikiController extends ChannelController {
     // Before the confirm, not after: declining must not let the form (or
     // a fallback control's navigation) proceed. Optional call because the
     // `visible` pseudo-event arrives as a plain object.
-    if (event.type === "submit" || fallback) event.preventDefault?.()
+    // A command list is the control's whole behaviour, so its default goes.
+    const listed = action === "*"
+    if (event.type === "submit" || fallback || listed) event.preventDefault?.()
 
     const message = control.dataset.hibikiConfirm
     if (message && !window.confirm(message)) return
@@ -1366,7 +1433,7 @@ export default class HibikiController extends ChannelController {
     // input sends what the user finished typing rather than the first
     // keystroke that started the timer.
     const wait = Number(control.dataset.hibikiDebounce)
-    const fire = () => this.send(control, event, action)
+    const fire = () => (listed ? this.command(control, event) : this.send(control, event, action))
     if (wait > 0) {
       const field = event.target
       if (event.type !== "keydown" && typed(field)) {
@@ -1411,10 +1478,32 @@ export default class HibikiController extends ChannelController {
     }
   }
 
-  send(control, event, action) {
-    const payload = control.dataset.hibikiWith
-      ? JSON.parse(control.dataset.hibikiWith)
-      : {}
+  // The control's command list, handed to the command module with the one
+  // thing only this file can do: send an action as the control's own.
+  command(control, event) {
+    if (!commands) {
+      if (!warned) console.warn('hibiki: a control has commands, but "hibiki-rails/commands" is not imported')
+      warned = true
+      return
+    }
+    let ops
+    try {
+      ops = JSON.parse(control.dataset.hibikiDo)
+    } catch {
+      return
+    }
+    if (!Array.isArray(ops)) return
+    commands(ops, control, (action, payload) => this.send(control, event, action, payload))
+  }
+
+  // `given` is a pushed command's payload, where a plain action reads the
+  // control's own.
+  send(control, event, action, given) {
+    const payload = given
+      ? { ...given }
+      : control.dataset.hibikiWith
+        ? JSON.parse(control.dataset.hibikiWith)
+        : {}
     if (event.type === "submit") {
       Object.assign(payload, formPayload(control))
     } else if (control.name && (event.type === "change" || event.type === "input")) {

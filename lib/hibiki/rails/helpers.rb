@@ -7,6 +7,7 @@ require "securerandom"
 require_relative "dom_props"
 require_relative "keys"
 require_relative "modifiers"
+require_relative "commands"
 
 module Hibiki
   module Rails
@@ -223,13 +224,14 @@ module Hibiki
       #                 works in both worlds).
       def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil,
              fallback: nil)
-        action = Helpers.event_name(action)
+        extra = Modifiers.chain(action, with:, fallback:)
+        action = extra.empty? ? Helpers.event_name(action) : Modifiers::CHAIN
         events = Array(event).map { Helpers.event(it) }
         debounce = DEFAULT_INPUT_DEBOUNCE if debounce.nil? && events.include?("input")
         Modifiers.popstate!(debounce:, fallback:) if events.include?("popstate")
         tokens = events.map { "#{it}->#{action}" }.join(" ")
         { data: { hibiki_on: tokens }
-            .merge(Modifiers.attributes(with:, debounce:, confirm:, reset:, fallback:)) }
+            .merge(Modifiers.attributes(with:, debounce:, confirm:, reset:, fallback:), extra) }
       end
 
       # Placeholder for a single reactive value: `<%= reactive :doubled, 0 %>`
@@ -278,6 +280,30 @@ module Hibiki
         wanted["key"] = key unless key.nil?
         { data: { hibiki_props: JSON.generate(wanted) } }
       end
+
+      # Commands the browser runs on the event itself, with no round trip:
+      #
+      #   tag.button "Menu", **on(js.toggle("#menu"))
+      #   tag.button "Cancel", **on(js.hide("#panel").push(:cancel))
+      #
+      # Commands lists them. `on` takes the list where it takes an action
+      # name; `confirm:` and `debounce:` then apply to the whole list, and
+      # the event's default is prevented. The page must import
+      # "hibiki-rails/commands". What a command changes lasts until the
+      # server next renders that element, so state the server should know
+      # belongs in a signal.
+      def js = Commands.new
+
+      # Open or close a <dialog> as the server's state says:
+      #
+      #   tag.dialog id: "editor", **modal(open: form.editing?)
+      #
+      # After each render the client calls showModal() or close() to match.
+      # Render it by morph where you can: a replaced dialog is a new element
+      # and opens again. For a dialog the server need not know about, use
+      # `js.show_modal` and `js.close_dialog` instead, not both on one.
+      # `on(:cancel, event: :cancel)` on the dialog hears Escape.
+      def modal(open:) = { data: { hibiki_modal: open ? "true" : "false" } }
 
       # Put the cursor in this element when a render opens it:
       #

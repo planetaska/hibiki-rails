@@ -18,7 +18,7 @@ module Hibiki
 
         desc "Wires the packaged hibiki client: registers the \"hibiki\" Stimulus " \
              "controller, includes Hibiki::Rails::Helpers in ApplicationHelper, " \
-             "and creates the ApplicationCable boilerplate."
+             "imports the commands module, and creates the ApplicationCable boilerplate."
 
         # Exactly the lines `stimulus:manifest:update` emits for the shim,
         # so a later manifest run converges instead of duplicating.
@@ -29,6 +29,12 @@ module Hibiki
         JS
 
         INCLUDE_LINE = "  include Hibiki::Rails::Helpers\n"
+
+        # The opt-in module that runs `on(js....)` command lists. One line in
+        # the file both worlds have: the engine's pin answers it in importmap
+        # apps, the npm package under a bundler.
+        APPLICATION_JS = "app/javascript/application.js"
+        COMMANDS_IMPORT = %(import "hibiki-rails/commands"\n)
 
         # Stock Rails apps don't have these until the first `rails g
         # channel` — the hibiki:rails:* generators write their channels
@@ -61,6 +67,13 @@ module Hibiki
 
           inject_into_file APPLICATION_HELPER, INCLUDE_LINE,
                            after: /module ApplicationHelper\s*\n/
+        end
+
+        def import_commands
+          return say_status :identical, APPLICATION_JS, :blue if wired?(APPLICATION_JS, COMMANDS_IMPORT.strip)
+          return manual_wiring(APPLICATION_JS, COMMANDS_IMPORT) unless exists?(APPLICATION_JS)
+
+          append_to_file APPLICATION_JS, COMMANDS_IMPORT
         end
 
         # Presence is enough — an app's own ApplicationCable (customized

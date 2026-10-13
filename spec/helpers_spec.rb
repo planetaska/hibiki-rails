@@ -65,6 +65,39 @@ RSpec.describe Hibiki::Rails::Helpers do
       end
     end
 
+    describe "a command list" do
+      it "stands where the action name does" do
+        expect(view.on(view.js.toggle("#menu"))).to eq(
+          { data: { hibiki_on: "click->*", hibiki_do: '[["toggle",{"to":"#menu"}]]' } }
+        )
+      end
+
+      it "takes every event the action form does" do
+        expect(view.on(view.js.hide, event: [:click, "keydown.esc"])[:data][:hibiki_on])
+          .to eq("click->* keydown.esc->*")
+      end
+
+      it "keeps confirm and debounce beside it" do
+        data = view.on(view.js.hide.push(:cancel), confirm: "Sure?", debounce: 100)[:data]
+
+        expect(data).to include(hibiki_confirm: "Sure?", hibiki_debounce: 100)
+      end
+
+      it "sends a payload through push, not with:" do
+        expect { view.on(view.js.push(:save), with: { id: 1 }) }
+          .to raise_error(ArgumentError, /with: belongs on the command/)
+      end
+
+      it "needs a command" do
+        expect { view.on(view.js) }.to raise_error(ArgumentError, /at least one command/)
+      end
+
+      it "takes fallback only with a push" do
+        expect { view.on(view.js.hide, fallback: true) }.to raise_error(ArgumentError, /fallback: needs a push/)
+        expect(view.on(view.js.hide.push(:go), fallback: true)[:data]).to include(hibiki_fallback: "true")
+      end
+    end
+
     describe "popstate" do
       it "is an event like any other" do
         expect(view.on(:visit, event: :popstate)).to eq({ data: { hibiki_on: "popstate->visit" } })
@@ -291,6 +324,19 @@ RSpec.describe Hibiki::Rails::Helpers do
     it "merges with #on on one element" do
       expect(view.on(:set_field, event: :input).deep_merge(view.focus)[:data])
         .to include(hibiki_on: "input->set_field", hibiki_focus: "true")
+    end
+  end
+
+  describe "#modal" do
+    it "says open or closed, always" do
+      expect(view.modal(open: true)).to eq({ data: { hibiki_modal: "true" } })
+      expect(view.modal(open: nil)).to eq({ data: { hibiki_modal: "false" } })
+    end
+
+    it "merges with on" do
+      data = view.on(:cancel, event: :cancel).deep_merge(view.modal(open: true))[:data]
+
+      expect(data).to eq({ hibiki_on: "cancel->cancel", hibiki_modal: "true" })
     end
   end
 end

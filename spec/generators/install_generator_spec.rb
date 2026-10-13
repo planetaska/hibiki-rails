@@ -100,6 +100,29 @@ RSpec.describe Hibiki::Rails::Generators::InstallGenerator do
     expect(File.read(importmap)).to eq(before)
   end
 
+  describe "the commands module" do
+    let(:application_js) { File.join(@destination, "app/javascript/application.js") }
+
+    it "is imported from application.js, once" do
+      seed_stock_app
+      File.write(application_js, %(import "@hotwired/turbo-rails"\nimport "controllers"\n))
+      run_generator(described_class, destination: @destination)
+      run_generator(described_class, destination: @destination)
+
+      expect(File.read(application_js))
+        .to eq(%(import "@hotwired/turbo-rails"\nimport "controllers"\nimport "hibiki-rails/commands"\n))
+    end
+
+    it "is named for the app to import when there is no application.js" do
+      seed_stock_app
+      output = run_generator(described_class, destination: @destination)
+
+      expect(output).to include("app/javascript/application.js not found")
+      expect(output).to include('import "hibiki-rails/commands"')
+      expect(File.exist?(application_js)).to be(false)
+    end
+  end
+
   it "is idempotent: a second run changes nothing" do
     seed_stock_app
     run_generator(described_class, destination: @destination)

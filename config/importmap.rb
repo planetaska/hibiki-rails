@@ -8,3 +8,6 @@
 pin "hibiki-rails", to: "hibiki.js"
 # The opt-in motion module; it imports "hibiki-rails" by the pin above.
 pin "hibiki-rails/motion", to: "hibiki-motion.js"
+# The opt-in commands module (`on(js.hide(...))`); the install generator
+# imports it.
+pin "hibiki-rails/commands", to: "hibiki-commands.js"
