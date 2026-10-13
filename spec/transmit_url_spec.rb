@@ -33,6 +33,18 @@ class UrlTestChannel < ActionCable::Channel::Base
   def burst = 10.times { @page.value += 1 }
 end
 
+# The same mirror, each move a history entry.
+class PushUrlTestChannel < ActionCable::Channel::Base
+  include Hibiki::Rails::Channel
+
+  def build_graph
+    @step = Hibiki::State.new(1)
+    transmit_url(history: :push) { "/wizard?step=#{@step.value}" }
+  end
+
+  def turn(data) = @step.value = data["step"].to_i
+end
+
 RSpec.describe UrlTestChannel, type: :channel do
   # FIFO barrier: everything posted before this has run once it returns.
   def drain
@@ -51,6 +63,10 @@ RSpec.describe UrlTestChannel, type: :channel do
 
   it "transmits the initial URL during build_graph" do
     expect(url_transmissions).to eq(["/songs"])
+  end
+
+  it "asks for no history entry by default" do
+    expect(transmissions).to all(eq({ "url" => "/songs" }))
   end
 
   it "re-transmits when a tracked write moves the URL" do
@@ -78,5 +94,28 @@ RSpec.describe UrlTestChannel, type: :channel do
     3.times { perform :ping }
     drain
     expect(url_transmissions.size).to eq(1)
+  end
+end
+
+RSpec.describe PushUrlTestChannel, type: :channel do
+  def drain
+    actor = subscription.instance_variable_get(:@__hibiki_actor)
+    barrier = Queue.new
+    actor.post { barrier << true }
+    raise "graph actor did not drain within 2s" unless barrier.pop(timeout: 2)
+  end
+
+  it "marks every frame as a history entry" do
+    subscribe(cid: "c1")
+    perform :turn, { "step" => 2 }
+    drain
+    expect(transmissions.select { it.key?("url") }).to eq(
+      [{ "url" => "/wizard?step=1", "push" => true }, { "url" => "/wizard?step=2", "push" => true }]
+    )
+  end
+
+  it "refuses a history mode it does not know" do
+    expect { Hibiki::Rails::Channel.url_frame(:pushy) }
+      .to raise_error(ArgumentError, /history :pushy must be one of :replace, :push/)
   end
 end

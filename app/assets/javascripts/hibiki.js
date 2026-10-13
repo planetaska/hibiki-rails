@@ -93,7 +93,9 @@
 //
 // The left side of `->` is a hibiki event name: click, change, input,
 // and submit are delegated DOM listeners; `visible` is a pseudo-event
-// backed by an IntersectionObserver (the element entering the viewport).
+// backed by an IntersectionObserver (the element entering the viewport);
+// `popstate` is the window's, heard for the history entries a pushed
+// `{ url }` frame made.
 // Everything that is not "which event" is a sibling attribute, so the
 // token grammar never has to grow.
 //
@@ -184,6 +186,27 @@ let consumer
 // ChannelController subclasses have `this.perform`. WeakMap so a removed
 // island pins nothing even if disconnect never ran.
 const islands = new WeakMap()
+
+// History entries a pushed `{ url }` frame made, by the key in their state,
+// and the one window listener that answers Back and Forward over them.
+//
+// Turbo hears popstate first, whatever the listener's phase: the browser
+// runs a window's listeners in the order they were added. It answers an
+// entry carrying its own state with a restore visit, and an entry without
+// it by adopting it in place. So these entries carry only the key. The
+// island that made one answers it (pop). An entry whose island has left
+// the page, or declares no `popstate`, is loaded afresh: Turbo has by then
+// filed a snapshot of the page on show under the entry's address, and a
+// new document is the one thing that leaves none of that behind.
+//
+// Always listening, not from the first push: after a reload the browser
+// still counts the entries the old document pushed as this document's, and
+// answers Back over them with a popstate no island here made.
+const pushers = new Map()
+window.addEventListener("popstate", (event) => {
+  const key = event.state?.hibiki
+  if (key && !pushers.get(key)?.pop?.(event)) window.location.reload()
+})
 
 // The generic island CONTAINING element, or undefined. The walk performOn
 // uses, exported for the motion module's `own` policy — which reads the
@@ -310,6 +333,9 @@ export class ChannelController extends Controller {
     this.settledAt = -Infinity
     this.lastControl = null
     this.queued = []
+    // Marks the history entries this island made; see replaceUrl().
+    this.historyKey = `${Date.now()}-${Math.random()}`
+    this.popping = undefined
     this.setState("connecting")
   }
 
@@ -339,6 +365,8 @@ export class ChannelController extends Controller {
 
   disconnect() {
     this.aborted = true
+    pushers.delete(this.historyKey)
+    this.popping = undefined // the bar is the next page's now
     this.settleAll()
     this.subscription?.unsubscribe()
     this.subscription = undefined
@@ -503,6 +531,7 @@ export class ChannelController extends Controller {
   }
 
   settle(seq) {
+    if (this.popping === seq) this.popped()
     const record = this.busy.get(seq)
     if (!record) return
     clearTimeout(record.ceiling)
@@ -595,7 +624,8 @@ export class ChannelController extends Controller {
   // textContent assignment keeps values text-only and preserves each
   // site's own tag/classes, so per-placeholder styling survives updates.
   //
-  // { url } — mirror graph state into the address bar (transmit_url).
+  // { url } — mirror graph state into the address bar (transmit_url);
+  // with `push`, as a history entry.
   //
   // { html } — a fragment: swap it in by its root id. The swap is holdable
   // the way Turbo's is: `hibiki:before-render` bubbles from the island
@@ -607,7 +637,7 @@ export class ChannelController extends Controller {
   //
   // Anything else is not ours to interpret. Subclasses may override, but
   // should call super (or handle `value`) to keep reactive values live.
-  received({ html, value, url }) {
+  received({ html, value, url, push }) {
     if (value) {
       const selector = `[data-hibiki-value="${CSS.escape(value.name)}"]`
       for (const site of document.querySelectorAll(selector)) {
@@ -615,7 +645,7 @@ export class ChannelController extends Controller {
       }
       return
     }
-    if (url !== undefined) return this.replaceUrl(url)
+    if (url !== undefined) return this.replaceUrl(url, push)
     if (!html) return
     const template = document.createElement("template")
     template.innerHTML = html
@@ -633,15 +663,48 @@ export class ChannelController extends Controller {
     return event.detail.render()
   }
 
-  // replaceState, never pushState: the URL is a mirror of graph state, not
-  // a history entry — Back needs no popstate handling and leaves the page
-  // normally. Same-origin only, so a channel can move the bar solely
-  // within its own app (replaceState would throw on a cross-origin URL;
-  // refusing keeps it silent and intentional).
-  replaceUrl(url) {
+  // replaceState unless the channel asked for entries: the URL is a mirror
+  // of graph state, and Back leaves the page normally. Same-origin only, so
+  // a channel can move the bar solely within its own app (replaceState
+  // would throw on a cross-origin URL; refusing keeps it silent and
+  // intentional).
+  //
+  // A pushed URL becomes an entry only when it answers this tab's own
+  // action, so neither the first frame nor another session's write adds
+  // one, and never while a Back is being answered: an action that refuses
+  // the popped URL corrects the bar in place. The entry it leaves and the
+  // one it makes carry this island's key in place of Turbo's state; see
+  // `pushers`. The page is also kept out of Turbo's snapshot cache from
+  // then on, since Turbo no longer knows which address a snapshot is of.
+  replaceUrl(url, push = false) {
     const resolved = new URL(url, window.location.href)
     if (resolved.origin !== window.location.origin) return
-    history.replaceState(history.state, "", resolved)
+    this.url = resolved.href
+    if (!push || this.popping !== undefined || !this.own()) {
+      return history.replaceState(history.state, "", resolved)
+    }
+    if (resolved.href === window.location.href) return
+    pushers.set(this.historyKey, this)
+    window.Turbo?.cache?.exemptPageFromCache?.()
+    history.replaceState(this.entry(), "")
+    history.pushState(this.entry(), "", resolved)
+  }
+
+  // The state of an entry this island answers for: what is there now,
+  // less Turbo's part.
+  entry() {
+    const { turbo, ...rest } = history.state ?? {}
+    return { ...rest, hibiki: this.historyKey }
+  }
+
+  // The Back being answered is over. An action that changed nothing sent no
+  // URL, so the bar still shows the popped one: put back the last the
+  // channel gave, which is the state the page is in.
+  popped() {
+    this.popping = undefined
+    if (this.url && this.url !== window.location.href) {
+      history.replaceState(history.state, "", this.url)
+    }
   }
 
   // `static channel = "..."` wins; otherwise infer Rails-style from the
@@ -733,6 +796,7 @@ const KEYS = {
 }
 const KEYED = '[data-hibiki-on*="keydown."]'
 const HOTKEYED = '[data-hibiki-on*="@window"]'
+const POPPED = '[data-hibiki-on*="popstate->"]'
 const ISLAND = '[data-controller~="hibiki"]'
 
 // A key press that is a gesture: not part of an IME composition (Safari
@@ -1216,6 +1280,31 @@ export default class HibikiController extends ChannelController {
       hotkeyed.add(event)
       return this.press(control, event, action)
     }
+  }
+
+  // Back or Forward landed on an entry this island made, or the one it
+  // first pushed from: the control declaring `popstate`, the root as a
+  // rule, performs its action with the entry's query. Turbo has adopted the
+  // entry by now and written its own state there, which would make the
+  // next visit to it a restore; the entry's own state goes back. False
+  // when nothing here answers, and the page is loaded afresh instead.
+  pop(event) {
+    const control = [this.element, ...this.element.querySelectorAll(POPPED)].find(
+      (element) => element.closest(ISLAND) === this.element && element.matches(POPPED)
+    )
+    const token = control?.dataset.hibikiOn.split(/\s+/).find((t) => t.startsWith("popstate->"))
+    if (!token) return false
+    history.replaceState(event.state, "")
+    const payload = control.dataset.hibikiWith ? JSON.parse(control.dataset.hibikiWith) : {}
+    const query = new URLSearchParams(window.location.search)
+    for (const key of new Set(query.keys())) {
+      const all = query.getAll(key)
+      payload[payloadKey(key)] = key.endsWith("[]") ? all : all.at(-1)
+    }
+    this.flush()
+    this.popping = this.perform(token.slice(10), payload)
+    if (this.popping === undefined) this.popped() // offline: nothing will answer
+    return true
   }
 
   // A matched key is the control's gesture, so its default goes. A fallback

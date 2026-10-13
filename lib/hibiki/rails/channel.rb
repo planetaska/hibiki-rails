@@ -30,9 +30,21 @@ module Hibiki
     # other public method would be picked up by Channel#action_methods and
     # become client-invocable.
     module Channel
+      # #transmit_url's history option, allowlisted so a typo names itself.
+      HISTORIES = %i[replace push].freeze
+      private_constant :HISTORIES
+
       def self.included(base)
         base.extend(ClassMethods)
         base.include(Broadcasts)
+      end
+
+      # What a history mode adds to the `{ url: }` frame.
+      def self.url_frame(history)
+        return history == :push ? { push: true } : {} if HISTORIES.include?(history)
+
+        raise ArgumentError,
+              "transmit_url history #{history.inspect} must be one of #{HISTORIES.map(&:inspect).join(', ')}"
       end
 
       module ClassMethods
@@ -177,24 +189,30 @@ module Hibiki
       end
 
       # Mirror graph state into the page's address bar: wraps the block in
-      # an effect that transmits `{ url: }`; the packaged client
-      # history.replaceState's the bar to it. replaceState, never pushState —
-      # the URL is a MIRROR of state, not a history entry, so Back needs no
-      # popstate choreography and leaves the page normally. Compute a
-      # same-origin path ("/songs?page=2" — the client refuses anything
-      # else), and omit params that hold their defaults, or the bar grows
-      # noise on the first transmit. Pair it with first-paint code that READS
-      # those params (controller + subscribe-params seeding), so the mirrored
-      # URL reloads to the state it names. Equality-gated like
-      # #transmit_value: re-runs track every signal read, re-sends only when
-      # the URL actually moved.
-      def transmit_url(&compute)
+      # an effect that transmits `{ url: }`, and the packaged client moves
+      # the bar to it. Compute a same-origin path ("/songs?page=2" — the
+      # client refuses anything else), and omit params that hold their
+      # defaults, or the bar grows noise on the first transmit. Pair it with
+      # first-paint code that READS those params (controller +
+      # subscribe-params seeding), so the mirrored URL reloads to the state
+      # it names. Equality-gated like #transmit_value: re-runs track every
+      # signal read, re-sends only when the URL actually moved.
+      #
+      # history: :replace (the default) is replaceState: the URL is a MIRROR
+      # of state, not a history entry, so Back leaves the page normally.
+      # history: :push makes each move an entry, for state that reads as a
+      # place (a wizard's step). Back then needs an answer: put
+      # `on(:visit, event: :popstate)` on the island root, and the client
+      # performs that action with the popped URL's query params. They come
+      # from the address bar, so treat them like a subscribe param.
+      def transmit_url(history: :replace, &compute)
+        frame = Channel.url_frame(history)
         last = Object.new
         Hibiki::Effect.new do
           url = compute.call.to_s
           unless url == last
             last = url
-            transmit({ url: })
+            transmit({ url: }.merge(frame))
           end
         end
       end

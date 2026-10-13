@@ -6,6 +6,7 @@ require "securerandom"
 
 require_relative "dom_props"
 require_relative "keys"
+require_relative "modifiers"
 
 module Hibiki
   module Rails
@@ -187,6 +188,10 @@ module Hibiki
       # `{ name => value }` — a checkbox its checked state, a multi-select
       # its selected values — and a submitted form contributes its FormData.
       #
+      # `event: :popstate` goes on the island root and answers Back and
+      # Forward over the entries `transmit_url(history: :push)` made; the
+      # payload is the popped URL's query.
+      #
       # Everything else is a per-control modifier, kept out of the token
       # grammar so the `->` left side stays purely "which event":
       #
@@ -221,9 +226,10 @@ module Hibiki
         action = Helpers.event_name(action)
         events = Array(event).map { Helpers.event(it) }
         debounce = DEFAULT_INPUT_DEBOUNCE if debounce.nil? && events.include?("input")
+        Modifiers.popstate!(debounce:, fallback:) if events.include?("popstate")
         tokens = events.map { "#{it}->#{action}" }.join(" ")
         { data: { hibiki_on: tokens }
-            .merge(on_modifiers(with:, debounce:, confirm:, reset:, fallback:)) }
+            .merge(Modifiers.attributes(with:, debounce:, confirm:, reset:, fallback:)) }
       end
 
       # Placeholder for a single reactive value: `<%= reactive :doubled, 0 %>`
@@ -304,20 +310,6 @@ module Hibiki
       # The broadcast transport's stream source, ahead of the block's content.
       def island_stream(channel, cid, content)
         safe_join([turbo_stream_from(channel.channel_name, cid), content])
-      end
-
-      # #on's per-control modifiers, kept out of the token grammar. Each is
-      # omitted when it matches the client's own default, so the common call
-      # still stamps exactly one attribute.
-      def on_modifiers(with:, debounce:, confirm:, reset:, fallback:)
-        {
-          hibiki_with: (JSON.generate(with) unless with.nil?),
-          # nonzero? returns the integer itself, so 0 compacts away.
-          hibiki_debounce: (Integer(debounce).nonzero? if debounce),
-          hibiki_confirm: confirm&.to_s,
-          hibiki_reset: ("false" if reset == false),
-          hibiki_fallback: ("true" if fallback)
-        }.compact
       end
     end
   end

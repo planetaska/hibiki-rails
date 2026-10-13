@@ -65,6 +65,22 @@ RSpec.describe Hibiki::Rails::Helpers do
       end
     end
 
+    describe "popstate" do
+      it "is an event like any other" do
+        expect(view.on(:visit, event: :popstate)).to eq({ data: { hibiki_on: "popstate->visit" } })
+      end
+
+      it "takes no debounce" do
+        expect { view.on(:visit, event: :popstate, debounce: 100) }
+          .to raise_error(ArgumentError, /popstate event takes no debounce/)
+      end
+
+      it "takes no fallback" do
+        expect { view.on(:visit, event: :popstate, fallback: true) }
+          .to raise_error(ArgumentError, /popstate event takes no fallback/)
+      end
+    end
+
     describe "modifiers" do
       it "debounces :input by default so a keystroke is not a round trip" do
         expect(view.on(:search, event: :input)[:data][:hibiki_debounce]).to eq(250)
