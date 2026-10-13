@@ -4,6 +4,78 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.20.0 — 2026-10-12
+
+### Added
+
+**Commands.** `js` builds a list of things the browser does on an event,
+with no round trip. `on` takes the list where it takes an action name.
+
+```erb
+<%= tag.button "Menu", **on(js.toggle("#menu")) %>
+<%= tag.button "Cancel", **on(js.hide("#panel").push(:cancel)) %>
+```
+
+| Command | What it does |
+|---|---|
+| `show`, `hide`, `toggle` | writes the `hidden` attribute |
+| `add_class`, `remove_class`, `toggle_class` | one or more class names |
+| `set_attribute`, `remove_attribute`, `toggle_attribute` | an attribute by name |
+| `focus`, `focus_first` | focuses the target, or the first control inside it |
+| `dispatch` | fires a `CustomEvent`, with `detail:` and `bubbles:` |
+| `push` | performs a channel action, with `with:` as its payload |
+| `show_modal`, `close_dialog` | a `<dialog>`'s own methods |
+
+- A target is a CSS selector for the whole document, `{ inner: selector }`
+  for inside the control, or `{ closest: selector }` for its nearest
+  ancestor. With no target a command acts on the control. `hide`, `show`,
+  `toggle`, `focus`, `focus_first`, `show_modal` and `close_dialog` take the
+  target as their argument; the others take it as `to:`.
+- The commands run in order and do not wait for the server.
+- `confirm:` and `debounce:` on `on` apply to the whole list. `with:` goes on
+  `push`. `fallback: true` needs a `push` in the list.
+- A list prevents the event's default.
+- A command's change lasts until the server next renders that element. Keep
+  state the server should know in a signal.
+- Commands run only on a control inside an island.
+- `set_attribute` and its siblings refuse `on*`, `style`, `srcdoc`,
+  `data-hibiki-*`, `data-controller` and `data-action`.
+
+**The `hibiki-rails/commands` module.** Commands need one import, beside
+your controllers:
+
+```js
+import "hibiki-rails/commands"
+```
+
+`hibiki:rails:install` adds it to `app/javascript/application.js`. An
+existing app adds the line by hand, or runs the generator again. Without it
+a command list does nothing, and the client says so once in the console.
+
+**Dialogs the server opens.** `modal(open:)` on a `<dialog>` makes the
+channel's state decide whether it is open. After each render the client
+calls `showModal()` or `close()` to match.
+
+```erb
+<%= tag.dialog id: "editor", **on(:cancel, event: :cancel).deep_merge(modal(open: form.editing?)) do %>
+```
+
+- Use `modal` for a dialog the server must know about, such as a form it may
+  refuse to save. Use `js.show_modal` and `js.close_dialog` for one it need
+  not. Do not put both on one dialog.
+- `on` now hears a dialog's `cancel` and `close` events. `cancel` is Escape;
+  `close` also follows `close_dialog` and a close the server asked for.
+- A morph no longer removes the `open` attribute from a dialog inside an
+  island.
+- Keep what is typed in the dialog out of the effect that renders it, or
+  each keystroke redraws it.
+
+### Changed
+
+- A `focus` site inside a closed dialog does not count as on the page. It
+  takes focus when a render of this tab opens the dialog, and focus returns
+  to the control that opened it when the dialog closes.
+
 ## 0.19.0 — 2026-10-12
 
 ### Added
