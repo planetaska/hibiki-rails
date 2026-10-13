@@ -84,6 +84,71 @@ describe("perform as public API on the island controller", () => {
   })
 })
 
+// The server runs a subscription's actions in seq order, so each
+// subscription must see 1, 2, 3 with none missing. A reconnect makes a
+// fresh subscription server-side.
+describe("the numbers one subscription sees", () => {
+  const seqs = () => sent.map(([, payload]) => payload.hbk)
+
+  it("start again from 1 after a reconnect", async () => {
+    const root = await mount(markup)
+    controller(root).perform("save")
+    controller(root).perform("save")
+    await disconnectAll()
+    await connectAll()
+
+    expect(controller(root).perform("save")).toBe(1)
+    expect(seqs()).toEqual([1, 2, 1])
+  })
+
+  it("skip nothing for an action dropped in the offline gap", async () => {
+    const root = await mount(markup)
+    controller(root).perform("save")
+    await disconnectAll()
+    controller(root).perform("save")
+    controller(root).perform("save")
+    await connectAll()
+
+    controller(root).perform("save")
+
+    expect(seqs()).toEqual([1, 1])
+  })
+
+  it("skip nothing for an action sent into a dead socket", async () => {
+    const root = await mount(markup)
+    controller(root).perform("save")
+    cable.sendResult = false
+    controller(root).perform("save")
+    cable.sendResult = true
+    await connectAll()
+
+    controller(root).perform("save")
+
+    expect(seqs()).toEqual([1, 2, 1])
+  })
+
+  it("run on from the connect window's queue", async () => {
+    const root = await mount(markup, { autoConnect: false })
+    controller(root).perform("save")
+    controller(root).perform("save")
+    await connectAll()
+
+    controller(root).perform("save")
+
+    expect(seqs()).toEqual([1, 2, 3])
+  })
+
+  it("start again when the socket drops inside the connect window", async () => {
+    const root = await mount(markup, { autoConnect: false })
+    controller(root).perform("save")
+    await disconnectAll()
+    controller(root).perform("save")
+    await connectAll()
+
+    expect(seqs()).toEqual([1])
+  })
+})
+
 describe("performOn", () => {
   it("fires through the island containing the element and returns its seq", async () => {
     await mount(markup)

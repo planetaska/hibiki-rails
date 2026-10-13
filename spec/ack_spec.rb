@@ -40,6 +40,9 @@ RSpec.describe AckTestChannel, type: :channel do
 
   def acks = transmissions.filter_map { it["ack"] }
 
+  # Each example's action is the subscription's first, so its seq is 1: a
+  # later number would be held for its turn (spec/action_order_spec.rb).
+
   before do
     described_class.seen = []
     subscribe(cid: "c1")
@@ -56,11 +59,11 @@ RSpec.describe AckTestChannel, type: :channel do
   end
 
   it "sends exactly one ack, after the effects the action triggered" do
-    perform :increment, hbk: 7
+    perform :increment, hbk: 1
     drain
 
-    expect(acks).to eq([7])
-    expect(transmissions.last).to eq({ "ack" => 7 })
+    expect(acks).to eq([1])
+    expect(transmissions.last).to eq({ "ack" => 1 })
     expect(transmissions[-2]["value"]).to eq({ "name" => "count", "text" => "1" })
   end
 
@@ -84,10 +87,10 @@ RSpec.describe AckTestChannel, type: :channel do
     end.new
     Rails.error.subscribe(reporter)
 
-    perform :boom, hbk: 2
+    perform :boom, hbk: 1
     drain
 
-    expect(acks).to eq([2])
+    expect(acks).to eq([1])
     expect(reporter.reports.dig(0, 0)&.message).to eq("ack action failed")
   ensure
     Rails.error.unsubscribe(reporter)
@@ -96,16 +99,16 @@ RSpec.describe AckTestChannel, type: :channel do
   # An unknown action never reaches the graph, but the client is still waiting
   # on it: ActionCable logs and returns, and the ensure fires anyway.
   it "acks an action ActionCable refuses to process" do
-    perform :not_an_action, hbk: 3
+    perform :not_an_action, hbk: 1
     drain
 
-    expect(acks).to eq([3])
+    expect(acks).to eq([1])
   end
 
   # `delete`, not `[]` — the seq is transport bookkeeping and must not turn up
   # as an attribute in a form submission.
   it "keeps the seq out of the action method's data" do
-    perform :record, hbk: 4, title: "Ice Fire"
+    perform :record, hbk: 1, title: "Ice Fire"
     drain
 
     expect(described_class.seen).to eq([{ "action" => "record", "title" => "Ice Fire" }])
@@ -117,9 +120,9 @@ RSpec.describe AckTestChannel, type: :channel do
   it "acks with dropped: true when the actor is already stopped" do
     subscription.instance_variable_get(:@__hibiki_actor).stop(wait: true)
 
-    perform :increment, hbk: 5
+    perform :increment, hbk: 1
 
-    expect(transmissions.last).to eq({ "ack" => 5, "dropped" => true })
+    expect(transmissions.last).to eq({ "ack" => 1, "dropped" => true })
   end
 end
 

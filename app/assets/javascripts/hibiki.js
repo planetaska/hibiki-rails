@@ -422,10 +422,19 @@ export class ChannelController extends Controller {
   // undefined when the payload went nowhere — the socket turned out to
   // be closed, or the island was already offline — and the caller owns
   // recovery.
+  //
+  // The server runs a subscription's actions in seq order (Action Cable's
+  // worker pool can swap two sent back to back), so the numbers it sees
+  // must run from 1 with none missing: an action dropped in the offline gap
+  // takes no number, and linkClosed starts the count again for the fresh
+  // subscription a reconnect makes.
   perform(action, payload = {}) {
+    delete payload.hbt
+    // The offline gap: dropped, and the return says so — a truthy seq here
+    // would tell a public caller a repaint is coming when none is.
+    if (!this.subscribed && this.connectedOnce) return undefined
     const seq = ++this.seq
     payload.hbk = seq
-    delete payload.hbt
     if (this.subscribed) {
       this.sendTrips(payload)
       this.beginBusy(seq, action)
@@ -453,15 +462,10 @@ export class ChannelController extends Controller {
     // the socket dropped, and the island is stamped `offline` for the
     // whole gap — the signal the connect window cannot give, where the
     // page is painted and looks live.
-    if (!this.connectedOnce) {
-      this.sendTrips(payload)
-      this.beginBusy(seq, action)
-      this.queued.push([action, payload])
-      return seq
-    }
-    // The offline gap: dropped, and the return says so — a truthy seq here
-    // would tell a public caller a repaint is coming when none is.
-    return undefined
+    this.sendTrips(payload)
+    this.beginBusy(seq, action)
+    this.queued.push([action, payload])
+    return seq
   }
 
   // ActionCable's `connected`, i.e. the server confirmed the subscription.
@@ -484,6 +488,8 @@ export class ChannelController extends Controller {
     // reason — their acks are never coming.
     this.queued = []
     this.settleAll()
+    // The fresh subscription expects its actions numbered from 1.
+    this.seq = 0
   }
 
   setState(state) {

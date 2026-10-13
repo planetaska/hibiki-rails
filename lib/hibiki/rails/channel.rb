@@ -93,14 +93,17 @@ module Hibiki
       # `hbt` is the third reserved key: the trips the browser timed since
       # its last action (see Instrumentation#trips_from). Deleted whether or
       # not anyone listens, for the same reason as `hbk`.
+      #
+      # ActionCable runs this on its worker pool, several at once and in no
+      # order, so the post waits for the seq's turn (see ActionOrder). An
+      # action with no seq takes no turn. `asked` is read on arrival: a held
+      # action's wait is part of its `action` event.
       def perform_action(data)
         seq = data.delete("hbk")
         trips = trips_from(data.delete("hbt"))
         asked = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        # A nil actor means the subscription was rejected or already torn
-        # down; drop the action rather than blow up the cable thread.
-        posted = @__hibiki_actor&.post do
+        post_in_turn(seq) do
           trips.each { instrument("trip", it) }
           instrument_action(data, asked) { Hibiki.batch { super(data) } }
         ensure
@@ -111,13 +114,6 @@ module Hibiki
           # in exactly the case the user most needs it to stop.
           transmit({ ack: seq }) if seq
         end
-
-        # post yields nil (no actor) or false (queue closed): the block
-        # never ran, so neither did its ensure. `dropped` is also what lets
-        # the client tell "late" from "never" — nothing is coming for this
-        # seq, so it settles immediately rather than waiting out the grace
-        # window.
-        transmit({ ack: seq, dropped: true }) if seq && !posted
       end
 
       private
@@ -126,6 +122,7 @@ module Hibiki
         super
         return reject if cid.blank?
 
+        @__hibiki_order = ActionOrder.new
         @__hibiki_actor = build_graph_actor
         # The block runs owned + untracked (Hibiki.root); the effects it
         # creates do their dependency-collecting first run right here, on
@@ -144,8 +141,30 @@ module Hibiki
         return unless @__hibiki_actor
 
         Hibiki::Rails.registry.unregister(self)
+        # Held actions run first: the dispose must be the last job posted.
+        @__hibiki_order.close
         @__hibiki_actor.post { instrument("unsubscribe") { @__hibiki_root.dispose } }
         @__hibiki_actor.stop
+      end
+
+      # Post the job to the graph when the action numbered `seq` is due. A
+      # rejected subscription has no order and nothing to keep in order.
+      #
+      # A nil actor means the subscription was rejected or already torn
+      # down; drop the action rather than blow up the cable thread. post
+      # yields nil (no actor) or false (queue closed): the job never ran, so
+      # neither did its ensure. `dropped` is also what lets the client tell
+      # "late" from "never" — nothing is coming for this seq, so it settles
+      # immediately rather than waiting out the grace window.
+      def post_in_turn(seq, &job)
+        return post_or_drop(seq, job) unless @__hibiki_order
+
+        @__hibiki_order.submit(seq) { post_or_drop(seq, job) }
+      end
+
+      def post_or_drop(seq, job)
+        posted = @__hibiki_actor&.post(&job)
+        transmit({ ack: seq, dropped: true }) if seq && !posted
       end
 
       # Build the signal graph: create states/deriveds/effects as instance

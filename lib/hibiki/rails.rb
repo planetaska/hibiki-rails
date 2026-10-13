@@ -67,6 +67,7 @@ end
 require_relative "rails/version"
 require_relative "rails/registry"
 require_relative "rails/graph_actor"
+require_relative "rails/action_order"
 require_relative "rails/debounce"
 require_relative "rails/instrumentation"
 require_relative "rails/broadcasts"

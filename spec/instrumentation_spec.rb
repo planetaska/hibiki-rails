@@ -138,14 +138,14 @@ RSpec.describe InstrumentedChannel, type: :channel do
 
     it "still publishes a raising action, with the exception, and still acks" do
       list = events do
-        perform :boom, hbk: 2
+        perform :boom, hbk: 1
         drain
       end
       action = named(list, "action").sole
 
       expect(action).to include(action: "boom", renders: 0)
       expect(action[:exception]).to eq(["RuntimeError", "instrumented action failed"])
-      expect(transmissions.last).to eq({ "ack" => 2 })
+      expect(transmissions.last).to eq({ "ack" => 1 })
     end
   end
 
