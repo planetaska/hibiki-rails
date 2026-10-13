@@ -4,6 +4,46 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.19.0 — 2026-10-12
+
+### Added
+
+**History entries.** `transmit_url` takes `history: :push`, and each move of
+the URL becomes an entry in the browser's history. Use it for state that
+reads as a place, such as a wizard's step. The default, `history: :replace`,
+is unchanged.
+
+```ruby
+transmit_url(history: :push) { wizard_path(step: @step.value) }
+```
+
+**The `popstate` event.** `on(:visit, event: :popstate)` on the island root
+answers Back and Forward over those entries. The client performs the action
+with the query of the address the browser moved to.
+
+```erb
+<%= island WizardChannel, **on(:visit, event: :popstate) do |cid| %>
+```
+
+```ruby
+def visit(data) = turn_to(data["step"])
+```
+
+- The params come from the address bar. Check them as you would a subscribe
+  param.
+- A pushed URL becomes an entry only when it answers an action of this tab.
+  The first URL a channel sends, and one that follows another session's
+  write, replace as before.
+- If the action refuses the address, or changes nothing, the bar is put back
+  to the URL the channel last sent. No entry is added.
+- The payload is the flat query. A key ending in `[]` arrives as an array.
+- `popstate` takes no `debounce:` or `fallback:`.
+- Without a `popstate` action, Back over a pushed entry reloads the page at
+  that address. The page shows the right state if it reads the same params
+  on its first render, as a mirrored URL already requires.
+- Coming back to a pushed entry from another page also reloads it.
+- A page that has pushed an entry is left out of Turbo's snapshot cache.
+
 ## 0.18.0 — 2026-10-11
 
 ### Added
