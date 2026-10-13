@@ -4,6 +4,28 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## 0.20.1 — 2026-10-12
+
+### Fixed
+
+**A channel runs its actions in the order the browser sent them.** Action
+Cable hands each incoming message to a worker pool, so two actions sent back
+to back could run swapped. The client sends such a pair whenever a visitor
+types in a debounced field and then clicks or presses Enter at once: the
+typed value and the action leave in the same instant. When they swapped, the
+action ran before the value arrived, so a save could miss the last thing
+typed or be refused.
+
+- The channel now runs each subscription's actions by the number the client
+  gives them. An action that arrives ahead of its turn waits for the ones
+  before it, for at most 100 ms.
+- Update the gem and the npm package together. A client older than 0.20.1
+  still works with the new gem, but its first action after a reconnect waits
+  100 ms.
+- Nothing changes in your channels or views.
+- An unsubscribe is not numbered, and can still overtake an action sent just
+  before the page is left.
+
 ## 0.20.0 — 2026-10-12
 
 ### Added
