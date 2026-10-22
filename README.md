@@ -1,22 +1,12 @@
 # hibiki_rails
 
-Rails glue for [hibiki](https://github.com/planetaska/hibiki):
-connection-scoped signal graphs over ActionCable, pushing re-rendered HTML to the page — either through Turbo Streams, or over the channel's own subscription to the gem's packaged client (see [The JS client](https://planetaska.github.io/hibiki/the-js-client/)).
+Rails integration for [Hibiki](https://github.com/planetaska/hibiki) signals.
 
-```
-cable action arrives → mutate signals → effects render partials →
-Turbo Streams broadcast → Turbo morphs the DOM
-```
+Each browser tab gets its own signal graph, held by an Action Cable channel. An action writes a signal, the effects that read it render their partials again, and the new HTML reaches the page through Turbo Streams or the gem's own JS client. Think of it like LiveView but for Rails. You write Ruby, and the page updates.
 
-A graph lives per cable connection (in practice: per browser tab), built when the channel subscribes and disposed when it unsubscribes. Effects subscribe to whatever signals they read; when an action writes a signal, exactly the affected effects re-render and broadcast.
+Requires Rails >= 8.0 and Ruby >= 3.4.
 
-Supports Rails >= 8.0, Ruby >= 3.4.
-
-## Rails quick start
-
-### Installation
-
-**Step 1** - Install the gem (`hibiki_rails` depends on the core `hibiki` gem)
+## Installation
 
 ```ruby
 # Gemfile
@@ -24,192 +14,92 @@ gem "hibiki"
 gem "hibiki_rails"
 ```
 
-Or `gem install hibiki hibiki_rails`.
-
-**Step 2** - Run the install generator
+Then run the install generator:
 
 ```sh
 bin/rails g hibiki:rails:install
 ```
 
-The install generator detects whether your app uses an import map:
-
-- For importmap apps, installation is fully automatic — you are done.
-- For apps with a JS bundler (esbuild, vite, bun, ...), also install the companion JS client (published as an npm package) with **one of**:
-  - `npm install hibiki-rails`
-  - `yarn add hibiki-rails`
-  - `bun add hibiki-rails`
-  - or the equivalent for your setup
-
-### Using the generator
-
-You can create reactive components easily with the provided generators.
-
-Create your first reactive component by running:
+Importmap apps are done at this point. Apps with a JS bundler (esbuild, vite, bun, etc.) also need the client from npm:
 
 ```sh
-# Replace [your_view_path] with your desired view path,
-# e.g. counters, posts, users/profile...
-bin/rails g hibiki:rails:stimulus counter [your_view_path]
+npm install hibiki-rails
+# or
+bun add hibiki-rails
+```
 
-# For example, this creates "counter" component partials
-# inside app/views/static_pages
+## Your first reactive component
+
+```sh
 bin/rails g hibiki:rails:stimulus counter static_pages
 ```
 
-This creates a minimal working reactive component in the given view path.
-
-### Generating a whole CRUD resource
-
-For a full reactive resource — a live index with search, filtering, sorting and
-pagination, plus edit-in-place — use the scaffold generators:
-
-```sh
-# Model, migration, route and the reactive resource, like rails g scaffold
-bin/rails g hibiki:rails:scaffold Book title:string author:references
-
-# Or, for a model you already have — the schema is read for you
-bin/rails g hibiki:rails:scaffold_controller Book
-
-# Same, but you pick the field order; everything else still comes from the model
-bin/rails g hibiki:rails:scaffold_controller Book title:string author:references
-
-# After adding validators: re-derive the form and its views, touching nothing else
-bin/rails g hibiki:rails:form Book
-```
-
-Your plain `rails g scaffold` is untouched. The generated markup is styled to
-match your app (DaisyUI, Tailwind, or unstyled — detected automatically, or
-forced with `--css=`). Run `bin/rails g hibiki:rails:scaffold --help` for the
-rest of the options.
-
-Pass `--phlex` for Phlex components under `app/views/books/*.rb` instead of ERB
-templates. It needs `phlex-rails` and `bin/rails g phlex:install`, and it
-changes the view layer only — the channels, the query object, the form and the
-whole client protocol are the same either way. Note this is a different thing
-from the `hibiki_phlex` gem, which makes a component own reactive state; here
-the channel owns the state and the components are ordinary stateless views.
-
-Listing the fields yourself only chooses their order and which ones appear — the
-model still answers everything else, so the live validation, a number field's
-`min:`/`max:` and a `belongs_to`'s display label all survive the choice.
-
-Because the live validation is derived from the model's validators, a scaffold
-generated before its migration ran starts with none. `hibiki:rails:form` is the
-catch-up: it rewrites only the `ReactiveForm` and the two form views from the
-schema as it stands now, asks before replacing anything you edited, and takes
-`--skip-views` to rewrite the form object alone.
-
-Your models are edited, not just read: the one being scaffolded gains the
-`after_commit` broadcast that makes writes from anywhere reach an open list, and
-each model a `belongs_to` points at gains the `has_many` half plus a ping of its
-own, so renaming a parent repaints the lists that print its name. Both are
-idempotent, announced, and leave anything you already declared alone.
-
-One file lands outside the resource: `app/assets/stylesheets/hibiki_busy.css`,
-which styles the loading and connection state the client stamps. It is written
-once per app, shared by every generated resource, and wired into your stylesheet
-or layout automatically — the post-install output says which, or gives you the
-line to add when it cannot tell.
-
-Restart the server afterwards: `app/forms/` and `app/queries/` are new, and
-Rails works out its autoload paths at boot.
-
-### Render the reactive component
-
-The generated components are just Rails partials (or Phlex components, if you used the Phlex generator), so you can render one anywhere like any other partial:
+This writes a working counter into `app/views/static_pages`. The component is an ordinary partial, so you can render it anywhere:
 
 ```erb
 <%= render "static_pages/counter" %>
 ```
 
-Congratulations! Now you have your first reactive component!
+Press `+1` and watch the count update from the server.
 
-## Instrumentation
+## A reactive CRUD resource
 
-A channel publishes `ActiveSupport::Notifications` events. They are always
-on, and the gem subscribes to none of them.
+The scaffold generators build a resource with a live index (search, filters, sorting, pagination) and edit-in-place rows:
 
-| Event | Duration covers | Payload |
-|---|---|---|
-| `subscribe.hibiki_rails` | building the graph and its first renders | `channel` |
-| `unsubscribe.hibiki_rails` | disposing the graph | `channel` |
-| `action.hibiki_rails` | the action and every effect it flushed | `channel`, `action`, `wait`, `renders` |
-| `render.hibiki_rails` | rendering and handing the stream to Action Cable | `channel`, `target`, `method` |
-| `trip.hibiki_rails` | nothing | `channel`, `action`, `ack`, `paint` |
+```sh
+# A new model, like rails g scaffold
+bin/rails g hibiki:rails:scaffold Book title:string author:references
 
-```ruby
-ActiveSupport::Notifications.subscribe("action.hibiki_rails") do |event|
-  Rails.logger.info "#{event.payload[:channel]}##{event.payload[:action]} #{event.duration.round(1)}ms"
-end
+# A model you already have: the schema is read for you
+bin/rails g hibiki:rails:scaffold_controller Book
+
+# Phlex components in place of ERB templates
+bin/rails g hibiki:rails:scaffold Book title:string --phlex
 ```
 
-- `channel` is the class name. `wait` is the milliseconds the action queued
-  for the graph's thread. `renders` is how many renders it caused.
-- `method` is `:replace`, `:morph` or `:refresh`. A refresh has no `target`.
-- An action the channel does not have publishes nothing. A raising action
-  publishes, with the exception in the payload.
-- Action Cable's `broadcast.action_cable` fires inside the render event, on
-  the same thread, and carries the message if you want its size.
-- `Hibiki::Rails.registry.tally` returns the live subscriptions by channel
-  class, and `registry.size` the total.
+Restart the server after your first scaffold run, so Rails picks up the new `app/forms` and `app/queries` folders.
 
-**A subscriber runs on the graph's thread.** Keep it to cheap work in
-memory; anything slow holds up that visitor's actions.
+You can then use the add-on generators to extend a scaffolded resource, like adding a nested resource to the reactive form:
 
-A `trip` is the browser's own timing of one action: `ack` is the
-milliseconds until the server answered and `paint` the milliseconds until
-its first render arrived, or `nil` when nothing rendered. Reporting is off
-until the app turns it on:
+```sh
+# Rebuild the form after adding validators to the model
+bin/rails g hibiki:rails:form Book
 
-```js
-import HibikiController from "hibiki-rails"
-HibikiController.reportTrips = true
+# A dropdown of songs on the album's form, saved through Track
+bin/rails g hibiki:rails:multiselect Album Song Track
+
+# Credits nested into the song's form, saved with it in one go
+bin/rails g hibiki:rails:nested Song Credit role:string
+
+# A cover image upload on the album's forms
+bin/rails g hibiki:rails:upload_field Album cover
 ```
-
-Each island then sends its last trips with its next action. The figures come
-from visitors' browsers, so treat them as reported: the gem bounds them (five
-per action, known action names, 0 to 60 000 ms) and cannot verify them.
 
 ## Documentation
 
-Documentation site: <https://planetaska.github.io/hibiki/rails-introduction/>
+Full documentation: <https://planetaska.github.io/hibiki/rails-introduction/>
 
-Release notes and upgrade advice: [CHANGELOG.md](CHANGELOG.md). **Rails 7.1 and 7.2 are supported up to 0.4.0 only** — 0.5.0 raises the floor to 8.0. If you are staying on 0.4.0 with Rails 7.x, read the 0.3.0 entry: it fixes channel lifecycle methods that were client-invocable on those versions.
+- [Quick start](https://planetaska.github.io/hibiki/rails-quick-start/): installation and a first component
+- [Rails usage](https://planetaska.github.io/hibiki/rails-usage/): writing a channel by hand
+- [Generators](https://planetaska.github.io/hibiki/generators/): the component shapes
+- [CRUD scaffolding](https://planetaska.github.io/hibiki/crud-scaffolding/): the scaffold and its add-ons
+- [The JS client](https://planetaska.github.io/hibiki/the-js-client/): the client, loading state, keys and focus
+
+Release notes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Development
 
-```
-bundle exec rake   # Ruby specs + rubocop
-bun install && bun run test   # the client's own specs
+```sh
+bundle install && bun install
+bundle exec rake    # Ruby specs + rubocop
+bun run test        # the JS client's specs
 ```
 
-Both are what CI runs. The Ruby suite boots a minimal inline Rails app (`spec/support/dummy_app.rb`); the JS suite (`spec/js/`) drives the real Stimulus controller in happy-dom against a stubbed Action Cable consumer.
-
-The gem and the npm package are **released in lockstep**: `app/assets/javascripts/hibiki.js` is the single copy — the engine puts it on the asset path and `package.json` points `main`/`module`/`exports` at it — so importmap and bundler apps must never be able to resolve different client code. Bump `lib/hibiki/rails/version.rb` and `package.json` in the same commit, and publish both. The version table lives in [the JS client docs](https://planetaska.github.io/hibiki/the-js-client/).
+CI runs both. The gem and the npm package share one copy of the client (`app/assets/javascripts/hibiki.js`) and are released together under the same version.
 
 ## Contributing
 
-Bug reports and pull requests are welcome at <https://github.com/planetaska/hibiki-rails>.
-
-A few things that make a change easier to accept:
-
-- **`bundle exec rake` and `bun run test` both green.** They are what CI runs, and the client half is easy to forget — most changes here touch one side, but the wire protocol is shared by both.
-- **A regression spec first** for anything that was a bug. `spec/js/` covers the client, `spec/generators/` the generated output.
-- **Generated code follows `rubocop-rails-omakase`**, which is what a stock Rails app lints with — not this gem's own style. The templates are written to satisfy the app's linter, not ours.
-- **The `data-hibiki-*` attributes are a private contract** between the Ruby helpers and the vendored JS, and the two halves ship in one version — so a change to either side belongs in one commit with the other. Two of them, `data-hibiki-busy` and `data-hibiki-state`, are written by the client rather than by a helper, and apps select on them from CSS; those need a CHANGELOG entry even when no Ruby changes.
-
-### Running against a checkout
-
-The gem side needs nothing special: point an app's Gemfile at your clone with `gem "hibiki_rails", path: "../hibiki-rails"`.
-
-The npm side has one trap. `bun link` from an app resolves the linked package's own imports from the **symlink's realpath**, not from the app — so `hibiki.js` looks for `@hotwired/turbo-rails` and `@hotwired/stimulus` inside your checkout rather than inside the app that linked it, and if the checkout has no `node_modules` the import fails at build time with nothing pointing at the cause.
-
-```sh
-cd hibiki-rails && bun install   # before linking, not after
-```
-
-This affects only development against a clone. Anyone installing the published package resolves normally and never sees it.
+Bug reports and pull requests are welcome at <https://github.com/planetaska/hibiki-rails>. Please keep both suites green, and add a regression spec for any bug fix.
 
 ## License
 
