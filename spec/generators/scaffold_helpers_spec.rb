@@ -99,8 +99,9 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
   end
 
   describe "#to_argv" do
-    # The reason this method exists: GeneratedAttribute#to_s is not a
-    # round-trip. `title:string!` comes back as "title:string{null}" — where
+    # The reason this method exists: before railties 8.1.4,
+    # GeneratedAttribute#to_s is not a round-trip.
+    # `title:string!` comes back as "title:string{null}" — where
     # print_attribute_options falls through to joining option KEYS — and .parse
     # then rejects it with "unknown type 'string{null}'". The scaffold
     # generator hands attributes to the controller generator as argv, so this
@@ -126,12 +127,21 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldHelpers do
       expect(helpers_for("Book").call(:to_argv, attribute)).to eq("title:string!")
     end
 
-    it "is not what railties' own to_s would have produced" do
-      attribute = Rails::Generators::GeneratedAttribute.parse("title:string!")
+    # railties 8.1.4 fixed to_s; the gem's floor is 8.0, so to_argv stays.
+    if Gem::Version.new(Rails::VERSION::STRING) < Gem::Version.new("8.1.4")
+      it "is not what railties' own to_s would have produced" do
+        attribute = Rails::Generators::GeneratedAttribute.parse("title:string!")
 
-      expect(attribute.to_s).to eq("title:string{null}")
-      expect { Rails::Generators::GeneratedAttribute.parse(attribute.to_s) }
-        .to raise_error(Rails::Generators::Error, /unknown type/)
+        expect(attribute.to_s).to eq("title:string{null}")
+        expect { Rails::Generators::GeneratedAttribute.parse(attribute.to_s) }
+          .to raise_error(Rails::Generators::Error, /unknown type/)
+      end
+    else
+      it "agrees with railties' own to_s" do
+        attribute = Rails::Generators::GeneratedAttribute.parse("title:string!")
+
+        expect(helpers_for("Book").call(:to_argv, attribute)).to eq(attribute.to_s)
+      end
     end
   end
 end
