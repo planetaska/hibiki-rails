@@ -13,13 +13,15 @@
   "files": [
     "app/assets/javascripts/hibiki.js",
     "app/assets/javascripts/hibiki-motion.js",
-    "app/assets/javascripts/hibiki-commands.js"
+    "app/assets/javascripts/hibiki-commands.js",
+    "LICENSE-MIT.txt",
+    "LICENSE-APACHE.txt"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/planetaska/hibiki-rails.git"
   },
-  "license": "MIT",
+  "license": "(MIT OR Apache-2.0)",
   "scripts": {
     "test": "vitest run"
   },

@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
     through Turbo Streams.
   DESC
   spec.homepage = "https://github.com/planetaska/hibiki-rails"
-  spec.license = "MIT"
+  spec.licenses = ["MIT", "Apache-2.0"]
   spec.required_ruby_version = ">= 3.4"
 
   spec.metadata["homepage_uri"] = spec.homepage
@@ -31,7 +31,7 @@ Gem::Specification.new do |spec|
   # raises TypeError while `bin/rails g` is merely LISTING generators.
   spec.files = Dir["lib/**/*.rb", "lib/generators/**/*.tt", "lib/generators/**/USAGE",
                    "app/assets/javascripts/*.js",
-                   "config/importmap.rb", "README.md", "CHANGELOG.md"]
+                   "config/importmap.rb", "README.md", "CHANGELOG.md", "LICENSE-*.txt"]
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actioncable", ">= 8.0"

@@ -4,6 +4,15 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
+## Unreleased
+
+### Changed
+
+**Dual-licensed under MIT or Apache 2.0**, at the user's option, for both the
+gem and the npm package. The MIT text moved from `LICENSE.txt` to
+`LICENSE-MIT.txt`, next to `LICENSE-APACHE.txt`, and the gem now ships both
+files (it shipped no license file before).
+
 ## 0.20.1 — 2026-10-12
 
 ### Fixed

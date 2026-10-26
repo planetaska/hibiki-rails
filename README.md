@@ -101,6 +101,8 @@ CI runs both. The gem and the npm package share one copy of the client (`app/ass
 
 Bug reports and pull requests are welcome at <https://github.com/planetaska/hibiki-rails>. Please keep both suites green, and add a regression spec for any bug fix.
 
+By opening a pull request, you agree that your contribution is released under the same two licenses as the rest of hibiki_rails (see below). You keep the copyright on what you write, and the licenses let anyone use it, exactly as they use the rest of the code.
+
 ## License
 
-[MIT](LICENSE.txt)
+The gem and the npm package are licensed under either [MIT](LICENSE-MIT.txt) or [Apache 2.0](LICENSE-APACHE.txt), at your option. MIT covers most uses. Apache 2.0 is added for organizations that need it.
