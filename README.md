@@ -105,4 +105,4 @@ By opening a pull request, you agree that your contribution is released under th
 
 ## License
 
-The gem and the npm package are licensed under either [MIT](LICENSE-MIT.txt) or [Apache 2.0](LICENSE-APACHE.txt), at your option. MIT covers most uses. Apache 2.0 is added for organizations that need it.
+The gem and the npm package are licensed under either [MIT](LICENSE-MIT.txt) or [Apache 2.0](LICENSE-APACHE.txt), at your option. MIT covers most uses. Apache 2.0 is offered for organizations that need it.
