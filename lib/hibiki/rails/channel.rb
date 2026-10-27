@@ -69,6 +69,26 @@ module Hibiki
         # version either way. Churning security-relevant code for idiom is not
         # a trade worth making.
         def action_methods = super - HIDDEN_ACTIONS
+
+        # Actions whose result depends only on their own payload, so a newer
+        # one of the same kind makes an older one still waiting pointless:
+        #
+        #   replaceable :search, :set_sort, :go
+        #
+        # The kind is the action name and the payload's keys. An action is
+        # skipped, and acked as dropped, when the next one the browser sent is
+        # of its kind and it has not started (see Replacement). Never declare
+        # one that adds, toggles or saves. A subclass adds to its parent's
+        # list. The names are checked at subscribe, since the methods may be
+        # defined below the call.
+        def replaceable(*names)
+          @__hibiki_replaceable = (@__hibiki_replaceable || []) | names.map(&:to_s)
+        end
+
+        def replaceable_actions
+          inherited = superclass.respond_to?(:replaceable_actions) ? superclass.replaceable_actions : []
+          inherited | (@__hibiki_replaceable || [])
+        end
       end
 
       # ActionCable's single dispatch point for incoming actions. The whole
@@ -98,13 +118,19 @@ module Hibiki
       # order, so the post waits for the seq's turn (see ActionOrder). An
       # action with no seq takes no turn. `asked` is read on arrival: a held
       # action's wait is part of its `action` event.
+      #
+      # A replaceable action the next one replaced never starts: no batch, no
+      # rescue_from, no `action` event, and a dropped ack, which the client
+      # settles at once. The trips it carried are still the browser's report.
       def perform_action(data)
         seq = data.delete("hbk")
         trips = trips_from(data.delete("hbt"))
         asked = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        post_in_turn(seq) do
+        post_in_turn(seq, replaceable_kind(seq, data)) do |slot|
           trips.each { instrument("trip", it) }
+          next instrument_skip(data, asked) if (skipped = slot&.start == false)
+
           instrument_action(data, asked) { Hibiki.batch { super(data) } }
         ensure
           # Hibiki.batch flushes in its own ensure, so effects queued
@@ -112,7 +138,7 @@ module Hibiki
           # genuinely post-batch. GraphActor#work rescues around the whole
           # job, so without this a raising action would hang the indicator
           # in exactly the case the user most needs it to stop.
-          transmit({ ack: seq }) if seq
+          transmit(skipped ? { ack: seq, dropped: true } : { ack: seq }) if seq
         end
       end
 
@@ -123,6 +149,7 @@ module Hibiki
         return reject if cid.blank?
 
         @__hibiki_order = ActionOrder.new
+        @__hibiki_replacement = Replacement.for(self.class)
         @__hibiki_actor = build_graph_actor
         # The block runs owned + untracked (Hibiki.root); the effects it
         # creates do their dependency-collecting first run right here, on
@@ -156,15 +183,27 @@ module Hibiki
       # neither did its ensure. `dropped` is also what lets the client tell
       # "late" from "never" — nothing is coming for this seq, so it settles
       # immediately rather than waiting out the grace window.
-      def post_in_turn(seq, &job)
-        return post_or_drop(seq, job) unless @__hibiki_order
+      #
+      # The job is handed its Replacement slot, entered here because this is
+      # where actions are released in the order the browser sent them.
+      def post_in_turn(seq, kind, &job)
+        return post_or_drop(seq, kind, job) unless @__hibiki_order
 
-        @__hibiki_order.submit(seq) { post_or_drop(seq, job) }
+        @__hibiki_order.submit(seq) { post_or_drop(seq, kind, job) }
       end
 
-      def post_or_drop(seq, job)
-        posted = @__hibiki_actor&.post(&job)
+      def post_or_drop(seq, kind, job)
+        slot = @__hibiki_replacement&.enter(kind)
+        posted = @__hibiki_actor&.post { job.call(slot) }
         transmit({ ack: seq, dropped: true }) if seq && !posted
+      end
+
+      # What a replaceable action replaces: the same action with the same
+      # payload keys, so a send naming one field of a form never replaces a
+      # send naming another. With no number there is no order to trust.
+      def replaceable_kind(seq, data)
+        action = data["action"]
+        [action, data.keys.sort] if seq.is_a?(Integer) && self.class.replaceable_actions.include?(action)
       end
 
       # Build the signal graph: create states/deriveds/effects as instance

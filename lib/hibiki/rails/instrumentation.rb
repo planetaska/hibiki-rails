@@ -16,7 +16,7 @@ module Hibiki
       TRIP_LIMIT = 5
       TRIP_RANGE = (0..60_000)
 
-      EVENTS = %w[subscribe unsubscribe action render trip].to_h { [it, "#{it}.hibiki_rails"] }.freeze
+      EVENTS = %w[subscribe unsubscribe action skip render trip].to_h { [it, "#{it}.hibiki_rails"] }.freeze
 
       private
 
@@ -42,6 +42,13 @@ module Hibiki
         ensure
           payload[:renders] = @__hibiki_render_count.to_i - before
         end
+      end
+
+      # A replaceable action a newer one replaced before it ran: no work, so
+      # only the wait. Its name was checked against action_methods at
+      # subscribe.
+      def instrument_skip(data, asked)
+        instrument("skip", { action: data["action"], wait: ms_since(asked) }) if listening?("skip")
       end
 
       def listening?(event) = ActiveSupport::Notifications.notifier.listening?(EVENTS.fetch(event))
