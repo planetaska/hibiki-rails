@@ -4,7 +4,7 @@ The gem and the npm package are released in lockstep and share these version
 numbers — `app/assets/javascripts/hibiki.js` is a single copy served both ways,
 so importmap and bundler apps always resolve identical client code.
 
-## Unreleased
+## 0.21.0 — 2026-10-27
 
 ### Added
 
@@ -52,6 +52,10 @@ The scaffold uses both: a generated channel declares `replaceable :search,
 scaffolded app that adds an action to that list should check it sets state
 outright.
 
+- Update the gem and the npm package together. The channel's half works with
+  any client since 0.20.1; `replaceable: true` needs the 0.21.0 client, and an
+  older one ignores it.
+
 ### Changed
 
 **Dual-licensed under MIT or Apache 2.0**, at the user's option, for both the
@@ -60,6 +64,10 @@ gem and the npm package. The MIT text moved from `LICENSE.txt` to
 files (it shipped no license file before).
 
 ### Fixed
+
+**A control stays busy until all its trips are answered.** When one control
+had two actions in flight, the first to be answered took the busy flag off
+the control while the second was still out.
 
 **An island that renders over a Turbo stream repaints after a reconnect.**
 When the socket drops, Action Cable resubscribes everything at once, and the
