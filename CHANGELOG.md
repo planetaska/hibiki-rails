@@ -32,6 +32,20 @@ end
 - Never declare an action that adds, toggles or saves: skipping it loses
   what the visitor asked for.
 
+`on` takes `replaceable: true` for the browser's half. While an action of
+that kind from the island waits for its ack, a new one is held rather than
+sent, and a newer one replaces it; the ack sends the newest. A tab then sends
+fewer searches as the server slows, rather than one per pause in typing.
+
+```erb
+<%= tag.input type: "search", name: "q", **on(:search, event: :input, replaceable: true) %>
+```
+
+Any other action from the island sends what is held first, so a click never
+overtakes the search typed before it. The two halves are declared apart; the
+channel's list is what the server skips by, and `replaceable: true` works
+with any channel.
+
 ### Changed
 
 **Dual-licensed under MIT or Apache 2.0**, at the user's option, for both the

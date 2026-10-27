@@ -8,14 +8,15 @@ module Hibiki
     module Modifiers
       # The attributes beside hibiki_on. Each is omitted when it matches the
       # client's own default, so the common call still stamps exactly one.
-      def self.attributes(with:, debounce:, confirm:, reset:, fallback:)
+      def self.attributes(with:, debounce:, confirm:, reset:, fallback:, replaceable:)
         {
           hibiki_with: (JSON.generate(with) unless with.nil?),
           # nonzero? returns the integer itself, so 0 compacts away.
           hibiki_debounce: (Integer(debounce).nonzero? if debounce),
           hibiki_confirm: confirm&.to_s,
           hibiki_reset: ("false" if reset == false),
-          hibiki_fallback: ("true" if fallback)
+          hibiki_fallback: ("true" if fallback),
+          hibiki_replaceable: ("true" if replaceable)
         }.compact
       end
 
@@ -24,10 +25,11 @@ module Hibiki
       CHAIN = "*"
 
       # The attribute a command list adds, or nothing for an action name.
-      def self.chain(action, with:, fallback:)
+      def self.chain(action, with:, fallback:, replaceable:)
         return {} unless action.is_a?(Commands)
         raise ArgumentError, "on(js) needs at least one command" if action.empty?
         raise ArgumentError, "with: belongs on the command: js.push(:action, with: ...)" unless with.nil?
+        raise ArgumentError, "replaceable: belongs on an action, not on commands" if replaceable
         raise ArgumentError, "fallback: needs a push in the commands" if fallback && !action.push?
 
         { hibiki_do: action.to_json }

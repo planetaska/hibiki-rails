@@ -222,16 +222,21 @@ module Hibiki
       #                 channel-rendered repaint has no session, so the form
       #                 it painted carries a stale token or none (button_to
       #                 works in both worlds).
+      #   replaceable: true  while an action of the same kind (this name, the
+      #                 same payload keys) from the island waits for its
+      #                 ack, a new one is held, and a newer one replaces it;
+      #                 the ack sends it. Pair with `replaceable` on the
+      #                 channel, for actions that set state outright.
       def on(action, event: :click, with: nil, debounce: nil, confirm: nil, reset: nil,
-             fallback: nil)
-        extra = Modifiers.chain(action, with:, fallback:)
+             fallback: nil, replaceable: nil)
+        extra = Modifiers.chain(action, with:, fallback:, replaceable:)
         action = extra.empty? ? Helpers.event_name(action) : Modifiers::CHAIN
         events = Array(event).map { Helpers.event(it) }
         debounce = DEFAULT_INPUT_DEBOUNCE if debounce.nil? && events.include?("input")
-        Modifiers.popstate!(debounce:, fallback:) if events.include?("popstate")
+        Modifiers.popstate!(debounce:, fallback:, replaceable:) if events.include?("popstate")
         tokens = events.map { "#{it}->#{action}" }.join(" ")
         { data: { hibiki_on: tokens }
-            .merge(Modifiers.attributes(with:, debounce:, confirm:, reset:, fallback:), extra) }
+            .merge(Modifiers.attributes(with:, debounce:, confirm:, reset:, fallback:, replaceable:), extra) }
       end
 
       # Placeholder for a single reactive value: `<%= reactive :doubled, 0 %>`
