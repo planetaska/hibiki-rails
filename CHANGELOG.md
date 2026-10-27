@@ -6,6 +6,32 @@ so importmap and bundler apps always resolve identical client code.
 
 ## Unreleased
 
+### Added
+
+**Replaceable actions.** A channel can name the actions that set state
+outright from their payload, such as a search or a sort. When a visitor's
+next action is another of the same kind and the first has not started yet,
+the first is skipped: only the newest search matters, so a server that falls
+behind no longer runs, renders and sends every one in its queue.
+
+```ruby
+class SearchChannel < ApplicationCable::Channel
+  include Hibiki::Rails::Channel
+
+  replaceable :search, :set_sort, :go
+end
+```
+
+- The kind is the action's name and its payload's keys, so a send that names
+  one form field never replaces a send that names another.
+- Only the action right behind counts. A search followed by a save and then
+  another search runs all three, so the save sees the query the visitor saw.
+- A skipped action is acked as dropped, which every client since 0.20.1
+  already settles at once, and publishes `skip.hibiki_rails` with its
+  `action` and `wait` instead of an `action` event.
+- Never declare an action that adds, toggles or saves: skipping it loses
+  what the visitor asked for.
+
 ### Changed
 
 **Dual-licensed under MIT or Apache 2.0**, at the user's option, for both the
