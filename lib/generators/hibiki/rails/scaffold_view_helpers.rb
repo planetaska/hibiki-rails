@@ -147,7 +147,7 @@ module Hibiki
           [":query", "#{url_params_ref}[:query]",
            *css_args(:input),
            %(placeholder: "#{schema.searchable.map { it.to_s.humanize.downcase }.join(' or ')}"),
-           "**on(:search, event: :input)"]
+           "**on(:search, event: :input, replaceable: true)"]
         end
 
         # The same head/tail split, and the second of exactly two sites where

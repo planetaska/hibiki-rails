@@ -71,6 +71,16 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
       expect(row_form).to include("extras: {})")
     end
 
+    # Each sets state outright, so the server may skip one the next replaced,
+    # and the box holds a search while one is in flight.
+    it "declares the query actions replaceable, and holds the search box's sends" do
+      channel = generated("app/channels/books_channel.rb")
+      controls = generated("app/views/books/_controls.html.erb")
+
+      expect(channel.scan("replaceable :search, :go_to_page, :set_sort, :set_filter\n").size).to eq(1)
+      expect(controls.scan("**on(:search, event: :input, replaceable: true)").size).to eq(1)
+    end
+
     it "freezes the window's records at the query boundary" do
       expect(generated("app/queries/book_query.rb"))
         .to include("window_scope.strict_loading.map { it.readonly!; it.freeze }")
@@ -280,6 +290,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator do
 
       expect(generated("app/queries/book_query.rb")).not_to include("SEARCHABLE")
       expect(generated("app/channels/books_channel.rb")).not_to include("def search(data)")
+      expect(generated("app/channels/books_channel.rb")).to include("replaceable :go_to_page, :set_sort, :set_filter\n")
       expect(generated("app/views/books/_controls.html.erb")).not_to include("search_field_tag")
     end
 

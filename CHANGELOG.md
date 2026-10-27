@@ -46,6 +46,12 @@ overtakes the search typed before it. The two halves are declared apart; the
 channel's list is what the server skips by, and `replaceable: true` works
 with any channel.
 
+The scaffold uses both: a generated channel declares `replaceable :search,
+:go_to_page, :set_sort, :set_filter` (without `:search` under
+`--skip-search`), and the search box carries `replaceable: true`. A
+scaffolded app that adds an action to that list should check it sets state
+outright.
+
 ### Changed
 
 **Dual-licensed under MIT or Apache 2.0**, at the user's option, for both the

@@ -7,6 +7,10 @@
 class <%= collection_channel_class_name %> < ApplicationCable::Channel
   include Hibiki::Rails::Channel
 
+  # Each sets state outright, so a newer call skips an older one still
+  # queued. Never list an action that adds, toggles or saves.
+  replaceable <%= [(":search" if searchable?), ":go_to_page", ":set_sort", ":set_filter"].compact.join(", ") %>
+
   # The streamable the model's after_commit pings.
   CHANGED = "<%= changed_streamable %>"
 

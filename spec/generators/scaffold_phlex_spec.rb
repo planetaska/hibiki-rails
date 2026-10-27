@@ -173,6 +173,7 @@ RSpec.describe Hibiki::Rails::Generators::ScaffoldControllerGenerator, "--phlex"
       controls = generated("app/views/items/controls.rb")
       expect(controls).to include('form(action: items_path, method: "get",')
       expect(controls).to include("**on(:search, event: :submit, fallback: true, reset: false)")
+      expect(controls.scan("**on(:search, event: :input, replaceable: true)").size).to eq(1)
 
       list = generated("app/views/items/list.rb")
       expect(list).to include("create_form if @creating")
