@@ -615,7 +615,12 @@ export class ChannelController extends Controller {
     clearTimeout(record.grace)
     this.busy.delete(seq)
     this.settledAt = performance.now()
-    record.control?.removeAttribute("data-hibiki-busy")
+    // Not while another trip from the same control is still out: a search
+    // box sends the next search before the last one settles.
+    const control = record.control
+    if (control && ![...this.busy.values()].some((other) => other.control === control)) {
+      control.removeAttribute("data-hibiki-busy")
+    }
     if (this.busy.size === 0) this.hideBusy()
     if (record.ack !== undefined && this.constructor.reportTrips) this.keepTrip(record)
   }

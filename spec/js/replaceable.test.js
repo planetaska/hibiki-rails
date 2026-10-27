@@ -15,6 +15,7 @@ afterEach(async () => {
 })
 
 const DELAY = 150
+const GRACE = 60
 const CEILING = 10000
 
 const search = `<input id="q" name="q" data-hibiki-on="input->search" data-hibiki-replaceable="true">`
@@ -155,6 +156,12 @@ describe("a replaceable control", () => {
     expect(q.hasAttribute("data-hibiki-busy")).toBe(true)
     await receive({ ack: 1 })
     expect(q.hasAttribute("data-hibiki-busy")).toBe(true)
+    // The first trip settles after its grace; the one it released is still out.
+    await vi.advanceTimersByTimeAsync(GRACE)
+    expect(q.hasAttribute("data-hibiki-busy")).toBe(true)
+    await receive({ ack: 2 })
+    await vi.advanceTimersByTimeAsync(GRACE)
+    expect(q.hasAttribute("data-hibiki-busy")).toBe(false)
   })
 
   it("drops what it held when the link drops", async () => {
