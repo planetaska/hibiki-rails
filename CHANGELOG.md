@@ -13,6 +13,15 @@ gem and the npm package. The MIT text moved from `LICENSE.txt` to
 `LICENSE-MIT.txt`, next to `LICENSE-APACHE.txt`, and the gem now ships both
 files (it shipped no license file before).
 
+### Fixed
+
+**An island that renders over a Turbo stream repaints after a reconnect.**
+When the socket drops, Action Cable resubscribes everything at once, and the
+server could confirm the island before its stream. The fresh graph's first
+render then went to a stream nobody was listening on, and the island showed
+the old page until some state changed. The island now waits for its stream
+to confirm again before it resubscribes, as it already did on first connect.
+
 ## 0.20.1 — 2026-10-12
 
 ### Fixed

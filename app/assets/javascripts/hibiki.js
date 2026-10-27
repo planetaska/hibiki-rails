@@ -34,7 +34,8 @@
 // graph's first broadcast is lost unless that stream has already
 // confirmed ITS subscription — so connect awaits it (streamConnected)
 // before subscribing, and rendering flows back over the Turbo stream
-// while `received` stays idle.
+// while `received` stays idle. After a dropped socket the island waits
+// for the stream to confirm again before it resubscribes.
 //
 // The generic controller's attribute contract (private to this gem —
 // emitted by the Ruby helpers, interpreted here, versioned together):
@@ -385,10 +386,33 @@ export class ChannelController extends Controller {
     if (source) await streamConnected(source)
     consumer ??= await cable.getConsumer()
     if (this.aborted) return // disconnected during the awaits
+    this.subscribe(source)
+  }
+
+  subscribe(source) {
     this.subscription = consumer.subscriptions.create(this.subscribeParams(), {
       received: (data) => this.handleMessage(data),
       connected: () => this.linkOpened(),
-      disconnected: () => this.linkClosed()
+      disconnected: () => {
+        this.linkClosed()
+        if (source) this.resubscribeAfter(source)
+      }
+    })
+  }
+
+  // The same race again after a dropped socket. Action Cable's reconnect
+  // resubscribes every subscription at once, and the server's worker pool
+  // can confirm the island before its stream, so the fresh graph's first
+  // broadcast goes nowhere and nothing repaints the island until some
+  // state changes. So the island leaves Action Cable's list (which is
+  // what the reconnect replays) and subscribes again once its stream
+  // source has confirmed again.
+  resubscribeAfter(source) {
+    this.subscription.unsubscribe()
+    this.subscription = undefined
+    this.rewait = streamReconfirmed(source, () => {
+      this.rewait = undefined
+      if (!this.aborted) this.subscribe(source)
     })
   }
 
@@ -403,6 +427,8 @@ export class ChannelController extends Controller {
     pushers.delete(this.historyKey)
     this.popping = undefined // the bar is the next page's now
     this.settleAll()
+    this.rewait?.disconnect()
+    this.rewait = undefined
     this.subscription?.unsubscribe()
     this.subscription = undefined
     this.subscribed = false
@@ -1601,4 +1627,21 @@ export function streamConnected(element) {
     })
     observer.observe(element, { attributeFilter: ["connected"] })
   })
+}
+
+// Calls `then` the next time Turbo stamps `connected` on the source, and
+// returns the observer so the caller can give up. The island can hear a
+// dropped socket before or after the source does, so the attribute may
+// still be there from the old socket: a record whose old value is null,
+// with the stamp there now, is the stamp being added, whichever order the
+// drop came in.
+function streamReconfirmed(element, then) {
+  const observer = new MutationObserver((records) => {
+    if (element.hasAttribute("connected") && records.some((record) => record.oldValue === null)) {
+      observer.disconnect()
+      then()
+    }
+  })
+  observer.observe(element, { attributeFilter: ["connected"], attributeOldValue: true })
+  return observer
 }

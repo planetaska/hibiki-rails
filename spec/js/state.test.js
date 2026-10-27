@@ -138,3 +138,81 @@ describe("across a reconnect", () => {
     expect(performed).toEqual([["increment", {}]])
   })
 })
+
+// Turbo-broadcast transport. Action Cable's reconnect resubscribes the
+// stream and the island at once, and the server can confirm the island
+// first: the fresh graph's first broadcast then goes to a stream nobody
+// hears yet, and the island stays stale. So the island waits for its
+// stream source to confirm again, as it did on connect.
+describe("a stream source across a reconnect", () => {
+  const streamed = island(`<turbo-cable-stream-source connected></turbo-cable-stream-source>${button}`)
+  const source = () => document.querySelector("turbo-cable-stream-source")
+
+  it("resubscribes only once the stream source confirms again", async () => {
+    const root = await mount(streamed)
+    source().removeAttribute("connected")
+    await disconnectAll()
+    expect(subscriptions[0].removed).toBe(true)
+
+    await connectAll()
+    expect(subscriptions).toHaveLength(1)
+    expect(state(root)).toBe("offline")
+
+    source().setAttribute("connected", "")
+    await flush()
+    expect(subscriptions).toHaveLength(2)
+    expect(subscriptions[1].params).toEqual(subscriptions[0].params)
+    expect(state(root)).toBe("ready")
+  })
+
+  // The island's disconnected callback can run before the source's, while
+  // the old socket's stamp is still on it.
+  it("waits for a fresh stamp when it hears the drop first", async () => {
+    await mount(streamed)
+    await disconnectAll()
+    source().removeAttribute("connected")
+    await flush()
+    expect(subscriptions).toHaveLength(1)
+
+    source().setAttribute("connected", "")
+    await flush()
+    expect(subscriptions).toHaveLength(2)
+  })
+
+  it("works normally once it has resubscribed", async () => {
+    const root = await mount(streamed)
+    source().removeAttribute("connected")
+    await disconnectAll()
+    source().setAttribute("connected", "")
+    await flush()
+
+    root.querySelector("#go").click()
+
+    expect(performed).toEqual([["increment", {}]])
+    expect(sent[0][1].hbk).toBe(1)
+  })
+
+  it("does not resubscribe an island removed while it waited", async () => {
+    const root = await mount(streamed)
+    const stream = source()
+    source().removeAttribute("connected")
+    await disconnectAll()
+
+    root.remove()
+    await flush()
+    stream.setAttribute("connected", "")
+    await flush()
+
+    expect(subscriptions).toHaveLength(1)
+  })
+
+  it("keeps its subscription when it has no stream source", async () => {
+    const root = await mount(island(button))
+    await disconnectAll()
+    await connectAll()
+
+    expect(subscriptions).toHaveLength(1)
+    expect(subscriptions[0].removed).toBeUndefined()
+    expect(state(root)).toBe("ready")
+  })
+})

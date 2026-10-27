@@ -41,7 +41,9 @@ const consumerStub = ({
             performed.push([action, rest])
             return cable.sendResult
           },
-          unsubscribe: () => {}
+          // Action Cable forgets it: no more callbacks, and a reconnect
+          // does not resubscribe it.
+          unsubscribe: () => { subscription.removed = true }
         }
         subscriptions.push(subscription)
         if (cable.autoConnect) queueMicrotask(() => handlers.connected())
@@ -52,15 +54,17 @@ const consumerStub = ({
 
 // The server confirmed (or re-confirmed) every live subscription.
 export const connectAll = async () => {
-  for (const subscription of subscriptions) subscription.handlers.connected()
+  for (const subscription of live()) subscription.handlers.connected()
   await flush()
 }
 
 // The socket dropped under every live subscription.
 export const disconnectAll = async () => {
-  for (const subscription of subscriptions) subscription.handlers.disconnected()
+  for (const subscription of live()) subscription.handlers.disconnected()
   await flush()
 }
+
+const live = () => subscriptions.filter((subscription) => !subscription.removed)
 
 // Push a server frame at the most recently created subscription.
 export const receive = async (data) => {
