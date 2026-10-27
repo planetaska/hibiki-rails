@@ -59,6 +59,8 @@
 //                 island is `ready` the event is intercepted and only the channel
 //                 action fires; in every other state the client stands aside and the
 //                 browser does what the markup says
+//                 data-hibiki-replaceable="true"       hold a send while one of its
+//                 kind waits for its ack (see "Replaceable sends" below)
 //   value sites   data-hibiki-value="<name>"           reactive-value placeholder;
 //                 the server's transmit_value message updates every match
 //   prop sites    data-hibiki-props='{"indeterminate":true}'  DOM properties
@@ -111,6 +113,10 @@
 // field with unsent input wins, until its send fires. And any undebounced
 // action first flushes the island's pending debounces, so gestures reach
 // the server in the order they were made.
+//
+// A replaceable control holds its send while an action of its kind from the
+// island waits for its ack, and the ack sends the newest one held. The
+// debounce waits for the visitor; the hold waits for the server.
 //
 // A focus site takes focus once, on the render that brings it: marked now
 // and not at the scan before, by element or by id. Only a render this tab
@@ -277,6 +283,10 @@ const controlValue = (control) => {
 // A trailing [] is a serialization artifact, not part of the attribute name:
 // the channel payload is JSON, where arrays are native.
 const payloadKey = (name) => (name.endsWith("[]") ? name.slice(0, -2) : name)
+
+// What a newer send replaces: the same action with the same payload keys,
+// the server's rule (Replacement), so one field never replaces another.
+const kindOf = (action, payload) => JSON.stringify([action, Object.keys(payload).sort()])
 
 // A submitted form's contribution to the payload. A []-named field collects
 // EVERY entry as an array under the bare key; other duplicate keys stay
@@ -1012,6 +1022,8 @@ export default class HibikiController extends ChannelController {
     this.timers = new WeakMap()
     this.pending = new Map()
     this.unsent = new Map()
+    // Replaceable sends waiting for their kind's ack, by kind, oldest first.
+    this.holding = new Map()
     // The focus sites seen at the last scan, each with the control whose
     // gesture opened it, when one did; a site not among them is new.
     // Seeded now, so a render landing in the connect window finds the
@@ -1095,6 +1107,7 @@ export default class HibikiController extends ChannelController {
     for (const id of this.pending.keys()) clearTimeout(id)
     this.pending.clear()
     this.unsent.clear()
+    this.holding.clear()
     this.marks.clear()
     this.observer.disconnect()
     this.resetOrder()
@@ -1102,9 +1115,79 @@ export default class HibikiController extends ChannelController {
   }
 
   // A reconnect builds a fresh graph, which numbers its renders from 1.
+  // Held sends go too: nothing is replayed across a gap.
   linkClosed() {
+    this.holding.clear()
     this.resetOrder()
     super.linkClosed()
+  }
+
+  // ── Replaceable sends ─────────────────────────────────────────────────
+  //
+  // A held send takes its seq only when it goes, so the numbers stay
+  // gapless. Every other perform sends what is held first, oldest first, so
+  // nothing overtakes a gesture made before it (the rule flush() keeps for
+  // debounces). Its control stays busy: the trip in flight already marks it.
+
+  perform(action, payload) {
+    this.sendHeld()
+    return super.perform(action, payload)
+  }
+
+  // The ack, dropped or not, and a stall are what a held send waits for.
+  acknowledge(frame) {
+    super.acknowledge(frame)
+    this.releaseHeld()
+  }
+
+  stall(seq) {
+    super.stall(seq)
+    this.releaseHeld()
+  }
+
+  // An acked trip is answered, though it stays in `busy` for its grace.
+  inFlight(kind) {
+    for (const record of this.busy.values()) if (record.kind === kind && record.ack === undefined) return true
+    return false
+  }
+
+  hold(kind, control, action, payload) {
+    if (!this.inFlight(kind)) return false
+    // A newer one replaces it, and is the newest gesture held.
+    this.holding.delete(kind)
+    this.holding.set(kind, { control, action, payload })
+    return true
+  }
+
+  // Send the newest kind whose trips are all answered, and the older ones
+  // held before it.
+  releaseHeld() {
+    let last
+    for (const kind of this.holding.keys()) if (!this.inFlight(kind)) last = kind
+    if (last !== undefined) this.sendHeld(last)
+  }
+
+  // Everything held, or up to and including `until`.
+  sendHeld(until) {
+    if (this.sending || !this.holding.size) return
+    this.sending = true
+    try {
+      for (const [kind, { control, action, payload }] of this.holding) {
+        this.holding.delete(kind)
+        this.trackControl(this.performKind(kind, action, payload), control)
+        if (kind === until) break
+      }
+    } finally {
+      this.sending = false
+    }
+  }
+
+  // Perform, marking the trip with its kind so the next of it waits.
+  performKind(kind, action, payload) {
+    const seq = this.perform(action, payload)
+    const record = this.busy.get(seq)
+    if (record) record.kind = kind
+    return seq
   }
 
   // ── Render order ──────────────────────────────────────────────────────
@@ -1541,14 +1624,16 @@ export default class HibikiController extends ChannelController {
     } else if (control.name && (event.type === "change" || event.type === "input")) {
       payload[payloadKey(control.name)] = controlValue(control)
     }
+    const kind = "hibikiReplaceable" in control.dataset ? kindOf(action, payload) : undefined
+    const held = kind !== undefined && this.hold(kind, control, action, payload)
     // perform stamps `hbk` after this merge, so a field literally named hbk
     // loses to the seq rather than corrupting it.
-    const seq = this.perform(action, payload)
+    const seq = held ? undefined : this.performKind(kind, action, payload)
     // The send failed on a socket believed live (perform already marked the
     // island offline). The gesture's default was prevented in dispatch, so
     // for a fallback control honor the contract by hand — the action never
     // left the machine, so the native behavior cannot double-fire.
-    if (seq === undefined && "hibikiFallback" in control.dataset) {
+    if (!held && seq === undefined && "hibikiFallback" in control.dataset) {
       return this.fallthrough(control)
     }
     this.trackControl(seq, control)

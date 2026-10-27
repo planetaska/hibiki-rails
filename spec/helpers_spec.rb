@@ -96,6 +96,12 @@ RSpec.describe Hibiki::Rails::Helpers do
         expect { view.on(view.js.hide, fallback: true) }.to raise_error(ArgumentError, /fallback: needs a push/)
         expect(view.on(view.js.hide.push(:go), fallback: true)[:data]).to include(hibiki_fallback: "true")
       end
+
+      # A pushed action is sent by the command module, which holds nothing.
+      it "is never replaceable" do
+        expect { view.on(view.js.push(:search), replaceable: true) }
+          .to raise_error(ArgumentError, /replaceable: belongs on an action/)
+      end
     end
 
     describe "popstate" do
@@ -111,6 +117,11 @@ RSpec.describe Hibiki::Rails::Helpers do
       it "takes no fallback" do
         expect { view.on(:visit, event: :popstate, fallback: true) }
           .to raise_error(ArgumentError, /popstate event takes no fallback/)
+      end
+
+      it "takes no replaceable" do
+        expect { view.on(:visit, event: :popstate, replaceable: true) }
+          .to raise_error(ArgumentError, /popstate event takes no replaceable/)
       end
     end
 
@@ -156,6 +167,15 @@ RSpec.describe Hibiki::Rails::Helpers do
       it "omits the fallback attribute for the default and for fallback: false" do
         expect(view.on(:new_form)[:data]).not_to have_key(:hibiki_fallback)
         expect(view.on(:new_form, fallback: false)[:data]).not_to have_key(:hibiki_fallback)
+      end
+
+      it "marks a control whose send waits while one of its kind is in flight" do
+        expect(view.on(:search, event: :input, replaceable: true)[:data][:hibiki_replaceable]).to eq("true")
+      end
+
+      it "omits the replaceable attribute for the default and for replaceable: false" do
+        expect(view.on(:search, event: :input)[:data]).not_to have_key(:hibiki_replaceable)
+        expect(view.on(:search, event: :input, replaceable: false)[:data]).not_to have_key(:hibiki_replaceable)
       end
     end
 
